@@ -16,10 +16,34 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.29",
+    releaseDate: "2026-11-15",
+    title: "Partnership Dynamic Event Tokenizer, Bevy Binding & Sponsor FAQ Automation",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Connected partnership featured event spotlight directly to live Bevy API events with automatic tag extraction and editorial narrative overrides.",
+      },
+      {
+        category: "Added",
+        text: "Introduced dynamic event and stat parameter tokenization across partnership lead paragraphs, highlight cards, and sponsor FAQs.",
+      },
+      {
+        category: "Improved",
+        text: "Enhanced mobile responsiveness, centered highlight cards, and upgraded homepage community pass spotlight with updated community-tier ticketing copy.",
+      },
+      {
+        category: "Fixed",
+        text: "Swapped Organizer Dashboard card order so Community Organizers precedes Referral Leaderboard, and resolved layout overflow issues in partnership dashboard controls.",
+      },
+    ],
+  },
+  {
     version: "1.0.28",
     releaseDate: "2026-11-14",
     title: "Organizer Role Bootstrap, Masked Email Matching & Role Sync",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Fixed",

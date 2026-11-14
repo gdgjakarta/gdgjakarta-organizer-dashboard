@@ -3,7 +3,13 @@ import type { Metadata } from "next";
 import { APP_CONFIG } from "@/config/app-config";
 import { BEVY_CONFIG } from "@/config/bevy-config";
 import { getGoogleThemeByKey, getRandomGoogleTheme } from "@/config/homepage-themes";
-import { getBevyChapterSponsors } from "@/lib/bevy/client";
+import {
+  getBevyChapterEvents,
+  getBevyChapterSlim,
+  getBevyChapterSponsors,
+  getBevyChapterTeams,
+  getBevyEventById,
+} from "@/lib/bevy/client";
 
 import { HomepageThemeContainer } from "../_components/homepage-theme-container";
 import { PartnershipBenefits } from "./_components/partnership-benefits";
@@ -51,13 +57,24 @@ export default async function PartnershipPage(props: PartnershipPageProps) {
   const requestedColor = themeParam ?? colorParam;
   const initialTheme = requestedColor ? getGoogleThemeByKey(requestedColor) : getRandomGoogleTheme();
 
-  // Fetch chapter sponsors from Bevy API
-  const sponsors = await getBevyChapterSponsors(BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId);
+  // Fetch chapter sponsors, live members count, and total events in parallel
+  const [sponsors, chapterSlim, eventsData, teams] = await Promise.all([
+    getBevyChapterSponsors(BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId),
+    getBevyChapterSlim(BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId).catch(() => null),
+    getBevyChapterEvents(BEVY_CONFIG.chapterId, 1, 1, false, "Published").catch(() => null),
+    getBevyChapterTeams(BEVY_CONFIG.chapterId).catch(() => []),
+  ]);
+
+  const liveStats = {
+    membersCount: chapterSlim?.members_count ?? 17878,
+    eventsCount: eventsData?.count ?? 121,
+    teamCount: Array.isArray(teams) ? teams.filter((t) => t.visible !== false).length : 11,
+  };
 
   return (
     <HomepageThemeContainer initialTheme={initialTheme}>
       {/* 1. Hero Section */}
-      <PartnershipHero />
+      <PartnershipHero liveStats={liveStats} />
 
       {/* 2. How Collaboration Looks Like / Why Us */}
       <PartnershipWhyUs />

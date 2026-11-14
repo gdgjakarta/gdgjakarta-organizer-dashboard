@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createBevyPerson, updateBevyEvent, updateBevyPerson } from "@/lib/bevy/client";
+import { createBevyPerson, getBevyPerson, updateBevyEvent, updateBevyPerson } from "@/lib/bevy/client";
 import type { BevySpeaker } from "@/lib/bevy/types";
 import {
   getCleanDefaultTemplateDataForType,
@@ -264,18 +264,29 @@ export async function getEventSpeakerConfirmationsAction(
       (a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime(),
     );
 
-    // Deduplicate by speaker_email (keeping the most recently updated record)
+    // Deduplicate by speaker_email or Bevy Person ID or full name (keeping the most recently updated record)
     const seenEmails = new Set<string>();
     const seenBevyIds = new Set<number>();
     const seenNames = new Set<string>();
     const deduped: EventSpeakerConfirmation[] = [];
     for (const c of confirmations) {
       if (c.id.startsWith("spkconf_test_")) continue;
-      const emailKey = (c.speaker_email || c.id).toLowerCase();
-      if (!seenEmails.has(emailKey)) {
-        seenEmails.add(emailKey);
-        if (c.bevy_person_id) seenBevyIds.add(Number(c.bevy_person_id));
-        if (c.full_name) seenNames.add(c.full_name.trim().toLowerCase());
+      const cleanEmail = c.speaker_email?.trim().toLowerCase();
+      const hasRealEmail = cleanEmail && cleanEmail !== "synced from event roster";
+      const emailKey = hasRealEmail ? cleanEmail : "";
+      const bevyId = c.bevy_person_id ? Number(c.bevy_person_id) : undefined;
+      const nameKey = c.full_name?.trim().toLowerCase();
+
+      // Check if already captured by real email, bevy ID, or name
+      const alreadySeen =
+        (emailKey && seenEmails.has(emailKey)) ||
+        (bevyId && seenBevyIds.has(bevyId)) ||
+        (nameKey && seenNames.has(nameKey));
+
+      if (!alreadySeen) {
+        if (emailKey) seenEmails.add(emailKey);
+        if (bevyId) seenBevyIds.add(bevyId);
+        if (nameKey) seenNames.add(nameKey);
         deduped.push(c);
       }
     }
@@ -283,8 +294,8 @@ export async function getEventSpeakerConfirmationsAction(
     // Also merge any existing confirmed event.speakers from the event roster
     const event = await getFirestoreEventByIdServer(String(eventId));
 
-    // Dynamic session slot & slide URL lookup map from event's presentation slides and agenda
-    const slidesMap = new Map<string, { sessionSlot?: string; slidesUrl?: string }>();
+    // Dynamic session title, slot & slide URL lookup map from event's presentation slides, sessions, and agenda
+    const slidesMap = new Map<string, { sessionTitle?: string; sessionSlot?: string; slidesUrl?: string }>();
     if (event?.presentation_slides && Array.isArray(event.presentation_slides)) {
       for (const slide of event.presentation_slides) {
         if (!slide) continue;
@@ -292,23 +303,101 @@ export async function getEventSpeakerConfirmationsAction(
           ? `${slide.time_slot}${slide.title ? ` • ${slide.title}` : ""}`
           : slide.title || undefined;
         const slideUrl = slide.slides_url?.trim() || undefined;
+        const sessionTitle = slide.title?.trim() || undefined;
 
         // Index by speaker name
         if (slide.speaker_name) {
           const names = slide.speaker_name.split(",").map((s) => s.trim().toLowerCase());
           for (const n of names) {
-            if (n) slidesMap.set(n, { sessionSlot: slot, slidesUrl: slideUrl });
+            if (n) slidesMap.set(n, { sessionTitle, sessionSlot: slot, slidesUrl: slideUrl });
           }
         }
         if (slide.speakers && Array.isArray(slide.speakers)) {
           for (const spk of slide.speakers) {
             if (spk.name) {
-              slidesMap.set(spk.name.trim().toLowerCase(), { sessionSlot: slot, slidesUrl: slideUrl });
+              slidesMap.set(spk.name.trim().toLowerCase(), { sessionTitle, sessionSlot: slot, slidesUrl: slideUrl });
             }
           }
         }
       }
     }
+
+    // Also index breakout sessions if not already covered
+    if (event?.sessions && Array.isArray(event.sessions)) {
+      for (const sess of event.sessions) {
+        if (!sess || !sess.title) continue;
+        const sessionTitle = sess.title.trim();
+        const slot = sess.time_slot ? `${sess.time_slot} • ${sessionTitle}` : sessionTitle;
+        const slideUrl = sess.slides_url?.trim() || undefined;
+
+        if (sess.speaker_name) {
+          const names = sess.speaker_name.split(",").map((s) => s.trim().toLowerCase());
+          for (const n of names) {
+            if (n && !slidesMap.has(n)) {
+              slidesMap.set(n, { sessionTitle, sessionSlot: slot, slidesUrl: slideUrl });
+            }
+          }
+        }
+      }
+    }
+
+    // Also inspect agenda items to match speaker names with activity/session titles
+    if (event?.agenda) {
+      const days = Array.isArray(event.agenda)
+        ? event.agenda
+        : (
+            event.agenda as {
+              days?: Array<{
+                title?: string;
+                items?: Array<{ activity?: string; time?: string; description?: string; speakers?: Array<{ name?: string }> }>;
+                agenda?: Array<{ activity?: string; time?: string; description?: string; speakers?: Array<{ name?: string }> }>;
+              }>;
+            }
+          ).days || [];
+
+      for (let dIdx = 0; dIdx < days.length; dIdx++) {
+        const day = days[dIdx];
+        const trackName = (day as { title?: string }).title?.trim() || `Track ${dIdx + 1}`;
+        const items =
+          (day as { items?: Array<{ activity?: string; time?: string; description?: string; speakers?: Array<{ name?: string }> }> }).items ||
+          (day as { agenda?: Array<{ activity?: string; time?: string; description?: string; speakers?: Array<{ name?: string }> }> }).agenda ||
+          [];
+        for (const item of items) {
+          const actTitle = item.activity?.trim();
+          if (!actTitle) continue;
+          const timeLabel = item.time ? ` (${item.time})` : "";
+          const slot = `[${trackName}] ${actTitle}${timeLabel}`;
+
+          if (item.speakers && Array.isArray(item.speakers)) {
+            for (const spk of item.speakers) {
+              if (spk.name) {
+                const n = spk.name.trim().toLowerCase();
+                const existing = slidesMap.get(n);
+                if (!existing) {
+                  slidesMap.set(n, { sessionTitle: actTitle, sessionSlot: slot });
+                } else {
+                  if (!existing.sessionTitle) existing.sessionTitle = actTitle;
+                  if (!existing.sessionSlot) existing.sessionSlot = slot;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const rosterByPersonId = new Map<number, Record<string, unknown>>();
+    const rosterByEventPersonId = new Map<number, Record<string, unknown>>();
+    const rosterByName = new Map<string, Record<string, unknown>>();
+    const validPresenterRoles = new Set([
+      "speakers",
+      "panelists",
+      "moderators",
+      "facilitators",
+      "hosts",
+      "mentors",
+      "judges",
+    ]);
 
     if (event?.speakers && Array.isArray(event.speakers)) {
       for (const rawSpk of event.speakers) {
@@ -318,24 +407,86 @@ export async function getEventSpeakerConfirmationsAction(
           (spk.full_name as string) || `${(spk.first_name as string) || ""} ${(spk.last_name as string) || ""}`
         ).trim();
         const spkEmail = ((spk.email as string) || "").trim().toLowerCase();
-        const spkPersonId = spk.event_person_id || spk.id ? Number(spk.event_person_id || spk.id) : undefined;
+        const rawPersonId = spk.id ? Number(spk.id) : undefined;
+        const rawEventPersonId = spk.event_person_id ? Number(spk.event_person_id) : undefined;
+        const spkPersonId = rawPersonId || rawEventPersonId;
+
+        if (rawPersonId) rosterByPersonId.set(rawPersonId, spk);
+        if (rawEventPersonId) rosterByEventPersonId.set(rawEventPersonId, spk);
+        if (spkName) rosterByName.set(spkName.toLowerCase(), spk);
 
         const alreadyListed =
           (spkEmail && seenEmails.has(spkEmail)) ||
-          (spkPersonId && seenBevyIds.has(spkPersonId)) ||
+          (rawPersonId && seenBevyIds.has(rawPersonId)) ||
+          (rawEventPersonId && seenBevyIds.has(rawEventPersonId)) ||
           (spkName && seenNames.has(spkName.toLowerCase()));
 
         if (!alreadyListed && spkName) {
+          // Check if an existing saved confirmation document exists in Firestore for this speaker
+          const candidateDocIds = [
+            (spk as Record<string, unknown>).confirmation_id as string | undefined,
+            spkEmail && spkEmail !== "synced from event roster"
+              ? buildSpeakerConfirmationDocId(eventId, spkEmail)
+              : undefined,
+            spkPersonId
+              ? buildSpeakerConfirmationDocId(eventId, `speaker_${spkPersonId}@gdgjakarta.org`)
+              : undefined,
+            buildSpeakerConfirmationDocId(
+              eventId,
+              `speaker_${encodeURIComponent(spkName.toLowerCase().replace(/\s+/g, "_"))}@gdgjakarta.org`,
+            ),
+          ].filter(Boolean) as string[];
+
+          let existingConfirmedDoc: EventSpeakerConfirmation | null = null;
+          for (const candId of candidateDocIds) {
+            const doc = (await getFirestoreDoc(
+              "event_speaker_confirmations",
+              candId,
+            )) as unknown as EventSpeakerConfirmation | null;
+            if (doc && String(doc.event_id) === String(eventId)) {
+              existingConfirmedDoc = doc;
+              break;
+            }
+          }
+
+          if (existingConfirmedDoc) {
+            const confirmedEmail = existingConfirmedDoc.speaker_email?.trim().toLowerCase();
+            if (confirmedEmail && confirmedEmail !== "synced from event roster") {
+              seenEmails.add(confirmedEmail);
+            }
+            if (existingConfirmedDoc.bevy_person_id) {
+              seenBevyIds.add(Number(existingConfirmedDoc.bevy_person_id));
+            }
+            if (spkPersonId) seenBevyIds.add(spkPersonId);
+            if (rawEventPersonId) seenBevyIds.add(rawEventPersonId);
+            seenNames.add(spkName.toLowerCase());
+            deduped.push(existingConfirmedDoc);
+            continue;
+          }
+
           if (spkEmail) seenEmails.add(spkEmail);
-          if (spkPersonId) seenBevyIds.add(spkPersonId);
+          if (rawPersonId) seenBevyIds.add(rawPersonId);
+          if (rawEventPersonId) seenBevyIds.add(rawEventPersonId);
           seenNames.add(spkName.toLowerCase());
 
-          const pictureObj = spk.picture as { url?: string } | string | undefined;
+          const pictureObj = spk.picture as { url?: string; thumbnail_url?: string } | string | undefined;
           const fallbackProfileUrl =
             (spk.picture_url as string) ||
-            (typeof pictureObj === "string" ? pictureObj : pictureObj?.url) ||
+            (typeof pictureObj === "string" ? pictureObj : pictureObj?.url || pictureObj?.thumbnail_url) ||
             (spk.avatar_url as string) ||
             "";
+          const rawRole = String(spk.speaker_type || "")
+            .trim()
+            .toLowerCase();
+          const presenterRole = (
+            validPresenterRoles.has(rawRole) ? rawRole : "speakers"
+          ) as EventSpeakerConfirmation["presenter_role"];
+
+          const matchedSession = slidesMap.get(spkName.toLowerCase());
+          const resolvedTalkTitle =
+            (spk.talk_title as string)?.trim() ||
+            matchedSession?.sessionTitle ||
+            `${spkName}'s Session`;
 
           deduped.push({
             id: `roster_${eventId}_${spkPersonId || encodeURIComponent(spkName)}`,
@@ -347,8 +498,16 @@ export async function getEventSpeakerConfirmationsAction(
             company_institution: (spk.company as string) || "",
             speaker_email: spkEmail || "Synced from Event Roster",
             speaker_profile_url: fallbackProfileUrl,
-            talk_title: (spk.talk_title as string) || `${spkName}'s Session`,
-            talk_type: (spk.speaker_type as EventSpeakerConfirmation["talk_type"]) || "Technical Talk (45 mins)",
+            presenter_role: presenterRole,
+            linkedin_url: (spk.linkedin_url as string) || (spk.personal_linkedin_page as string) || undefined,
+            twitter_url: (spk.personal_twitter as string) || (spk.twitter_url as string) || undefined,
+            company_twitter_username:
+              (spk.company_twitter as string) || (spk.company_twitter_username as string) || undefined,
+            talk_title: resolvedTalkTitle,
+            talk_type:
+              (spk.speaker_type as EventSpeakerConfirmation["talk_type"]) ||
+              (spk.talk_type as EventSpeakerConfirmation["talk_type"]) ||
+              "Technical Talk (45 mins)",
             talk_description: (spk.bio as string) || "",
             biography: (spk.bio as string) || "",
             bevy_person_id: spkPersonId,
@@ -361,15 +520,145 @@ export async function getEventSpeakerConfirmationsAction(
       }
     }
 
-    // Resolve session_slot and presentation_slides_url for all deduped records if not yet set
+    // Resolve session_slot, presentation_slides_url, canonical Bevy person ID, and roster fields for all deduped records
+    const cleanStr = (s?: string | null) =>
+      (s || "").toLowerCase().replace(/['"’]/g, "").replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+
+    // Build agenda lookup list for slot binding
+    const agendaSlotCandidates: Array<{ value: string; activity: string; track?: string; time?: string }> = [];
+    if (event?.agenda) {
+      const days = Array.isArray(event.agenda)
+        ? event.agenda
+        : (event.agenda as { days?: Array<{ title?: string; items?: Array<{ activity?: string; time?: string }>; agenda?: Array<{ activity?: string; time?: string }> }> }).days || [];
+      days.forEach((day, dIdx) => {
+        const trackName = (day as { title?: string }).title?.trim() || `Track ${dIdx + 1}`;
+        const items = (day as { items?: Array<{ activity?: string; time?: string }> }).items || (day as { agenda?: Array<{ activity?: string; time?: string }> }).agenda || [];
+        items.forEach((item) => {
+          const act = item.activity?.trim();
+          if (act) {
+            const timeLabel = item.time ? ` (${item.time})` : "";
+            agendaSlotCandidates.push({
+              value: `[${trackName}] ${act}${timeLabel}`,
+              activity: act,
+              track: trackName,
+              time: item.time,
+            });
+          }
+        });
+      });
+    }
+
     for (const item of deduped) {
       const match = slidesMap.get(item.full_name.trim().toLowerCase());
       if (match) {
+        if ((!item.talk_title || item.talk_title === `${item.full_name}'s Session`) && match.sessionTitle) {
+          item.talk_title = match.sessionTitle;
+        }
         if (!item.session_slot && match.sessionSlot) {
           item.session_slot = match.sessionSlot;
         }
         if (!item.presentation_slides_url && match.slidesUrl) {
           item.presentation_slides_url = match.slidesUrl;
+        }
+      }
+
+      // If session_slot is still empty, map it based on which agenda item the speaker/talk title is bound with
+      if (!item.session_slot && agendaSlotCandidates.length > 0 && item.talk_title && item.talk_title !== `${item.full_name}'s Session`) {
+        const cleanTalk = cleanStr(item.talk_title);
+        // 1. Exact activity match
+        let foundSlot = agendaSlotCandidates.find((s) => cleanStr(s.activity) === cleanTalk);
+        // 2. Exact slot value match
+        if (!foundSlot) {
+          foundSlot = agendaSlotCandidates.find((s) => cleanStr(s.value) === cleanTalk);
+        }
+        // 3. Substring match (min 6 characters)
+        if (!foundSlot && cleanTalk.length >= 6) {
+          foundSlot = agendaSlotCandidates.find((s) => {
+            const cleanAct = cleanStr(s.activity);
+            if (cleanAct.length < 6) return false;
+            return cleanTalk.includes(cleanAct) || cleanAct.includes(cleanTalk);
+          });
+        }
+        if (foundSlot) {
+          item.session_slot = foundSlot.value;
+        }
+      }
+
+      const rosterMatch =
+        (item.bevy_person_id ? rosterByPersonId.get(Number(item.bevy_person_id)) : undefined) ||
+        (item.bevy_person_id ? rosterByEventPersonId.get(Number(item.bevy_person_id)) : undefined) ||
+        rosterByName.get(item.full_name.trim().toLowerCase());
+
+      if (rosterMatch) {
+        if (rosterMatch.id) {
+          item.bevy_person_id = Number(rosterMatch.id);
+        }
+        if ((!item.job_title || item.job_title === "Speaker") && typeof rosterMatch.title === "string") {
+          item.job_title = rosterMatch.title || item.job_title;
+        }
+        if (!item.company_institution && typeof rosterMatch.company === "string") {
+          item.company_institution = rosterMatch.company;
+        }
+        if (!item.linkedin_url && !item.linkedin_or_social_url) {
+          const li = (rosterMatch.linkedin_url as string) || (rosterMatch.personal_linkedin_page as string);
+          if (li) item.linkedin_url = li;
+        }
+        if (!item.twitter_url) {
+          const tw = (rosterMatch.personal_twitter as string) || (rosterMatch.twitter_url as string);
+          if (tw) item.twitter_url = tw;
+        }
+        if (!item.company_twitter_username) {
+          const ctw = (rosterMatch.company_twitter as string) || (rosterMatch.company_twitter_username as string);
+          if (ctw) item.company_twitter_username = ctw;
+        }
+        if (!item.talk_description && typeof rosterMatch.bio === "string") {
+          item.talk_description = rosterMatch.bio;
+        }
+        if (!item.biography && typeof rosterMatch.bio === "string") {
+          item.biography = rosterMatch.bio;
+        }
+      }
+    }
+
+    // Enrich missing Bevy person profile/social fields via GET /api/person/{personId}/
+    const itemsToEnrich = deduped.filter(
+      (item) =>
+        Boolean(item.bevy_person_id) &&
+        !item.linkedin_url &&
+        !item.linkedin_or_social_url &&
+        !item.twitter_url &&
+        !item.company_twitter_username,
+    );
+
+    if (itemsToEnrich.length > 0) {
+      const personResults = await Promise.allSettled(
+        itemsToEnrich.map(async (item) => ({
+          item,
+          res: await getBevyPerson(Number(item.bevy_person_id), eventId),
+        })),
+      );
+
+      for (const settled of personResults) {
+        if (settled.status !== "fulfilled") continue;
+        const { item, res } = settled.value;
+        if (!res.success || !res.data) continue;
+        const p = res.data;
+        const pPicture =
+          typeof p.picture === "string" ? p.picture : p.picture?.url || p.picture?.thumbnail_url || "";
+        const pFullName = `${p.first_name || ""} ${p.last_name || ""}`.trim();
+
+        if (!item.full_name && pFullName) item.full_name = pFullName;
+        if ((!item.job_title || item.job_title === "Speaker") && p.title) item.job_title = p.title;
+        if (!item.company_institution && p.company) item.company_institution = p.company;
+        if (!item.speaker_profile_url && pPicture) item.speaker_profile_url = pPicture;
+        if (!item.talk_description && p.bio) item.talk_description = p.bio;
+        if (!item.biography && p.bio) item.biography = p.bio;
+        if (!item.linkedin_url && !item.linkedin_or_social_url && p.personal_linkedin_page) {
+          item.linkedin_url = p.personal_linkedin_page;
+        }
+        if (!item.twitter_url && p.personal_twitter) item.twitter_url = p.personal_twitter;
+        if (!item.company_twitter_username && p.company_twitter) {
+          item.company_twitter_username = p.company_twitter;
         }
       }
     }
@@ -1275,7 +1564,12 @@ export async function syncSpeakerConfirmationToBevyAction(
         first_name: firstName,
         last_name: lastName,
         title,
-        bio: confirmation.talk_title ? `Speaker for: ${confirmation.talk_title}` : "",
+        company: confirmation.company_institution || undefined,
+        bio: confirmation.talk_description || confirmation.biography || (confirmation.talk_title ? `Speaker for: ${confirmation.talk_title}` : ""),
+        picture: confirmation.speaker_profile_url || undefined,
+        personal_twitter: cleanTwitterUsername(confirmation.twitter_url),
+        company_twitter: cleanTwitterUsername(confirmation.company_twitter_username),
+        personal_linkedin_page: cleanLinkedInIdentifier(confirmation.linkedin_url || confirmation.linkedin_or_social_url),
       });
       if (!updateRes.success) {
         return { success: false, error: updateRes.error };
@@ -1356,6 +1650,8 @@ export interface AddManualSpeakerConfirmationInput {
   full_name: string;
   display_name?: string;
   speaker_email: string;
+  whatsapp_number?: string;
+  contact_channels?: string[];
   job_title: string;
   company_institution: string;
   speaker_profile_url?: string;
@@ -1367,10 +1663,20 @@ export interface AddManualSpeakerConfirmationInput {
   bevy_person_id?: number | null;
   linkedin_url?: string;
   twitter_url?: string;
+  company_twitter_username?: string;
+  instagram_username?: string;
   portfolio_url?: string;
+  presentation_slides_url?: string;
+  google_ecosystem_or_technology?: string;
   is_from_google_ecosystem?: string;
   ecosystem_details?: string;
   presenter_role?: "speakers" | "mentors" | "facilitators" | "panelists" | "judges" | "moderators" | "hosts";
+  can_share_slides?: "Yes" | "No";
+  tshirt_size?: string;
+  swag_selections?: Record<string, string>;
+  dietary_restrictions?: string;
+  dietary_restrictions_list?: string[];
+  additional_inquiry?: string;
   send_invitation_email?: boolean;
 }
 
@@ -1424,6 +1730,8 @@ export async function addManualSpeakerConfirmationAction(
       full_name: input.full_name.trim(),
       display_name: input.display_name?.trim() || input.full_name.trim(),
       speaker_email: cleanEmail,
+      whatsapp_number: input.whatsapp_number?.trim() || undefined,
+      contact_channels: input.contact_channels?.length ? input.contact_channels : ["Email"],
       job_title: input.job_title.trim(),
       company_institution: input.company_institution.trim(),
       speaker_profile_url: input.speaker_profile_url?.trim(),
@@ -1434,11 +1742,20 @@ export async function addManualSpeakerConfirmationAction(
       biography: input.biography?.trim(),
       linkedin_url: input.linkedin_url?.trim(),
       twitter_url: input.twitter_url?.trim(),
+      company_twitter_username: input.company_twitter_username?.trim() || undefined,
+      instagram_username: input.instagram_username?.trim() || undefined,
       portfolio_url: input.portfolio_url?.trim(),
+      presentation_slides_url: input.presentation_slides_url?.trim() || undefined,
+      google_ecosystem_or_technology: input.google_ecosystem_or_technology?.trim() || undefined,
       is_from_google_ecosystem: input.is_from_google_ecosystem,
       ecosystem_details: input.ecosystem_details?.trim(),
       presenter_role: input.presenter_role || "speakers",
-      can_share_slides: "Yes",
+      can_share_slides: input.can_share_slides || "Yes",
+      tshirt_size: input.tshirt_size?.trim() || undefined,
+      swag_selections: input.swag_selections,
+      dietary_restrictions: input.dietary_restrictions?.trim() || undefined,
+      dietary_restrictions_list: input.dietary_restrictions_list,
+      additional_inquiry: input.additional_inquiry?.trim() || undefined,
       bevy_person_id: input.bevy_person_id || null,
       bevy_synced: Boolean(input.bevy_person_id),
       bevy_synced_at: input.bevy_person_id ? now : undefined,
@@ -1457,11 +1774,15 @@ export async function addManualSpeakerConfirmationAction(
           first_name: firstName,
           last_name: lastName,
           title,
+          company: record.company_institution || undefined,
           bio:
             record.talk_description ||
             record.biography ||
             (record.talk_title ? `Speaker for: ${record.talk_title}` : ""),
           picture: record.speaker_profile_url || undefined,
+          personal_twitter: cleanTwitterUsername(record.twitter_url),
+          company_twitter: cleanTwitterUsername(record.company_twitter_username),
+          personal_linkedin_page: cleanLinkedInIdentifier(record.linkedin_url),
         });
       } catch (bevyUpdateErr) {
         console.warn("[addManualSpeakerConfirmationAction] updateBevyPerson failed:", bevyUpdateErr);
@@ -1549,6 +1870,305 @@ export async function addManualSpeakerConfirmationAction(
     return { success: true, confirmationId };
   } catch (err) {
     return { success: false, error: extractApiMessage(err, "Failed to add speaker.") };
+  }
+}
+
+function cleanTwitterUsername(raw?: string | null): string | undefined {
+  if (!raw?.trim() || raw.trim() === "-") return undefined;
+  const handle = raw
+    .trim()
+    .replace(/^(https?:\/\/)?(www\.)?(twitter\.com|x\.com)\//i, "")
+    .replace(/^@/, "")
+    .replace(/\/.*$/, "");
+  return handle || undefined;
+}
+
+function cleanLinkedInIdentifier(raw?: string | null): string | undefined {
+  if (!raw?.trim() || raw.trim() === "-") return undefined;
+  const clean = raw.trim();
+  const match = clean.match(/linkedin\.com\/in\/([^/?#]+)/i);
+  if (match) return match[1];
+  const stripped = clean
+    .replace(/^(https?:\/\/)?(www\.)?linkedin\.com\/in\/?/i, "")
+    .replace(/^(https?:\/\/)?(www\.)?linkedin\.com\/?/i, "")
+    .replace(/^in\//i, "")
+    .replace(/\/.*$/, "");
+  return stripped || undefined;
+}
+
+export interface UpdateSpeakerConfirmationInput {
+  confirmation_id: string;
+  event_id: string | number;
+  full_name: string;
+  display_name?: string;
+  speaker_email: string;
+  job_title: string;
+  company_institution: string;
+  speaker_profile_url?: string;
+  talk_type: string;
+  talk_title: string;
+  talk_description?: string;
+  session_slot?: string;
+  biography?: string;
+  bevy_person_id?: number | null;
+  linkedin_url?: string;
+  twitter_url?: string;
+  company_twitter_username?: string;
+  instagram_username?: string;
+  portfolio_url?: string;
+  whatsapp_number?: string;
+  contact_channels?: string[];
+  google_ecosystem_or_technology?: string;
+  is_from_google_ecosystem?: string;
+  ecosystem_details?: string;
+  presenter_role?: "speakers" | "mentors" | "facilitators" | "panelists" | "judges" | "moderators" | "hosts";
+  presentation_slides_url?: string;
+  can_share_slides?: "Yes" | "No";
+  dietary_restrictions?: string;
+  dietary_restrictions_list?: string[];
+  tshirt_size?: string;
+  swag_selections?: Record<string, string>;
+  additional_inquiry?: string;
+  sync_to_bevy?: boolean;
+}
+
+/**
+ * Updates a speaker confirmation and seamlessly synchronizes all profile and social fields directly to Bevy.
+ */
+export async function updateSpeakerConfirmationAction(
+  input: UpdateSpeakerConfirmationInput,
+): Promise<{ success: boolean; confirmationId?: string; error?: string }> {
+  try {
+    if (!(await isAuthorizedOrganizerSession())) {
+      return { success: false, error: "Unauthorized: Organizer privileges required." };
+    }
+
+    const eventDoc = await getFirestoreEventByIdServer(String(input.event_id));
+    if (!eventDoc) {
+      return { success: false, error: "Event not found." };
+    }
+
+    // Resolve candidate doc IDs to identify this speaker
+    const cleanEmail = input.speaker_email?.trim().toLowerCase();
+    const hasValidEmail = cleanEmail && cleanEmail !== "synced from event roster" && cleanEmail.includes("@");
+
+    let confirmationId = input.confirmation_id;
+    let rawConf: Record<string, unknown> | null = null;
+
+    if (confirmationId) {
+      rawConf = await getFirestoreDoc("event_speaker_confirmations", confirmationId);
+    }
+
+    if (!rawConf && hasValidEmail) {
+      const emailDocId = buildSpeakerConfirmationDocId(input.event_id, cleanEmail);
+      rawConf = await getFirestoreDoc("event_speaker_confirmations", emailDocId);
+      if (rawConf) {
+        confirmationId = emailDocId;
+      }
+    }
+
+    if (!rawConf && input.bevy_person_id) {
+      const fallbackPersonEmail = `speaker_${input.bevy_person_id}@gdgjakarta.org`;
+      const fallbackPersonDocId = buildSpeakerConfirmationDocId(input.event_id, fallbackPersonEmail);
+      rawConf = await getFirestoreDoc("event_speaker_confirmations", fallbackPersonDocId);
+      if (rawConf) {
+        confirmationId = fallbackPersonDocId;
+      }
+    }
+
+    if (!rawConf) {
+      const fallbackNameEmail = `speaker_${encodeURIComponent(input.full_name.trim().toLowerCase().replace(/\s+/g, "_"))}@gdgjakarta.org`;
+      const fallbackNameDocId = buildSpeakerConfirmationDocId(input.event_id, fallbackNameEmail);
+      rawConf = await getFirestoreDoc("event_speaker_confirmations", fallbackNameDocId);
+      if (rawConf) {
+        confirmationId = fallbackNameDocId;
+      }
+    }
+
+    if (!rawConf) {
+      // Lookup by event_id and bevy_person_id or email
+      const existingList = await queryFirestoreDocs<EventSpeakerConfirmation>("event_speaker_confirmations", [
+        {
+          fieldFilter: {
+            field: { fieldPath: "event_id" },
+            op: "EQUAL",
+            value: { stringValue: String(input.event_id) },
+          },
+        },
+      ]);
+
+      const found = existingList.find(
+        (c) =>
+          (input.bevy_person_id && c.bevy_person_id === input.bevy_person_id) ||
+          (cleanEmail && c.speaker_email?.toLowerCase() === cleanEmail) ||
+          c.full_name?.toLowerCase() === input.full_name.trim().toLowerCase(),
+      );
+
+      if (found) {
+        confirmationId = found.id;
+        rawConf = found as unknown as Record<string, unknown>;
+      } else {
+        // If still not found, construct a deterministic doc ID to create/persist it
+        const fallbackEmail = hasValidEmail
+          ? cleanEmail
+          : `speaker_${input.bevy_person_id || encodeURIComponent(input.full_name.trim())}@gdgjakarta.org`;
+        confirmationId = buildSpeakerConfirmationDocId(input.event_id, fallbackEmail);
+      }
+    }
+
+    const currentConf = (rawConf as unknown as EventSpeakerConfirmation) || {};
+
+    // If the user provided a new valid email that differs from the existing document's speaker_email,
+    // write to the canonical email-based doc ID (which satisfies `allow create` in firestore.rules)
+    // instead of mutating `speaker_email` on the old doc (which `allow update` rejects without hasTeamAccess).
+    let effectiveSpeakerEmail: string;
+    if (hasValidEmail && cleanEmail !== currentConf.speaker_email?.trim().toLowerCase()) {
+      confirmationId = buildSpeakerConfirmationDocId(input.event_id, cleanEmail);
+      effectiveSpeakerEmail = cleanEmail;
+    } else {
+      effectiveSpeakerEmail = currentConf.speaker_email
+        ? currentConf.speaker_email
+        : (hasValidEmail
+            ? cleanEmail
+            : `speaker_${input.bevy_person_id || encodeURIComponent(input.full_name.trim())}@gdgjakarta.org`);
+    }
+
+    const now = new Date().toISOString();
+    const cleanTwitter = cleanTwitterUsername(input.twitter_url);
+    const cleanCompanyTwitter = cleanTwitterUsername(input.company_twitter_username);
+    const cleanLinkedIn = cleanLinkedInIdentifier(input.linkedin_url);
+
+    // Note: Do NOT include 'event_title' in updatedConf because firestore.rules hasOnlyAllowedFields strictly forbids event_title on event_speaker_confirmations!
+    const updatedConf: EventSpeakerConfirmation = {
+      ...currentConf,
+      id: confirmationId,
+      event_id: String(input.event_id),
+      created_at: currentConf.created_at || now,
+      full_name: input.full_name.trim(),
+      display_name: input.display_name?.trim() || input.full_name.trim(),
+      speaker_email: effectiveSpeakerEmail,
+      job_title: input.job_title.trim(),
+      company_institution: input.company_institution.trim(),
+      speaker_profile_url: input.speaker_profile_url?.trim() || undefined,
+      talk_type: input.talk_type,
+      talk_title: input.talk_title.trim(),
+      talk_description: input.talk_description?.trim() || undefined,
+      session_slot: input.session_slot?.trim() || undefined,
+      biography: input.biography?.trim() || undefined,
+      bevy_person_id: input.bevy_person_id ?? currentConf.bevy_person_id ?? null,
+      linkedin_url: input.linkedin_url?.trim() || undefined,
+      twitter_url: input.twitter_url?.trim() || undefined,
+      company_twitter_username: input.company_twitter_username?.trim() || undefined,
+      instagram_username: input.instagram_username?.trim() || undefined,
+      portfolio_url: input.portfolio_url?.trim() || undefined,
+      whatsapp_number: input.whatsapp_number?.trim() || undefined,
+      contact_channels: input.contact_channels || currentConf.contact_channels,
+      google_ecosystem_or_technology:
+        input.google_ecosystem_or_technology?.trim() || currentConf.google_ecosystem_or_technology || undefined,
+      is_from_google_ecosystem: input.is_from_google_ecosystem || currentConf.is_from_google_ecosystem,
+      ecosystem_details: input.ecosystem_details?.trim() || currentConf.ecosystem_details || undefined,
+      presenter_role: input.presenter_role || currentConf.presenter_role || "speakers",
+      presentation_slides_url: input.presentation_slides_url?.trim() || undefined,
+      can_share_slides: input.can_share_slides || currentConf.can_share_slides || "Yes",
+      dietary_restrictions: input.dietary_restrictions?.trim() || currentConf.dietary_restrictions || undefined,
+      dietary_restrictions_list: input.dietary_restrictions_list || currentConf.dietary_restrictions_list,
+      tshirt_size: input.tshirt_size?.trim() || currentConf.tshirt_size || undefined,
+      swag_selections:
+        input.swag_selections !== undefined ? input.swag_selections : currentConf.swag_selections,
+      additional_inquiry: input.additional_inquiry?.trim() || currentConf.additional_inquiry || undefined,
+      updated_at: now,
+    };
+
+    // If Bevy Person ID exists and sync requested, PATCH Bevy Person endpoint with all fields
+    let syncedToBevy = Boolean(currentConf.bevy_synced);
+    if (updatedConf.bevy_person_id && input.sync_to_bevy !== false) {
+      try {
+        const { firstName, lastName } = splitFullName(updatedConf.full_name);
+        const title = `${updatedConf.job_title}${updatedConf.company_institution ? ` at ${updatedConf.company_institution}` : ""}`;
+        const bevyPayload: Partial<import("@/lib/bevy/client").BevyPersonInput> = {
+          first_name: firstName,
+          last_name: lastName,
+          title,
+          company: updatedConf.company_institution || undefined,
+          bio:
+            updatedConf.talk_description ||
+            updatedConf.biography ||
+            (updatedConf.talk_title ? `Speaker for: ${updatedConf.talk_title}` : ""),
+          personal_twitter: cleanTwitter || undefined,
+          company_twitter: cleanCompanyTwitter || undefined,
+          personal_linkedin_page: cleanLinkedIn || undefined,
+        };
+
+        const bevyRes = await updateBevyPerson(Number(updatedConf.bevy_person_id), input.event_id, bevyPayload);
+        if (bevyRes.success) {
+          syncedToBevy = true;
+          updatedConf.bevy_synced = true;
+          updatedConf.bevy_synced_at = now;
+        } else {
+          console.warn("[updateSpeakerConfirmationAction] updateBevyPerson warning:", bevyRes.error);
+        }
+      } catch (bevyErr) {
+        console.warn("[updateSpeakerConfirmationAction] updateBevyPerson error:", bevyErr);
+      }
+    }
+
+    // Persist updated confirmation to Firestore
+    await patchFirestoreDoc(
+      "event_speaker_confirmations",
+      confirmationId,
+      updatedConf as unknown as Record<string, unknown>,
+      true,
+    );
+
+    // Sync to event presenter list array (speakers, mentors, panelists, etc.)
+    try {
+      const roleKey = updatedConf.presenter_role || "speakers";
+      const currentList = Array.isArray(eventDoc[roleKey]) ? [...(eventDoc[roleKey] as BevySpeaker[])] : [];
+      const { firstName, lastName } = splitFullName(updatedConf.full_name);
+
+      const updatedSpeakerObj: BevySpeaker & { confirmation_id?: string; talk_title?: string; email?: string } = {
+        id: updatedConf.bevy_person_id || undefined,
+        first_name: firstName,
+        last_name: lastName,
+        full_name: updatedConf.full_name,
+        title: updatedConf.job_title,
+        company: updatedConf.company_institution,
+        bio: updatedConf.talk_description || updatedConf.biography || `Speaker for ${updatedConf.talk_title}`,
+        picture: updatedConf.speaker_profile_url ? { url: updatedConf.speaker_profile_url } : undefined,
+        picture_url: updatedConf.speaker_profile_url,
+        speaker_type: updatedConf.talk_type,
+        personal_twitter: cleanTwitter || undefined,
+        company_twitter: cleanCompanyTwitter || undefined,
+        personal_linkedin_page: cleanLinkedIn || undefined,
+        linkedin_url: updatedConf.linkedin_url || undefined,
+        event_person_id: updatedConf.bevy_person_id || undefined,
+        confirmation_id: confirmationId,
+        talk_title: updatedConf.talk_title,
+        email: updatedConf.speaker_email && !updatedConf.speaker_email.startsWith("speaker_") ? updatedConf.speaker_email : undefined,
+      };
+
+      const existingIdx = currentList.findIndex(
+        (s) =>
+          (updatedConf.bevy_person_id && Number(s.id) === Number(updatedConf.bevy_person_id)) ||
+          s.full_name?.toLowerCase() === updatedConf.full_name.toLowerCase(),
+      );
+
+      if (existingIdx >= 0) {
+        currentList[existingIdx] = { ...currentList[existingIdx], ...updatedSpeakerObj };
+      } else {
+        currentList.push(updatedSpeakerObj);
+      }
+
+      await patchFirestoreDoc("events", String(input.event_id), { [roleKey]: currentList }, true);
+      await updateBevyEvent(input.event_id, { [roleKey]: currentList });
+    } catch (eventSyncErr) {
+      console.warn("[updateSpeakerConfirmationAction] Failed updating event presenter array:", eventSyncErr);
+    }
+
+    revalidatePath(`/dashboard/events/${input.event_id}`);
+    return { success: true, confirmationId };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to update speaker.") };
   }
 }
 

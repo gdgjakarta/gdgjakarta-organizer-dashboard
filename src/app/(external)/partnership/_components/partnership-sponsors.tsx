@@ -29,7 +29,7 @@ export function PartnershipSponsors({ sponsors }: PartnershipSponsorsProps) {
   });
 
   return (
-    <section className="border-t bg-muted/20 py-16 lg:py-20">
+    <section id="sponsors" className="border-t bg-muted/20 py-16 lg:py-20">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl text-center">
           <div

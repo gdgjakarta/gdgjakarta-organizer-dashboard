@@ -2155,49 +2155,47 @@ export function BreakoutSessionsTab({
                                   {getInitials(reg.member_name || reg.member_email || "U")}
                                 </AvatarFallback>
                               </Avatar>
-                              <div className="min-w-0">
+                              <div className="min-w-0 space-y-0.5">
                                 <p className="truncate font-medium text-xs">
                                   {reg.member_name || "Unnamed Registrant"}
                                 </p>
-                                <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
-                                  <span className="inline-flex items-center gap-1 truncate">
-                                    <Mail className="size-3" />
-                                    {reg.member_email}
-                                  </span>
-                                  {phone &&
-                                    (() => {
-                                      const cleanPhone = phone.replace(/[^0-9]/g, "");
-                                      return (
-                                        <span className="inline-flex items-center gap-1">
-                                          {cleanPhone.length >= 8 && (
-                                            <a
-                                              href={`https://wa.me/${cleanPhone}`}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 font-medium text-[11px] text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
-                                            >
-                                              <Phone className="size-3" />
-                                              Chat WhatsApp
-                                            </a>
-                                          )}
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon-xs"
-                                            className="size-6 text-muted-foreground hover:text-foreground"
-                                            title="Copy phone"
-                                            onClick={() => handleCopyPhone(phone, reg.id)}
-                                          >
-                                            {copiedPhoneId === reg.id ? (
-                                              <Check className="size-3 text-emerald-600" />
-                                            ) : (
-                                              <Copy className="size-3" />
-                                            )}
-                                          </Button>
-                                        </span>
-                                      );
-                                    })()}
+                                <div className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+                                  <Mail className="size-3 shrink-0" />
+                                  <span className="truncate">{reg.member_email}</span>
                                 </div>
+                                {phone &&
+                                  (() => {
+                                    const cleanPhone = phone.replace(/[^0-9]/g, "").replace(/^0/, "62");
+                                    return (
+                                      <div className="flex items-center gap-1 pt-0.5">
+                                        {cleanPhone.length >= 8 && (
+                                          <a
+                                            href={`https://wa.me/${cleanPhone}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 font-medium text-[11px] text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+                                          >
+                                            <Phone className="size-3" />
+                                            Chat WhatsApp
+                                          </a>
+                                        )}
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon-xs"
+                                          className="size-6 text-muted-foreground hover:text-foreground"
+                                          title="Copy phone"
+                                          onClick={() => handleCopyPhone(phone, reg.id)}
+                                        >
+                                          {copiedPhoneId === reg.id ? (
+                                            <Check className="size-3 text-emerald-600" />
+                                          ) : (
+                                            <Copy className="size-3" />
+                                          )}
+                                        </Button>
+                                      </div>
+                                    );
+                                  })()}
                               </div>
                             </div>
                           </TableCell>

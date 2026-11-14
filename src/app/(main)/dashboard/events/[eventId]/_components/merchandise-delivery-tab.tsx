@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import {
+  Check,
   CheckCircle2,
   Clock,
   Copy,
@@ -10,10 +11,12 @@ import {
   Eye,
   FileImage,
   Loader2,
+  Mail,
   MapPin,
   MoreHorizontal,
   Package,
   Pencil,
+  Phone,
   RefreshCw,
   RotateCcw,
   Search,
@@ -212,7 +215,15 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
   const [rejectingReg, setRejectingReg] = useState<FirestoreRegistration | null>(null);
   const [viewingDetailReg, setViewingDetailReg] = useState<FirestoreRegistration | null>(null);
   const [markingDeliveredId, setMarkingDeliveredId] = useState<string | null>(null);
+  const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+
+  const handleCopyPhone = useCallback((phone: string, regId: string) => {
+    void navigator.clipboard.writeText(phone);
+    setCopiedPhoneId(regId);
+    toast.success("Phone number copied to clipboard");
+    setTimeout(() => setCopiedPhoneId((prev) => (prev === regId ? null : prev)), 2000);
+  }, []);
   const [activeTracking, setActiveTracking] = useState<{
     number: string;
     courier?: string;
@@ -557,7 +568,7 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[200px] text-xs">Attendee & Recipient</TableHead>
+                  <TableHead className="text-xs">Attendee & Recipient</TableHead>
                   <TableHead className="text-xs">Merchandise Items</TableHead>
                   <TableHead className="text-xs">Shipping Destination</TableHead>
                   <TableHead className="text-xs">Fee (Rp 50k)</TableHead>
@@ -648,6 +659,7 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
 
                     const statusMeta = STATUS_CONFIG[req.status] || STATUS_CONFIG.pending_review;
                     const StatusIcon = statusMeta.icon;
+                    const phone = req.recipient_phone || reg.member_phone || "";
 
                     return (
                       <TableRow key={reg.id} className="text-xs">
@@ -660,9 +672,45 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                                 {getInitials(reg.member_name || "M")}
                               </AvatarFallback>
                             </Avatar>
-                            <div className="space-y-0.5">
-                              <div className="font-semibold text-foreground">{reg.member_name}</div>
-                              <div className="text-[11px] text-muted-foreground">{reg.member_email}</div>
+                            <div className="min-w-0 space-y-0.5">
+                              <div className="truncate font-semibold text-foreground">{reg.member_name}</div>
+                              <div className="flex items-center gap-1 truncate text-[11px] text-muted-foreground">
+                                <Mail className="size-3 shrink-0" />
+                                <span className="truncate">{reg.member_email}</span>
+                              </div>
+                              {phone &&
+                                (() => {
+                                  const cleanPhone = phone.replace(/[^0-9]/g, "").replace(/^0/, "62");
+                                  return (
+                                    <div className="flex items-center gap-1 pt-0.5">
+                                      {cleanPhone.length >= 8 && (
+                                        <a
+                                          href={`https://wa.me/${cleanPhone}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 font-medium text-[11px] text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+                                        >
+                                          <Phone className="size-3" />
+                                          Chat WhatsApp
+                                        </a>
+                                      )}
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon-xs"
+                                        className="size-6 text-muted-foreground hover:text-foreground"
+                                        title="Copy phone"
+                                        onClick={() => handleCopyPhone(phone, reg.id)}
+                                      >
+                                        {copiedPhoneId === reg.id ? (
+                                          <Check className="size-3 text-emerald-600" />
+                                        ) : (
+                                          <Copy className="size-3" />
+                                        )}
+                                      </Button>
+                                    </div>
+                                  );
+                                })()}
                               {req.recipient_name !== reg.member_name && (
                                 <div className="text-[10px] text-muted-foreground">
                                   Receiver: <span className="font-medium text-foreground">{req.recipient_name}</span>

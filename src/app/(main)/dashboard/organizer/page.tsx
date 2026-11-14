@@ -203,8 +203,8 @@ export default async function Page() {
           <GDGUpcomingEvents events={events} />
         </div>
         <div className="flex flex-col gap-5 xl:col-span-5">
-          <ReferralLeaderboardWidget />
           <RecentMembersWidget organizers={organizersList} members={members} />
+          <ReferralLeaderboardWidget />
         </div>
       </div>
     </div>

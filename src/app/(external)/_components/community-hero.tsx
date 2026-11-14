@@ -16,11 +16,29 @@ import { parseVideoUrl } from "@/lib/events/media-utils";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
-export function CommunityHero() {
+interface CommunityHeroProps {
+  liveStats?: {
+    membersCount: number;
+    eventsCount: number;
+  };
+}
+
+export function CommunityHero({ liveStats }: CommunityHeroProps = {}) {
   const user = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
   const [isNavigating, setIsNavigating] = useState(false);
   const pathname = usePathname();
+
+  const formatMembers = (num: number) => {
+    if (num >= 1000) {
+      const k = (num / 1000).toFixed(1).replace(/\.0$/, "");
+      return `${k}K+`;
+    }
+    return `${num}+`;
+  };
+
+  const membersDisplay = liveStats?.membersCount ? formatMembers(liveStats.membersCount) : "17.8K+";
+  const eventsDisplay = liveStats?.eventsCount ? `${liveStats.eventsCount}+` : "121+";
 
   // Featured event dynamic configuration
   const { content } = useFeaturedEventContent();
@@ -212,21 +230,21 @@ export function CommunityHero() {
               <div className="flex items-center gap-2">
                 <Users className="size-4" style={{ color: "var(--theme-primary)" }} />
                 <span>
-                  <strong className="text-foreground">15.6K+</strong> Members
+                  <strong className="text-foreground">{membersDisplay}</strong> Members
                 </span>
               </div>
               <div className="h-4 w-px bg-border" />
               <div className="flex items-center gap-2">
                 <Calendar className="size-4" style={{ color: "var(--theme-primary)" }} />
                 <span>
-                  <strong className="text-foreground">133+</strong> Activities Hosted
+                  <strong className="text-foreground">{eventsDisplay}</strong> Activities Hosted
                 </span>
               </div>
               <div className="h-4 w-px bg-border" />
               <div className="flex items-center gap-2">
                 <Heart className="size-4" style={{ color: "var(--theme-primary)" }} />
                 <span>
-                  <strong className="text-foreground">100%</strong> Free & Community Run
+                  <strong className="text-foreground">Community-First</strong> & Non-Profit
                 </span>
               </div>
             </div>

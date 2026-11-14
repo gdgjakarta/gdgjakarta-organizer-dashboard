@@ -18,7 +18,7 @@ export function PartnershipBenefits() {
   const visibleBenefits = content.benefits.filter((benefit) => benefit.isActive !== false);
 
   return (
-    <section className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+    <section id="deliverables" className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
       <div className="mx-auto max-w-3xl text-center">
         <div
           className="inline-flex items-center gap-2 rounded-full border px-3.5 py-1 font-medium text-xs"

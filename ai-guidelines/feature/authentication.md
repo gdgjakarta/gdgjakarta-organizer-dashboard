@@ -111,6 +111,10 @@ The authentication system combines **Firebase Authentication (Google Sign-In)** 
   - `isAuthenticated`: Boolean status.
   - `signOut()`: Clears cookies, signs out of Firebase, and redirects to `/auth/login`.
 
+### 2.5 Session Restoration & Role Sync Boundaries (`restoreSessionCookieAction`)
+- **Strict Bevy API Boundaries**: Bevy API role validation (`validateBevyOrganizer`) is ONLY executed during sign-in (`handleUserPostLoginAction`), manual role sync (`refreshUserRoleAction`), and chapter team sync.
+- **Firestore-Backed Session Restore**: When `onAuthStateChanged` or `onIdTokenChanged` invokes `restoreSessionCookieAction`, the server verifies the Firebase ID token and reads `role` and `chapter_role` directly from the Firestore `members` collection rather than querying Bevy.
+
 ---
 
 ## 3. Implementation Rules

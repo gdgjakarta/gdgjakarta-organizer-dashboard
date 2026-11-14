@@ -32,12 +32,15 @@ import {
 import { toast } from "sonner";
 
 import { HtmlEditorPreview } from "@/app/(main)/dashboard/email-manager/_components/html-editor-preview";
+import { isExecutiveOrganizer } from "@/lib/auth-roles";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 import { DatePicker } from "@/components/date-picker";
 import { GoogleMapsPinpointDialog } from "@/components/maps/google-maps-pinpoint-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -78,9 +81,15 @@ import {
   resolveSpeakerHandbookEventDetails,
   simpleMarkdownToHtml,
 } from "@/lib/events/speaker-handbook";
-import type { EventSpeakerConfig, EventSpeakerConfirmation, FirestoreEvent } from "@/lib/firestore/types";
+import type {
+  EventSpeakerConfig,
+  EventSpeakerConfirmation,
+  FirestoreEvent,
+  SpeakerEcosystemType,
+} from "@/lib/firestore/types";
 import { SPEAKER_SLIDE_TEMPLATE_PRESETS } from "@/lib/firestore/types";
-import { searchBevyPersonsAction } from "@/server/bevy-actions";
+import { sanitizeHtml, stripHtml } from "@/lib/utils";
+import { getBevySpeakerPersonAction, searchBevyPersonsAction } from "@/server/bevy-actions";
 import {
   addManualSpeakerConfirmationAction,
   deleteSpeakerConfirmationAction,
@@ -92,7 +101,11 @@ import {
   syncSpeakerConfirmationToBevyAction,
   updateEventSpeakerConfigAction,
   updateEventSpeakerEmailTemplateAction,
+  updateSpeakerConfirmationAction,
 } from "@/server/speaker-confirmation-actions";
+
+const SPEAKER_DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Halal", "Gluten-free", "No-spicy", "None"] as const;
+const SPEAKER_CONTACT_CHANNELS = ["Whatsapp", "Telegram", "Email"] as const;
 
 function LinkedInIcon({ className = "size-3.5" }: { className?: string }) {
   return (
@@ -195,6 +208,8 @@ interface SpeakersTabProps {
 }
 
 export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
+  const user = useAuthStore((s) => s.user);
+  const canAddSpeaker = isExecutiveOrganizer(user);
   const [isPending, startTransition] = useTransition();
 
   const [config, setConfig] = useState<EventSpeakerConfig>(() => ({
@@ -263,6 +278,42 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
   // Add Speaker Modal State
   const [isAddSpeakerOpen, setIsAddSpeakerOpen] = useState(false);
   const [viewingConfirmation, setViewingConfirmation] = useState<EventSpeakerConfirmation | null>(null);
+  const [editingSpeaker, setEditingSpeaker] = useState<EventSpeakerConfirmation | null>(null);
+  const [isEditingSpeakerOpen, setIsEditingSpeakerOpen] = useState(false);
+  const [isUpdatingSpeaker, setIsUpdatingSpeaker] = useState(false);
+  const [syncToBevyOnSave, setSyncToBevyOnSave] = useState(true);
+
+  // Form fields for Edit Speaker
+  const [editFullName, setEditFullName] = useState("");
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editJobTitle, setEditJobTitle] = useState("");
+  const [editCompany, setEditCompany] = useState("");
+  const [editProfileUrl, setEditProfileUrl] = useState("");
+  const [editTalkTitle, setEditTalkTitle] = useState("");
+  const [editTalkType, setEditTalkType] = useState("Technical Talk (45 mins)");
+  const [editPresenterRole, setEditPresenterRole] = useState<SpeakerRoleKey>("speakers");
+  const [editSessionSlot, setEditSessionSlot] = useState("");
+  const [editTalkDescription, setEditTalkDescription] = useState("");
+  const [editBiography, setEditBiography] = useState("");
+  const [editLinkedinUrl, setEditLinkedinUrl] = useState("");
+  const [editTwitterUrl, setEditTwitterUrl] = useState("");
+  const [editCompanyTwitter, setEditCompanyTwitter] = useState("");
+  const [editInstagram, setEditInstagram] = useState("");
+  const [editPortfolioUrl, setEditPortfolioUrl] = useState("");
+  const [editWhatsapp, setEditWhatsapp] = useState("");
+  const [editContactChannels, setEditContactChannels] = useState<string[]>(["Email"]);
+  const [editSlidesUrl, setEditSlidesUrl] = useState("");
+  const [editGoogleEcosystem, setEditGoogleEcosystem] = useState("None above");
+  const [editEcosystemDetails, setEditEcosystemDetails] = useState("");
+  const [editPrimaryTechnology, setEditPrimaryTechnology] = useState("Google Cloud Platform (GCP)");
+  const [editCanShareSlides, setEditCanShareSlides] = useState<"Yes" | "No">("Yes");
+  const [editTshirtSize, setEditTshirtSize] = useState("L");
+  const [editSwagSelections, setEditSwagSelections] = useState<Record<string, string>>({});
+  const [editDietaryRestrictions, setEditDietaryRestrictions] = useState<string[]>(["None"]);
+  const [editDietaryOther, setEditDietaryOther] = useState("");
+  const [editAdditionalInquiry, setEditAdditionalInquiry] = useState("");
+
   const [addMode, setAddMode] = useState<"search" | "manual">("search");
   const [algoliaSearchQuery, setAlgoliaSearchQuery] = useState("");
   const [isSearchingAlgolia, setIsSearchingAlgolia] = useState(false);
@@ -273,6 +324,8 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
   const [manualFullName, setManualFullName] = useState("");
   const [manualDisplayName, setManualDisplayName] = useState("");
   const [manualEmail, setManualEmail] = useState("");
+  const [manualWhatsapp, setManualWhatsapp] = useState("");
+  const [manualContactChannels, setManualContactChannels] = useState<string[]>(["Email"]);
   const [manualJobTitle, setManualJobTitle] = useState("");
   const [manualCompany, setManualCompany] = useState("");
   const [manualProfileUrl, setManualProfileUrl] = useState("");
@@ -280,7 +333,22 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
   const [manualTalkType, setManualTalkType] = useState("Technical Talk (45 mins)");
   const [manualPresenterRole, setManualPresenterRole] = useState<SpeakerRoleKey>("speakers");
   const [manualSessionSlot, setManualSessionSlot] = useState("");
+  const [manualSlidesUrl, setManualSlidesUrl] = useState("");
+  const [manualLinkedinUrl, setManualLinkedinUrl] = useState("");
+  const [manualTwitterUrl, setManualTwitterUrl] = useState("");
+  const [manualCompanyTwitter, setManualCompanyTwitter] = useState("");
+  const [manualInstagram, setManualInstagram] = useState("");
+  const [manualPortfolioUrl, setManualPortfolioUrl] = useState("");
+  const [manualGoogleEcosystem, setManualGoogleEcosystem] = useState("None above");
+  const [manualEcosystemDetails, setManualEcosystemDetails] = useState("");
+  const [manualPrimaryTechnology, setManualPrimaryTechnology] = useState("Google Cloud Platform (GCP)");
+  const [manualTalkDescription, setManualTalkDescription] = useState("");
   const [manualBiography, setManualBiography] = useState("");
+  const [manualCanShareSlides, setManualCanShareSlides] = useState<"Yes" | "No">("Yes");
+  const [manualSwagSelections, setManualSwagSelections] = useState<Record<string, string>>({});
+  const [manualDietaryRestrictions, setManualDietaryRestrictions] = useState<string[]>(["None"]);
+  const [manualDietaryOther, setManualDietaryOther] = useState("");
+  const [manualAdditionalInquiry, setManualAdditionalInquiry] = useState("");
   const [manualSendEmail, setManualSendEmail] = useState(true);
   const [isSubmittingSpeaker, setIsSubmittingSpeaker] = useState(false);
 
@@ -316,6 +384,16 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
     setManualProfileUrl(person.picture_url || "");
     setAddMode("manual"); // Switch to details review
     toast.info(`Selected ${fullNameVal}. Please verify email and talk session.`);
+
+    void getBevySpeakerPersonAction(person.id, eventId).then((res) => {
+      if (!res.success || !res.data) return;
+      const p = res.data;
+      const pPicture = typeof p.picture === "string" ? p.picture : p.picture?.url || p.picture?.thumbnail_url || "";
+      if (p.title) setManualJobTitle((prev) => prev || p.title);
+      if (p.company) setManualCompany((prev) => prev || p.company || "");
+      if (pPicture) setManualProfileUrl((prev) => prev || pPicture);
+      if (p.bio) setManualBiography((prev) => (!prev ? stripHtml(p.bio) : prev));
+    });
   };
 
   const resetAddSpeakerForm = () => {
@@ -364,20 +442,49 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
       return;
     }
 
+    if (manualContactChannels.length === 0) {
+      toast.error("Please select at least one preferred contact channel.");
+      return;
+    }
+
     setIsSubmittingSpeaker(true);
     try {
+      const otherItems = manualDietaryOther
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const finalDietaryList = [...manualDietaryRestrictions, ...otherItems];
+      const finalDietaryString = finalDietaryList.join(", ");
+
       const res = await addManualSpeakerConfirmationAction({
         event_id: eventId,
         full_name: manualFullName.trim(),
         display_name: manualDisplayName.trim() || manualFullName.trim(),
         speaker_email: cleanEmail,
+        whatsapp_number: manualWhatsapp.trim() || undefined,
+        contact_channels: manualContactChannels,
         job_title: manualJobTitle.trim(),
         company_institution: manualCompany.trim(),
         speaker_profile_url: manualProfileUrl.trim(),
         talk_type: manualTalkType,
         presenter_role: manualPresenterRole,
         talk_title: manualTalkTitle.trim(),
+        talk_description: manualTalkDescription.trim() || undefined,
         session_slot: manualSessionSlot.trim(),
+        presentation_slides_url: manualSlidesUrl.trim() || undefined,
+        linkedin_url: manualLinkedinUrl.trim() || undefined,
+        twitter_url: manualTwitterUrl.trim() || undefined,
+        company_twitter_username: manualCompanyTwitter.trim() || undefined,
+        instagram_username: manualInstagram.trim() || undefined,
+        portfolio_url: manualPortfolioUrl.trim() || undefined,
+        google_ecosystem_or_technology: manualPrimaryTechnology.trim() || undefined,
+        is_from_google_ecosystem: manualGoogleEcosystem,
+        ecosystem_details: manualEcosystemDetails.trim() || undefined,
+        can_share_slides: manualCanShareSlides,
+        swag_selections: manualSwagSelections,
+        dietary_restrictions: finalDietaryString || undefined,
+        dietary_restrictions_list: finalDietaryList,
+        additional_inquiry: manualAdditionalInquiry.trim() || undefined,
         biography: manualBiography.trim(),
         bevy_person_id: selectedBevyPerson?.id,
         send_invitation_email: manualSendEmail,
@@ -559,6 +666,330 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
     });
   };
 
+  const handleOpenEditSpeaker = (conf: EventSpeakerConfirmation) => {
+    // Enrich with matched roster/Bevy data if available
+    const matchedRoster = event.speakers?.find(
+      (s) =>
+        (conf.bevy_person_id &&
+          (Number(s.id) === Number(conf.bevy_person_id) ||
+            Number(s.event_person_id) === Number(conf.bevy_person_id))) ||
+        s.full_name?.trim().toLowerCase() === conf.full_name.trim().toLowerCase(),
+    );
+
+    const canonicalPersonId = matchedRoster?.id ? Number(matchedRoster.id) : conf.bevy_person_id || undefined;
+    const rosterPicture =
+      matchedRoster?.picture_url || matchedRoster?.picture?.url || matchedRoster?.picture?.thumbnail_url || "";
+
+    const enrichedConf: EventSpeakerConfirmation = {
+      ...conf,
+      bevy_person_id: canonicalPersonId ?? conf.bevy_person_id,
+      job_title:
+        (conf.job_title && conf.job_title !== "Speaker" ? conf.job_title : matchedRoster?.title) || conf.job_title,
+      company_institution: conf.company_institution || matchedRoster?.company || "",
+      speaker_profile_url: conf.speaker_profile_url || rosterPicture || "",
+      talk_description: conf.talk_description || matchedRoster?.bio || "",
+      biography: conf.biography || matchedRoster?.bio || "",
+      linkedin_url:
+        conf.linkedin_url ||
+        conf.linkedin_or_social_url ||
+        matchedRoster?.linkedin_url ||
+        matchedRoster?.personal_linkedin_page ||
+        "",
+      twitter_url: conf.twitter_url || matchedRoster?.personal_twitter || "",
+      company_twitter_username: conf.company_twitter_username || matchedRoster?.company_twitter || "",
+    };
+
+    // If session_slot is missing or doesn't match an agendaSlot value exactly, map it automatically based on talk_title or agenda activity
+    let initialSessionSlot = enrichedConf.session_slot || "";
+    if (agendaSlots.length > 0) {
+      const clean = (s?: string | null) =>
+        (s || "").toLowerCase().replace(/['"’]/g, "").replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+      const currentValMatches = agendaSlots.some((s) => s.value === initialSessionSlot);
+
+      if (!currentValMatches) {
+        const candidateTitles = [
+          enrichedConf.talk_title,
+          (matchedRoster as unknown as { talk_title?: string })?.talk_title,
+          matchedRoster?.title,
+        ].filter(Boolean) as string[];
+
+        for (const titleCandidate of candidateTitles) {
+          const cleanTitle = clean(titleCandidate);
+          if (!cleanTitle || cleanTitle.includes("session")) continue;
+
+          // 1. Exact activity match
+          let matchedSlot = agendaSlots.find((s) => clean(s.value).includes(cleanTitle) || clean(s.label).includes(cleanTitle));
+          // 2. Substring match
+          if (!matchedSlot && cleanTitle.length >= 6) {
+            matchedSlot = agendaSlots.find((s) => {
+              const cleanVal = clean(s.value);
+              const cleanAct = clean(s.label);
+              return cleanTitle.includes(cleanVal) || cleanVal.includes(cleanTitle) || cleanTitle.includes(cleanAct) || cleanAct.includes(cleanTitle);
+            });
+          }
+          if (matchedSlot) {
+            initialSessionSlot = matchedSlot.value;
+            break;
+          }
+        }
+      }
+    }
+
+    setEditingSpeaker(enrichedConf);
+    setEditFullName(enrichedConf.full_name || "");
+    setEditDisplayName(enrichedConf.display_name || enrichedConf.full_name || "");
+    setEditEmail(enrichedConf.speaker_email || "");
+    setEditJobTitle(enrichedConf.job_title || "");
+    setEditCompany(enrichedConf.company_institution || "");
+    setEditProfileUrl(enrichedConf.speaker_profile_url || "");
+    setEditTalkTitle(enrichedConf.talk_title || "");
+    setEditTalkType(enrichedConf.talk_type || "Technical Talk (45 mins)");
+    setEditPresenterRole((enrichedConf.presenter_role as SpeakerRoleKey) || "speakers");
+    setEditSessionSlot(initialSessionSlot);
+    setEditTalkDescription(stripHtml(enrichedConf.talk_description || ""));
+    setEditBiography(stripHtml(enrichedConf.biography || ""));
+    setEditLinkedinUrl(enrichedConf.linkedin_url || "");
+    setEditTwitterUrl(enrichedConf.twitter_url || "");
+    setEditCompanyTwitter(enrichedConf.company_twitter_username || "");
+    setEditInstagram(enrichedConf.instagram_username || "");
+    setEditPortfolioUrl(enrichedConf.portfolio_url || "");
+    setEditWhatsapp(enrichedConf.whatsapp_number || "");
+    setEditContactChannels(
+      enrichedConf.contact_channels && enrichedConf.contact_channels.length > 0
+        ? enrichedConf.contact_channels
+        : ["Email"],
+    );
+    setEditSlidesUrl(enrichedConf.presentation_slides_url || "");
+    setEditGoogleEcosystem(enrichedConf.is_from_google_ecosystem || "None above");
+    setEditEcosystemDetails(enrichedConf.ecosystem_details || "");
+    setEditPrimaryTechnology(enrichedConf.google_ecosystem_or_technology || "Google Cloud Platform (GCP)");
+    setEditCanShareSlides(enrichedConf.can_share_slides || "Yes");
+    setEditTshirtSize(enrichedConf.tshirt_size || "L");
+    setEditSwagSelections(enrichedConf.swag_selections || (enrichedConf.tshirt_size ? { default_tshirt: enrichedConf.tshirt_size } : {}));
+
+    // Parse dietary restrictions into checkbox items + other
+    const rawDietaryList = Array.isArray(enrichedConf.dietary_restrictions_list)
+      ? enrichedConf.dietary_restrictions_list
+      : (enrichedConf.dietary_restrictions || "")
+          .split(",")
+          .map((d) => d.trim())
+          .filter(Boolean);
+
+    const standardSet = new Set<string>(SPEAKER_DIETARY_OPTIONS);
+    const selectedStd: string[] = [];
+    const customDietary: string[] = [];
+
+    rawDietaryList.forEach((d) => {
+      // Case-insensitive match against standard options
+      const matched = SPEAKER_DIETARY_OPTIONS.find((opt) => opt.toLowerCase() === d.toLowerCase());
+      if (matched) {
+        if (!selectedStd.includes(matched)) selectedStd.push(matched);
+      } else {
+        customDietary.push(d);
+      }
+    });
+
+    setEditDietaryRestrictions(selectedStd.length > 0 ? selectedStd : customDietary.length > 0 ? [] : ["None"]);
+    setEditDietaryOther(customDietary.join(", "));
+    setEditAdditionalInquiry(enrichedConf.additional_inquiry || "");
+    setSyncToBevyOnSave(Boolean(enrichedConf.bevy_person_id));
+
+    setIsEditingSpeakerOpen(true);
+
+    if (canonicalPersonId) {
+      void getBevySpeakerPersonAction(canonicalPersonId, eventId).then((res) => {
+        if (!res.success || !res.data) return;
+        const p = res.data;
+        const pPicture = typeof p.picture === "string" ? p.picture : p.picture?.url || p.picture?.thumbnail_url || "";
+        const pFullName = `${p.first_name || ""} ${p.last_name || ""}`.trim();
+
+        setEditJobTitle((prev) => (!prev || prev === "Speaker" ? p.title || prev : prev));
+        setEditCompany((prev) => (!prev ? p.company || prev : prev));
+        setEditProfileUrl((prev) => (!prev ? pPicture || prev : prev));
+        setEditBiography((prev) => (!prev ? stripHtml(p.bio || "") || prev : prev));
+        setEditLinkedinUrl((prev) => (!prev ? p.personal_linkedin_page || prev : prev));
+        setEditTwitterUrl((prev) => (!prev ? p.personal_twitter || prev : prev));
+        setEditCompanyTwitter((prev) => (!prev ? p.company_twitter || prev : prev));
+      });
+    }
+  };
+
+  const handleSaveEditSpeaker = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSpeaker) return;
+    if (!editFullName.trim()) {
+      toast.error("Full name is required.");
+      return;
+    }
+    if (!editTalkTitle.trim()) {
+      toast.error("Talk title is required.");
+      return;
+    }
+    if (editContactChannels.length === 0) {
+      toast.error("Please select at least one preferred contact channel.");
+      return;
+    }
+
+    setIsUpdatingSpeaker(true);
+    try {
+      // Assemble final dietary restrictions
+      const finalDietaryList = [...editDietaryRestrictions];
+      if (editDietaryOther.trim()) {
+        finalDietaryList.push(editDietaryOther.trim());
+      }
+      const finalDietaryString = finalDietaryList.join(", ");
+
+      const res = await updateSpeakerConfirmationAction({
+        confirmation_id: editingSpeaker.id,
+        event_id: eventId,
+        full_name: editFullName.trim(),
+        display_name: editDisplayName.trim() || editFullName.trim(),
+        speaker_email: editEmail.trim(),
+        job_title: editJobTitle.trim(),
+        company_institution: editCompany.trim(),
+        speaker_profile_url: editProfileUrl.trim() || undefined,
+        talk_type: editTalkType,
+        talk_title: editTalkTitle.trim(),
+        talk_description: editTalkDescription.trim() || undefined,
+        session_slot: editSessionSlot.trim() || undefined,
+        biography: editBiography.trim() || undefined,
+        bevy_person_id: editingSpeaker.bevy_person_id,
+        linkedin_url: editLinkedinUrl.trim() || undefined,
+        twitter_url: editTwitterUrl.trim() || undefined,
+        company_twitter_username: editCompanyTwitter.trim() || undefined,
+        instagram_username: editInstagram.trim() || undefined,
+        portfolio_url: editPortfolioUrl.trim() || undefined,
+        whatsapp_number: editWhatsapp.trim() || undefined,
+        contact_channels: editContactChannels,
+        presenter_role: editPresenterRole,
+        presentation_slides_url: editSlidesUrl.trim() || undefined,
+        google_ecosystem_or_technology: editPrimaryTechnology.trim() || undefined,
+        is_from_google_ecosystem: editGoogleEcosystem,
+        ecosystem_details: editEcosystemDetails.trim() || undefined,
+        can_share_slides: editCanShareSlides,
+        tshirt_size: editTshirtSize.trim() || undefined,
+        swag_selections: editSwagSelections,
+        dietary_restrictions: finalDietaryString || undefined,
+        dietary_restrictions_list: finalDietaryList,
+        additional_inquiry: editAdditionalInquiry.trim() || undefined,
+        sync_to_bevy: syncToBevyOnSave,
+      });
+
+      if (res.success) {
+        toast.success(`Updated speaker ${editFullName.trim()}${syncToBevyOnSave ? " and synced to Bevy" : ""}`);
+        const effectiveId = res.confirmationId || editingSpeaker.id;
+        const updatedObj: EventSpeakerConfirmation = {
+          ...editingSpeaker,
+          id: effectiveId,
+          full_name: editFullName.trim(),
+          display_name: editDisplayName.trim() || editFullName.trim(),
+          speaker_email: editEmail.trim(),
+          job_title: editJobTitle.trim(),
+          company_institution: editCompany.trim(),
+          speaker_profile_url: editProfileUrl.trim() || undefined,
+          talk_type: editTalkType,
+          talk_title: editTalkTitle.trim(),
+          talk_description: editTalkDescription.trim() || undefined,
+          session_slot: editSessionSlot.trim() || undefined,
+          biography: editBiography.trim() || undefined,
+          linkedin_url: editLinkedinUrl.trim() || undefined,
+          twitter_url: editTwitterUrl.trim() || undefined,
+          company_twitter_username: editCompanyTwitter.trim() || undefined,
+          instagram_username: editInstagram.trim() || undefined,
+          portfolio_url: editPortfolioUrl.trim() || undefined,
+          whatsapp_number: editWhatsapp.trim() || undefined,
+        contact_channels: editContactChannels,
+          presenter_role: editPresenterRole,
+          presentation_slides_url: editSlidesUrl.trim() || undefined,
+          google_ecosystem_or_technology: editPrimaryTechnology.trim() || undefined,
+          is_from_google_ecosystem: editGoogleEcosystem,
+          ecosystem_details: editEcosystemDetails.trim() || undefined,
+          can_share_slides: editCanShareSlides,
+          tshirt_size: editTshirtSize.trim() || undefined,
+          swag_selections: editSwagSelections,
+          dietary_restrictions: finalDietaryString || undefined,
+          dietary_restrictions_list: finalDietaryList,
+          additional_inquiry: editAdditionalInquiry.trim() || undefined,
+          bevy_synced: syncToBevyOnSave ? true : editingSpeaker.bevy_synced,
+          updated_at: new Date().toISOString(),
+        };
+
+        setConfirmations((prev) => prev.map((c) => (c.id === editingSpeaker.id || c.id === effectiveId ? updatedObj : c)));
+        if (viewingConfirmation && (viewingConfirmation.id === editingSpeaker.id || viewingConfirmation.id === effectiveId)) {
+          setViewingConfirmation(updatedObj);
+        }
+        setIsEditingSpeakerOpen(false);
+      } else {
+        toast.error(res.error || "Failed to update speaker.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update speaker.");
+    } finally {
+      setIsUpdatingSpeaker(false);
+    }
+  };
+
+  const handleOpenSpeakerDetails = (conf: EventSpeakerConfirmation) => {
+    const matchedRoster = event.speakers?.find(
+      (s) =>
+        (conf.bevy_person_id &&
+          (Number(s.id) === Number(conf.bevy_person_id) ||
+            Number(s.event_person_id) === Number(conf.bevy_person_id))) ||
+        s.full_name?.trim().toLowerCase() === conf.full_name.trim().toLowerCase(),
+    );
+
+    const canonicalPersonId = matchedRoster?.id ? Number(matchedRoster.id) : conf.bevy_person_id || undefined;
+    const rosterPicture =
+      matchedRoster?.picture_url || matchedRoster?.picture?.url || matchedRoster?.picture?.thumbnail_url || "";
+
+    const enrichedConf: EventSpeakerConfirmation = {
+      ...conf,
+      bevy_person_id: canonicalPersonId ?? conf.bevy_person_id,
+      job_title:
+        (conf.job_title && conf.job_title !== "Speaker" ? conf.job_title : matchedRoster?.title) || conf.job_title,
+      company_institution: conf.company_institution || matchedRoster?.company || "",
+      speaker_profile_url: conf.speaker_profile_url || rosterPicture || "",
+      talk_description: conf.talk_description || matchedRoster?.bio || "",
+      biography: conf.biography || matchedRoster?.bio || "",
+      linkedin_url:
+        conf.linkedin_url ||
+        conf.linkedin_or_social_url ||
+        matchedRoster?.linkedin_url ||
+        matchedRoster?.personal_linkedin_page ||
+        undefined,
+      twitter_url: conf.twitter_url || matchedRoster?.personal_twitter || undefined,
+      company_twitter_username: conf.company_twitter_username || matchedRoster?.company_twitter || undefined,
+    };
+
+    setViewingConfirmation(enrichedConf);
+
+    if (canonicalPersonId) {
+      void getBevySpeakerPersonAction(canonicalPersonId, eventId).then((res) => {
+        if (!res.success || !res.data) return;
+        const p = res.data;
+        const pPicture = typeof p.picture === "string" ? p.picture : p.picture?.url || p.picture?.thumbnail_url || "";
+        const pFullName = `${p.first_name || ""} ${p.last_name || ""}`.trim();
+
+        const mergePerson = (target: EventSpeakerConfirmation): EventSpeakerConfirmation => ({
+          ...target,
+          bevy_person_id: Number(p.id) || target.bevy_person_id,
+          full_name: target.full_name || pFullName,
+          job_title: (target.job_title && target.job_title !== "Speaker" ? target.job_title : p.title) || target.job_title,
+          company_institution: target.company_institution || p.company || "",
+          speaker_profile_url: target.speaker_profile_url || pPicture || "",
+          talk_description: target.talk_description || p.bio || "",
+          biography: target.biography || p.bio || "",
+          linkedin_url: target.linkedin_url || target.linkedin_or_social_url || p.personal_linkedin_page || undefined,
+          twitter_url: target.twitter_url || p.personal_twitter || undefined,
+          company_twitter_username: target.company_twitter_username || p.company_twitter || undefined,
+        });
+
+        setViewingConfirmation((prev) => (prev && prev.id === conf.id ? mergePerson(prev) : prev));
+        setConfirmations((prev) => prev.map((c) => (c.id === conf.id ? mergePerson(c) : c)));
+      });
+    }
+  };
+
   const resolveSwagItemName = (key: string): string => {
     if (key === "default_tshirt" || key === "tshirt" || key === "tshirt_size") {
       const customDefault = config.custom_swags?.find((cs) => cs.id === "default_tshirt" || cs.is_default);
@@ -630,6 +1061,92 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
     }
     return slots;
   }, [event?.agenda]);
+
+  // Dynamic speaker swag items derived from active merchandise catalog and custom swags
+  const speakerSwagItems: Array<{
+    id: string;
+    label: string;
+    description?: string;
+    options: string[];
+    imageUrl?: string;
+    images?: string[];
+    guideline?: {
+      title?: string;
+      text?: string;
+      image_url?: string;
+    };
+  }> = useMemo(() => {
+    const swagConfig = config;
+    if (swagConfig?.show_swag_section === false) return [];
+
+    const items: Array<{
+      id: string;
+      label: string;
+      description?: string;
+      options: string[];
+      imageUrl?: string;
+      images?: string[];
+      guideline?: {
+        title?: string;
+        text?: string;
+        image_url?: string;
+      };
+    }> = [];
+
+    // 1. From event merchandise catalog
+    const allMerchandise = event.merchandise || [];
+    const selectedMerchIds = swagConfig?.selected_merchandise_ids;
+
+    let targetMerchandise = allMerchandise;
+    if (Array.isArray(selectedMerchIds)) {
+      targetMerchandise = allMerchandise.filter((m) => selectedMerchIds.includes(m.id));
+    }
+
+    targetMerchandise.forEach((m) => {
+      const sizeVar = m.variations?.find((v) => v.name.toLowerCase().includes("size")) || m.variations?.[0];
+      const options = sizeVar?.options?.length ? sizeVar.options : ["S", "M", "L", "XL", "2XL", "3XL", "4XL"];
+      items.push({
+        id: `merch_${m.id}`,
+        label: m.name,
+        description: m.description,
+        options,
+        imageUrl: m.image_url || (Array.isArray(m.images) ? m.images[0] : undefined),
+        images: Array.isArray(m.images) && m.images.length > 0 ? m.images : (m.image_url ? [m.image_url] : undefined),
+        guideline: m.guideline ? {
+          title: m.guideline.title || "Size & Product Guideline",
+          text: m.guideline.text,
+          image_url: m.guideline.image_url,
+        } : undefined,
+      });
+    });
+
+      // 2. Custom Swags not in merchandise catalog (filter out hidden ones)
+      const customSwags = swagConfig?.custom_swags;
+      const hasConfiguredCustomSwags = Boolean(customSwags && Array.isArray(customSwags));
+      if (customSwags && Array.isArray(customSwags)) {
+        customSwags.forEach((cs) => {
+          if (cs.hidden) return;
+          items.push({
+            id: cs.id === "default_tshirt" ? "default_tshirt" : `custom_${cs.id}`,
+            label: cs.label,
+            description: cs.description,
+            options: cs.options?.length ? cs.options : ["S", "M", "L", "XL", "2XL", "3XL", "4XL"],
+          });
+        });
+      }
+
+      // 3. Fallback: ONLY IF custom_swags was never configured and no merchandise selected
+      if (items.length === 0 && !hasConfiguredCustomSwags && (!selectedMerchIds || selectedMerchIds.length === 0)) {
+        items.push({
+          id: "default_tshirt",
+          label: "T-Shirt Size (Unisex Standard)",
+          description: "Official GDG community conference commemorative t-shirt",
+          options: ["S", "M", "L", "XL", "2XL", "3XL", "4XL"],
+        });
+      }
+
+      return items;
+    }, [event.merchandise, config]);
 
   const filteredConfirmations = useMemo(() => {
     if (!searchQuery.trim()) return confirmations;
@@ -948,17 +1465,19 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                   className="max-w-md text-sm"
                 />
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={() => {
-                      resetAddSpeakerForm();
-                      setIsAddSpeakerOpen(true);
-                    }}
-                  >
-                    <UserPlus className="mr-1.5 size-3.5" />
-                    Add Speaker
-                  </Button>
+                  {canAddSpeaker && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => {
+                        resetAddSpeakerForm();
+                        setIsAddSpeakerOpen(true);
+                      }}
+                    >
+                      <UserPlus className="mr-1.5 size-3.5" />
+                      Add Speaker
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -1015,7 +1534,11 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                           .toUpperCase();
 
                         return (
-                          <TableRow key={conf.id}>
+                          <TableRow
+                            key={conf.id}
+                            className="cursor-pointer"
+                            onClick={() => handleOpenSpeakerDetails(conf)}
+                          >
                             <TableCell>
                               <div className="flex items-start gap-3">
                                 <Avatar className="size-10 shrink-0 border bg-muted">
@@ -1035,15 +1558,15 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                                     {conf.job_title} {conf.company_institution ? `at ${conf.company_institution}` : ""}
                                   </div>
                                   {conf.is_from_google_ecosystem && conf.is_from_google_ecosystem !== "None above" && (
-                                    <div className="mt-1 flex items-center gap-1">
+                                    <div className="mt-1 flex flex-wrap items-center gap-1">
                                       <Badge
                                         variant="secondary"
-                                        className="h-4 bg-amber-500/10 px-1 font-semibold text-[9px] text-amber-700 dark:text-amber-400"
+                                        className="h-4 shrink-0 bg-amber-500/10 px-1 font-semibold text-[9px] text-amber-700 dark:text-amber-400"
                                       >
                                         {conf.is_from_google_ecosystem}
                                       </Badge>
                                       {conf.ecosystem_details && (
-                                        <span className="max-w-[140px] truncate text-[10px] text-muted-foreground">
+                                        <span className="whitespace-normal break-words text-[10px] text-muted-foreground">
                                           ({conf.ecosystem_details})
                                         </span>
                                       )}
@@ -1051,9 +1574,9 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                                   )}
                                   {(conf.tshirt_size ||
                                     (conf.swag_selections && Object.keys(conf.swag_selections).length > 0)) && (
-                                    <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
-                                      <Shirt className="size-3 shrink-0 text-sky-500" />
-                                      <span className="max-w-[180px] truncate">
+                                    <div className="mt-1 flex items-start gap-1 text-[10px] text-muted-foreground">
+                                      <Shirt className="mt-0.5 size-3 shrink-0 text-sky-500" />
+                                      <span className="whitespace-normal break-words">
                                         {conf.swag_selections && Object.keys(conf.swag_selections).length > 0
                                           ? Object.entries(conf.swag_selections)
                                               .map(([k, v]) => `${resolveSwagItemName(k)}: ${v}`)
@@ -1068,9 +1591,13 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                             <TableCell>
                               <div className="line-clamp-1 font-medium">{conf.talk_title}</div>
                               <div className="mt-1 flex flex-wrap items-center gap-1">
-                                <Badge variant="outline" className="text-[10px]">
-                                  {conf.talk_type}
-                                </Badge>
+                                {conf.talk_type &&
+                                  conf.talk_type.trim().toLowerCase().replace(/s$/, "") !==
+                                    (conf.presenter_role === "speakers" ? "speaker" : conf.presenter_role?.replace(/s$/, "").toLowerCase()) && (
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {conf.talk_type}
+                                    </Badge>
+                                  )}
                                 {conf.presenter_role && (
                                   <Badge
                                     variant="secondary"
@@ -1096,6 +1623,7 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                                   href={conf.presentation_slides_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
                                   className="inline-flex items-center gap-1 text-primary text-xs hover:underline"
                                 >
                                   View Slides
@@ -1129,6 +1657,7 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                                         href={conf.calendar_event_url}
                                         target="_blank"
                                         rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
                                         className="inline-flex items-center gap-0.5 text-primary hover:underline"
                                         title="Open Google Calendar Event"
                                       >
@@ -1156,21 +1685,33 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                                   variant="ghost"
                                   size="sm"
                                   className="h-7 text-xs"
-                                  onClick={() => handleSyncToBevy(conf)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSyncToBevy(conf);
+                                  }}
                                   disabled={isPending}
                                 >
                                   Sync to Bevy
                                 </Button>
                               )}
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center justify-end gap-1">
                                 <Button
                                   variant="ghost"
                                   size="icon"
                                   className="size-8"
+                                  title="Edit speaker profile and sync to Bevy"
+                                  onClick={() => handleOpenEditSpeaker(conf)}
+                                >
+                                  <Pencil className="size-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8"
                                   title="View submitted confirmation details"
-                                  onClick={() => setViewingConfirmation(conf)}
+                                  onClick={() => handleOpenSpeakerDetails(conf)}
                                 >
                                   <Eye className="size-4" />
                                 </Button>
@@ -2497,7 +3038,9 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
 
               <div className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label htmlFor="manual_full_name">Full Name *</Label>
+                  <Label htmlFor="manual_full_name">
+                    Full Name <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="manual_full_name"
                     value={manualFullName}
@@ -2508,7 +3051,19 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="manual_email">Speaker Email *</Label>
+                  <Label htmlFor="manual_display_name">Badge Display Name</Label>
+                  <Input
+                    id="manual_display_name"
+                    value={manualDisplayName}
+                    onChange={(e) => setManualDisplayName(e.target.value)}
+                    placeholder="e.g. Jane Doe"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="manual_email">
+                    Speaker Email <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="manual_email"
                     type="email"
@@ -2520,7 +3075,49 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="manual_job_title">Job Title / Role *</Label>
+                  <Label htmlFor="manual_whatsapp">WhatsApp / Phone</Label>
+                  <Input
+                    id="manual_whatsapp"
+                    value={manualWhatsapp}
+                    onChange={(e) => setManualWhatsapp(e.target.value)}
+                    placeholder="e.g. +62812345678"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>
+                    Preferred Contact Channels <span className="text-red-500">*</span>
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {SPEAKER_CONTACT_CHANNELS.map((channel) => {
+                      const checked = manualContactChannels.includes(channel);
+                      return (
+                        <button
+                          key={channel}
+                          type="button"
+                          onClick={() => {
+                            if (checked) {
+                              setManualContactChannels((prev) => prev.filter((c) => c !== channel));
+                            } else {
+                              setManualContactChannels((prev) => [...prev, channel]);
+                            }
+                          }}
+                          className={`rounded-md border px-2.5 py-1 font-medium text-xs transition-colors ${
+                            checked
+                              ? "border-primary bg-primary/10 font-semibold text-primary"
+                              : "border-border text-muted-foreground hover:bg-muted/50"
+                          }`}
+                        >
+                          {channel}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="manual_job_title">
+                    Job Title / Role <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="manual_job_title"
                     value={manualJobTitle}
@@ -2531,7 +3128,9 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="manual_company">Company / Institution *</Label>
+                  <Label htmlFor="manual_company">
+                    Company / Institution <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="manual_company"
                     value={manualCompany}
@@ -2552,7 +3151,9 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                   />
                 </div>
                 <div className="space-y-1 sm:col-span-2">
-                  <Label htmlFor="manual_talk_title">Talk Session Title *</Label>
+                  <Label htmlFor="manual_talk_title">
+                    Talk Session Title <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="manual_talk_title"
                     value={manualTalkTitle}
@@ -2603,15 +3204,39 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                       value={manualSessionSlot || agendaSlots[0]?.value || ""}
                       onValueChange={(val) => setManualSessionSlot(val)}
                     >
-                      <SelectTrigger id="manual_session_slot" className="h-8 text-xs">
+                      <SelectTrigger
+                        id="manual_session_slot"
+                        className="!h-auto min-h-10 w-full min-w-0 !px-3.5 !py-2.5 text-xs text-left"
+                      >
                         <SelectValue placeholder="Select Bevy agenda slot" />
                       </SelectTrigger>
-                      <SelectContent className="max-h-56">
-                        {agendaSlots.map((slot) => (
-                          <SelectItem key={slot.id} value={slot.value} className="text-xs">
-                            <span className="inline-block max-w-[260px] truncate">{slot.label}</span>
-                          </SelectItem>
-                        ))}
+                      <SelectContent
+                        position="popper"
+                        className="max-h-72 w-(--radix-select-trigger-width) min-w-[320px] max-w-[calc(100vw-2rem)] sm:max-w-xl"
+                      >
+                        {agendaSlots.map((slot) => {
+                          const bracketMatch = slot.label.match(/^\[(.*?)\]\s*(.*)$/);
+                          const trackName = bracketMatch ? bracketMatch[1] : null;
+                          const restLabel = bracketMatch ? bracketMatch[2] : slot.label;
+                          return (
+                            <SelectItem
+                              key={slot.id}
+                              value={slot.value}
+                              className="items-start py-2 text-xs"
+                            >
+                              <div className="flex flex-col gap-0.5 text-left">
+                                {trackName && (
+                                  <span className="font-medium text-[11px] text-muted-foreground">
+                                    [{trackName}]
+                                  </span>
+                                )}
+                                <span className="font-medium text-foreground whitespace-normal break-words">
+                                  {restLabel}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   ) : (
@@ -2651,13 +3276,261 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                   )}
                 </div>
                 <div className="space-y-1 sm:col-span-2">
-                  <Label htmlFor="manual_bio">Short Bio / Overview</Label>
+                  <Label htmlFor="manual_slides_url">Presentation Slides Link</Label>
+                  <Input
+                    id="manual_slides_url"
+                    value={manualSlidesUrl}
+                    onChange={(e) => setManualSlidesUrl(e.target.value)}
+                    placeholder="https://docs.google.com/presentation/..."
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="manual_linkedin">LinkedIn Profile / ID</Label>
+                  <Input
+                    id="manual_linkedin"
+                    value={manualLinkedinUrl}
+                    onChange={(e) => setManualLinkedinUrl(e.target.value)}
+                    placeholder="https://linkedin.com/in/username"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="manual_twitter">Personal X / Twitter</Label>
+                  <Input
+                    id="manual_twitter"
+                    value={manualTwitterUrl}
+                    onChange={(e) => setManualTwitterUrl(e.target.value)}
+                    placeholder="e.g. @username"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="manual_company_twitter">Company X / Twitter</Label>
+                  <Input
+                    id="manual_company_twitter"
+                    value={manualCompanyTwitter}
+                    onChange={(e) => setManualCompanyTwitter(e.target.value)}
+                    placeholder="e.g. @googledevsid"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="manual_instagram">Instagram Username</Label>
+                  <Input
+                    id="manual_instagram"
+                    value={manualInstagram}
+                    onChange={(e) => setManualInstagram(e.target.value)}
+                    placeholder="e.g. @username"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="manual_portfolio">Portfolio / Website</Label>
+                  <Input
+                    id="manual_portfolio"
+                    value={manualPortfolioUrl}
+                    onChange={(e) => setManualPortfolioUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="manual_google_ecosystem">Google Ecosystem</Label>
+                  <Select value={manualGoogleEcosystem} onValueChange={setManualGoogleEcosystem}>
+                    <SelectTrigger id="manual_google_ecosystem" className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GDG">GDG (Organizer / Chapter)</SelectItem>
+                      <SelectItem value="GDE">GDE (Google Developer Expert)</SelectItem>
+                      <SelectItem value="WTM">WTM (Women Techmakers)</SelectItem>
+                      <SelectItem value="Googler">Googler</SelectItem>
+                      <SelectItem value="None above">None above</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="manual_primary_tech">Primary Technology</Label>
+                  <Select value={manualPrimaryTechnology} onValueChange={setManualPrimaryTechnology}>
+                    <SelectTrigger id="manual_primary_tech" className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Google Cloud Platform (GCP)">Google Cloud Platform (GCP)</SelectItem>
+                      <SelectItem value="Android & Kotlin">Android &amp; Kotlin</SelectItem>
+                      <SelectItem value="AI / Machine Learning (Gemini / Vertex AI)">
+                        AI / ML (Gemini / Vertex AI)
+                      </SelectItem>
+                      <SelectItem value="Web & Chrome (Angular, Firebase)">Web &amp; Chrome (Angular, Firebase)</SelectItem>
+                      <SelectItem value="Flutter & Dart">Flutter &amp; Dart</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {manualGoogleEcosystem !== "None above" && (
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label htmlFor="manual_ecosystem_details">Ecosystem Details (Chapter / Track)</Label>
+                    <Input
+                      id="manual_ecosystem_details"
+                      value={manualEcosystemDetails}
+                      onChange={(e) => setManualEcosystemDetails(e.target.value)}
+                      placeholder="e.g. GDE Cloud & AI / GDG Jakarta"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <Label htmlFor="manual_can_share_slides">Share Slides with Attendees?</Label>
+                  <Select
+                    value={manualCanShareSlides}
+                    onValueChange={(v) => setManualCanShareSlides(v as "Yes" | "No")}
+                  >
+                    <SelectTrigger id="manual_can_share_slides" className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Yes">Yes</SelectItem>
+                      <SelectItem value="No">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Speaker Swag & Merchandise */}
+                <div className="space-y-3 rounded-lg border bg-muted/20 p-3 sm:col-span-2">
+                  <div className="flex items-center gap-1.5 font-semibold text-xs">
+                    <Shirt className="size-3.5 text-primary" />
+                    <span>Speaker Swag &amp; Merchandise</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {config.selected_merchandise_ids?.map((merchId) => {
+                      const merch = event.merchandise?.find((m) => m.id === merchId);
+                      if (!merch) return null;
+                      const sizes = merch.variations?.[0]?.options || ["S", "M", "L", "XL", "XXL"];
+                      const key = `merch_${merch.id}`;
+                      return (
+                        <div key={key} className="space-y-1">
+                          <Label className="text-[11px]">{merch.name}</Label>
+                          <Select
+                            value={manualSwagSelections[key] || ""}
+                            onValueChange={(val) => setManualSwagSelections((prev) => ({ ...prev, [key]: val }))}
+                          >
+                            <SelectTrigger className="h-8 bg-background text-xs">
+                              <SelectValue placeholder="Select size..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {sizes.map((sz) => (
+                                <SelectItem key={sz} value={sz}>
+                                  {sz}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      );
+                    })}
+                    {config.custom_swags
+                      ?.filter((cs) => !cs.hidden)
+                      .map((cs) => {
+                        const key = cs.id;
+                        return (
+                          <div key={key} className="space-y-1">
+                            <Label className="text-[11px]">{cs.label}</Label>
+                            <Select
+                              value={manualSwagSelections[key] || ""}
+                              onValueChange={(val) => setManualSwagSelections((prev) => ({ ...prev, [key]: val }))}
+                            >
+                              <SelectTrigger className="h-8 bg-background text-xs">
+                                <SelectValue placeholder="Select option..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {cs.options?.map((opt) => (
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                {/* Dietary Restrictions */}
+                <div className="space-y-2 rounded-lg border bg-muted/20 p-3 sm:col-span-2">
+                  <Label className="font-semibold text-xs">Dietary Restrictions</Label>
+                  <div className="flex flex-wrap gap-3 pt-1">
+                    {SPEAKER_DIETARY_OPTIONS.map((opt) => {
+                      const isChecked = manualDietaryRestrictions.includes(opt);
+                      return (
+                        <label key={opt} className="flex cursor-pointer items-center gap-1.5 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                if (opt === "None") {
+                                  setManualDietaryRestrictions(["None"]);
+                                  setManualDietaryOther("");
+                                } else {
+                                  setManualDietaryRestrictions((prev) => [
+                                    ...prev.filter((d) => d !== "None"),
+                                    opt,
+                                  ]);
+                                }
+                              } else {
+                                setManualDietaryRestrictions((prev) => prev.filter((d) => d !== opt));
+                              }
+                            }}
+                            className="size-3.5 rounded border-border accent-primary"
+                          />
+                          <span>{opt}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <Input
+                    value={manualDietaryOther}
+                    onChange={(e) => {
+                      setManualDietaryOther(e.target.value);
+                      if (e.target.value.trim()) {
+                        setManualDietaryRestrictions((prev) => prev.filter((d) => d !== "None"));
+                      }
+                    }}
+                    placeholder="Other dietary notes (comma separated, e.g. Nut allergy, Seafood)..."
+                    className="mt-1 h-8 bg-background text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="manual_talk_description">Talk Description (Caption)</Label>
+                  <Textarea
+                    id="manual_talk_description"
+                    value={manualTalkDescription}
+                    onChange={(e) => setManualTalkDescription(e.target.value)}
+                    placeholder="Concise summary of the talk session..."
+                    className="min-h-[60px] text-xs"
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="manual_bio">Speaker Biography</Label>
                   <Textarea
                     id="manual_bio"
                     value={manualBiography}
                     onChange={(e) => setManualBiography(e.target.value)}
-                    placeholder="Brief background or talk session summary..."
-                    className="min-h-[60px] text-xs"
+                    placeholder="Speaker background & experience..."
+                    className="min-h-[70px] text-xs"
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="manual_additional_inquiry">Additional Inquiry / Notes</Label>
+                  <Textarea
+                    id="manual_additional_inquiry"
+                    value={manualAdditionalInquiry}
+                    onChange={(e) => setManualAdditionalInquiry(e.target.value)}
+                    placeholder="Any special requests or logistics notes..."
+                    className="min-h-[50px] text-xs"
                   />
                 </div>
               </div>
@@ -2810,39 +3683,55 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
           {viewingConfirmation && (
             <>
               <DialogHeader>
-                <div className="flex items-center gap-3">
-                  <Avatar className="size-12 shrink-0 border bg-muted">
-                    {viewingConfirmation.speaker_profile_url && (
-                      <AvatarImage
-                        src={viewingConfirmation.speaker_profile_url}
-                        alt={viewingConfirmation.full_name}
-                        className="object-cover"
-                      />
-                    )}
-                    <AvatarFallback className="font-semibold text-sm">
-                      {viewingConfirmation.full_name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .slice(0, 2)
-                        .join("")
-                        .toUpperCase() || "SP"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <DialogTitle className="flex items-center gap-2 font-semibold text-base">
-                      {viewingConfirmation.full_name}
-                      {viewingConfirmation.display_name &&
-                        viewingConfirmation.display_name !== viewingConfirmation.full_name && (
-                          <span className="font-normal text-muted-foreground text-xs">
-                            ({viewingConfirmation.display_name})
-                          </span>
-                        )}
-                    </DialogTitle>
-                    <DialogDescription className="text-muted-foreground text-xs">
-                      {viewingConfirmation.job_title}{" "}
-                      {viewingConfirmation.company_institution ? `at ${viewingConfirmation.company_institution}` : ""}
-                    </DialogDescription>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pr-6">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="size-12 shrink-0 border bg-muted">
+                      {viewingConfirmation.speaker_profile_url && (
+                        <AvatarImage
+                          src={viewingConfirmation.speaker_profile_url}
+                          alt={viewingConfirmation.full_name}
+                          className="object-cover"
+                        />
+                      )}
+                      <AvatarFallback className="font-semibold text-sm">
+                        {viewingConfirmation.full_name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .slice(0, 2)
+                          .join("")
+                          .toUpperCase() || "SP"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <DialogTitle className="flex items-center gap-2 font-semibold text-base">
+                        {viewingConfirmation.full_name}
+                        {viewingConfirmation.display_name &&
+                          viewingConfirmation.display_name !== viewingConfirmation.full_name && (
+                            <span className="font-normal text-muted-foreground text-xs">
+                              ({viewingConfirmation.display_name})
+                            </span>
+                          )}
+                      </DialogTitle>
+                      <DialogDescription className="text-muted-foreground text-xs">
+                        {viewingConfirmation.job_title}{" "}
+                        {viewingConfirmation.company_institution ? `at ${viewingConfirmation.company_institution}` : ""}
+                      </DialogDescription>
+                    </div>
                   </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 gap-1.5 self-start rounded-full px-3 text-xs sm:self-auto"
+                    onClick={() => {
+                      const target = viewingConfirmation;
+                      setViewingConfirmation(null);
+                      handleOpenEditSpeaker(target);
+                    }}
+                  >
+                    <Pencil className="size-3.5" />
+                    <span>Edit Profile &amp; Bevy Sync</span>
+                  </Button>
                 </div>
               </DialogHeader>
 
@@ -3088,15 +3977,21 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                   {viewingConfirmation.talk_description && (
                     <div className="border-t pt-2">
                       <span className="block text-[10px] text-muted-foreground">Talk Description (Caption)</span>
-                      <p className="mt-0.5 whitespace-pre-wrap text-foreground">
-                        {viewingConfirmation.talk_description}
-                      </p>
+                      <div
+                        className="mt-0.5 whitespace-pre-wrap break-words text-foreground prose prose-sm dark:prose-invert max-w-none [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_strong]:text-foreground [&_a]:text-primary hover:[&_a]:underline"
+                        // biome-ignore lint/security/noDangerouslySetInnerHtml: Sanitized speaker talk description HTML
+                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(viewingConfirmation.talk_description) }}
+                      />
                     </div>
                   )}
                   {viewingConfirmation.biography && (
                     <div className="border-t pt-2">
                       <span className="block text-[10px] text-muted-foreground">Speaker Biography</span>
-                      <p className="mt-0.5 whitespace-pre-wrap text-foreground">{viewingConfirmation.biography}</p>
+                      <div
+                        className="mt-0.5 whitespace-pre-wrap break-words text-foreground prose prose-sm dark:prose-invert max-w-none [&_p]:my-1 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_strong]:text-foreground [&_a]:text-primary hover:[&_a]:underline"
+                        // biome-ignore lint/security/noDangerouslySetInnerHtml: Sanitized speaker biography HTML
+                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(viewingConfirmation.biography) }}
+                      />
                     </div>
                   )}
                 </div>
@@ -3204,6 +4099,558 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                 </Button>
               </DialogFooter>
             </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Speaker Profile & Bevy Sync Dialog */}
+      <Dialog open={isEditingSpeakerOpen} onOpenChange={setIsEditingSpeakerOpen}>
+        <DialogContent className="max-h-[90vh] w-full gap-4 overflow-y-auto p-5 sm:max-w-xl sm:p-6 md:max-w-2xl">
+          <DialogHeader className="space-y-1 pb-1">
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Pencil className="size-5 text-primary" />
+              <span>Edit Speaker Profile &amp; Bevy Sync</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              Update speaker personal details, talk title, presentation slides, and social links. Changes seamlessly sync
+              to Cloud Firestore and the official Bevy People roster.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingSpeaker && (
+            <form onSubmit={handleSaveEditSpeaker} className="space-y-4 pt-1">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="edit_full_name">
+                    Full Name <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="edit_full_name"
+                    value={editFullName}
+                    onChange={(e) => setEditFullName(e.target.value)}
+                    required
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_display_name">Badge Display Name</Label>
+                  <Input
+                    id="edit_display_name"
+                    value={editDisplayName}
+                    onChange={(e) => setEditDisplayName(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_email">
+                    Email Address <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="edit_email"
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    required
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_whatsapp">WhatsApp / Phone</Label>
+                  <Input
+                    id="edit_whatsapp"
+                    value={editWhatsapp}
+                    onChange={(e) => setEditWhatsapp(e.target.value)}
+                    placeholder="e.g. +62812345678"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>
+                    Preferred Contact Channels <span className="text-red-500">*</span>
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {SPEAKER_CONTACT_CHANNELS.map((channel) => {
+                      const checked = editContactChannels.includes(channel);
+                      return (
+                        <button
+                          key={channel}
+                          type="button"
+                          onClick={() => {
+                            if (checked) {
+                              setEditContactChannels((prev) => prev.filter((c) => c !== channel));
+                            } else {
+                              setEditContactChannels((prev) => [...prev, channel]);
+                            }
+                          }}
+                          className={`rounded-md border px-2.5 py-1 font-medium text-xs transition-colors ${
+                            checked
+                              ? "border-primary bg-primary/10 font-semibold text-primary"
+                              : "border-border text-muted-foreground hover:bg-muted/50"
+                          }`}
+                        >
+                          {channel}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_job_title">
+                    Job Title <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="edit_job_title"
+                    value={editJobTitle}
+                    onChange={(e) => setEditJobTitle(e.target.value)}
+                    required
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_company">
+                    Company / Institution <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="edit_company"
+                    value={editCompany}
+                    onChange={(e) => setEditCompany(e.target.value)}
+                    required
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="edit_profile_url">Photo / Avatar URL</Label>
+                  <Input
+                    id="edit_profile_url"
+                    value={editProfileUrl}
+                    onChange={(e) => setEditProfileUrl(e.target.value)}
+                    placeholder="https://res.cloudinary.com/... or image link"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="edit_talk_title">
+                    Talk Session Title <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="edit_talk_title"
+                    value={editTalkTitle}
+                    onChange={(e) => setEditTalkTitle(e.target.value)}
+                    required
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_presenter_role">Role / Variant</Label>
+                  <Select
+                    value={editPresenterRole}
+                    onValueChange={(val) => setEditPresenterRole(val as SpeakerRoleKey)}
+                  >
+                    <SelectTrigger id="edit_presenter_role" className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SPEAKER_ROLES_CONFIG.map((role) => (
+                        <SelectItem key={role.key} value={role.key}>
+                          {role.title} {role.key === "speakers" ? "(Standard)" : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_talk_type">Talk Format</Label>
+                  <Select value={editTalkType} onValueChange={setEditTalkType}>
+                    <SelectTrigger id="edit_talk_type" className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Keynote">Keynote Session</SelectItem>
+                      <SelectItem value="Technical Talk (45 mins)">Technical Talk (45m)</SelectItem>
+                      <SelectItem value="Technical Talk (30 mins)">Technical Talk (30m)</SelectItem>
+                      <SelectItem value="Lightning Talk (15 mins)">Lightning Talk (15m)</SelectItem>
+                      <SelectItem value="Workshop / Hands-on Lab">Workshop / Codelab</SelectItem>
+                      <SelectItem value="Panel Discussion">Panel Discussion</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="edit_session_slot">Stage / Slot</Label>
+                  {agendaSlots.length > 0 ? (
+                    <Select
+                      value={editSessionSlot}
+                      onValueChange={(val) => setEditSessionSlot(val)}
+                    >
+                      <SelectTrigger
+                        id="edit_session_slot"
+                        className="!h-auto min-h-10 w-full min-w-0 !px-3.5 !py-2.5 text-xs text-left"
+                      >
+                        <SelectValue placeholder="Select Bevy agenda slot" />
+                      </SelectTrigger>
+                      <SelectContent
+                        position="popper"
+                        className="max-h-72 w-(--radix-select-trigger-width) min-w-[320px] max-w-[calc(100vw-2rem)] sm:max-w-xl"
+                      >
+                        {agendaSlots.map((slot) => {
+                          const bracketMatch = slot.label.match(/^\[(.*?)\]\s*(.*)$/);
+                          const trackName = bracketMatch ? bracketMatch[1] : null;
+                          const restLabel = bracketMatch ? bracketMatch[2] : slot.label;
+                          return (
+                            <SelectItem
+                              key={slot.id}
+                              value={slot.value}
+                              className="items-start py-2 text-xs"
+                            >
+                              <div className="flex flex-col gap-0.5 text-left">
+                                {trackName && (
+                                  <span className="font-medium text-[11px] text-muted-foreground">
+                                    [{trackName}]
+                                  </span>
+                                )}
+                                <span className="font-medium text-foreground whitespace-normal break-words">
+                                  {restLabel}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      id="edit_session_slot"
+                      value={editSessionSlot}
+                      onChange={(e) => setEditSessionSlot(e.target.value)}
+                      placeholder="e.g. 10:00 AM - Main Hall"
+                      className="h-8 text-xs"
+                    />
+                  )}
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="edit_slides_url">Presentation Slides Link</Label>
+                  <Input
+                    id="edit_slides_url"
+                    value={editSlidesUrl}
+                    onChange={(e) => setEditSlidesUrl(e.target.value)}
+                    placeholder="https://docs.google.com/presentation/d/... or slide link"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                {/* Social Handles */}
+                <div className="space-y-1">
+                  <Label htmlFor="edit_linkedin">LinkedIn Profile / ID</Label>
+                  <Input
+                    id="edit_linkedin"
+                    value={editLinkedinUrl}
+                    onChange={(e) => setEditLinkedinUrl(e.target.value)}
+                    placeholder="e.g. danjuf or full linkedin url"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_twitter">Personal X / Twitter</Label>
+                  <Input
+                    id="edit_twitter"
+                    value={editTwitterUrl}
+                    onChange={(e) => setEditTwitterUrl(e.target.value)}
+                    placeholder="e.g. @danjuf"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_company_twitter">Company X / Twitter</Label>
+                  <Input
+                    id="edit_company_twitter"
+                    value={editCompanyTwitter}
+                    onChange={(e) => setEditCompanyTwitter(e.target.value)}
+                    placeholder="e.g. @googledevsid"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="edit_instagram">Instagram Username</Label>
+                  <Input
+                    id="edit_instagram"
+                    value={editInstagram}
+                    onChange={(e) => setEditInstagram(e.target.value)}
+                    placeholder="e.g. @username"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="edit_portfolio">Portfolio / Website</Label>
+                  <Input
+                    id="edit_portfolio"
+                    value={editPortfolioUrl}
+                    onChange={(e) => setEditPortfolioUrl(e.target.value)}
+                    placeholder="https://example.com"
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="edit_talk_description">Talk Description (Caption)</Label>
+                  <Textarea
+                    id="edit_talk_description"
+                    value={editTalkDescription}
+                    onChange={(e) => setEditTalkDescription(e.target.value)}
+                    placeholder="Brief description of the session..."
+                    className="min-h-[60px] text-xs"
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="edit_bio">Speaker Biography (Event Page)</Label>
+                  <Textarea
+                    id="edit_bio"
+                    value={editBiography}
+                    onChange={(e) => setEditBiography(e.target.value)}
+                    placeholder="Detailed professional biography..."
+                    className="min-h-[70px] text-xs"
+                  />
+                </div>
+
+                {/* Google Ecosystem Background & Technology */}
+                <div className="space-y-1">
+                  <Label htmlFor="edit_google_ecosystem">Google Ecosystem Background</Label>
+                  <Select value={editGoogleEcosystem} onValueChange={setEditGoogleEcosystem}>
+                    <SelectTrigger id="edit_google_ecosystem" className="h-8 text-xs">
+                      <SelectValue placeholder="Select ecosystem background" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GDG">GDG (Organizer / Member)</SelectItem>
+                      <SelectItem value="GDE">GDE (Google Developer Expert)</SelectItem>
+                      <SelectItem value="WTM">WTM (Women Techmakers Ambassador)</SelectItem>
+                      <SelectItem value="Googler">Googler (Google Employee)</SelectItem>
+                      <SelectItem value="None above">None above</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor="edit_ecosystem_details">Ecosystem Details / Chapter</Label>
+                  <Input
+                    id="edit_ecosystem_details"
+                    value={editEcosystemDetails}
+                    onChange={(e) => setEditEcosystemDetails(e.target.value)}
+                    placeholder="e.g. GDG Jakarta or GDE Cloud"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="edit_primary_tech">Primary Technology / Ecosystem Area</Label>
+                  <Select value={editPrimaryTechnology} onValueChange={setEditPrimaryTechnology}>
+                    <SelectTrigger id="edit_primary_tech" className="h-8 text-xs">
+                      <SelectValue placeholder="Select primary technology" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Google Cloud Platform (GCP)">Google Cloud Platform (GCP)</SelectItem>
+                      <SelectItem value="Machine Learning / Gemini / Vertex AI">
+                        Machine Learning / Gemini / Vertex AI
+                      </SelectItem>
+                      <SelectItem value="Android & Kotlin">Android &amp; Kotlin</SelectItem>
+                      <SelectItem value="Flutter & Dart">Flutter &amp; Dart</SelectItem>
+                      <SelectItem value="Web & Chrome (Angular, Firebase)">
+                        Web &amp; Chrome (Angular, Firebase)
+                      </SelectItem>
+                      <SelectItem value="Open Source & DevOps">Open Source &amp; DevOps</SelectItem>
+                      <SelectItem value="Career & Community Leadership">Career &amp; Community Leadership</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Logistics & Preferences */}
+                <div className="space-y-1">
+                  <Label htmlFor="edit_can_share_slides">Can Share Presentation Slides?</Label>
+                  <Select
+                    value={editCanShareSlides}
+                    onValueChange={(val) => setEditCanShareSlides(val as "Yes" | "No")}
+                  >
+                    <SelectTrigger id="edit_can_share_slides" className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Yes">Yes (Share with Attendees)</SelectItem>
+                      <SelectItem value="No">No (Confidential / Internal)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Speaker Swag / Merchandise Configuration */}
+                {speakerSwagItems.length > 0 ? (
+                  <div className="space-y-3 sm:col-span-2 rounded-lg border bg-muted/20 p-3">
+                    <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground">
+                      <Shirt className="size-3.5 text-primary" />
+                      Speaker Swag &amp; Merchandise Selection
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {speakerSwagItems.map((item) => {
+                        const currentValue = editSwagSelections[item.id] || item.options[0] || "";
+                        return (
+                          <div key={item.id} className="space-y-1">
+                            <Label className="text-xs font-medium">{item.label}</Label>
+                            {item.description && (
+                              <p className="text-[10px] text-muted-foreground line-clamp-1">{item.description}</p>
+                            )}
+                            <Select
+                              value={currentValue}
+                              onValueChange={(val) => {
+                                setEditSwagSelections((prev) => ({ ...prev, [item.id]: val }));
+                                if (item.id === "default_tshirt" || !editTshirtSize) {
+                                  setEditTshirtSize(val);
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-8 text-xs w-full">
+                                <SelectValue placeholder="Select variant / size" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {item.options.map((opt) => (
+                                  <SelectItem key={opt} value={opt} className="text-xs">
+                                    {opt}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Label htmlFor="edit_tshirt_size">T-shirt / Swag Size</Label>
+                    <Select value={editTshirtSize} onValueChange={setEditTshirtSize}>
+                      <SelectTrigger id="edit_tshirt_size" className="h-8 text-xs">
+                        <SelectValue placeholder="Select size" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {["S", "M", "L", "XL", "2XL", "3XL", "4XL"].map((sz) => (
+                          <SelectItem key={sz} value={sz}>
+                            {sz}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Dietary Restrictions</Label>
+                  <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {SPEAKER_DIETARY_OPTIONS.map((opt) => {
+                        const isChecked = editDietaryRestrictions.includes(opt);
+                        return (
+                          <label
+                            key={opt}
+                            className="flex cursor-pointer items-center gap-2 rounded p-1 hover:bg-muted/40 transition-colors"
+                          >
+                            <Checkbox
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                if (opt === "None") {
+                                  if (checked) {
+                                    setEditDietaryRestrictions(["None"]);
+                                    setEditDietaryOther("");
+                                  } else {
+                                    setEditDietaryRestrictions([]);
+                                  }
+                                } else {
+                                  if (checked) {
+                                    setEditDietaryRestrictions((prev) => [
+                                      ...prev.filter((d) => d !== "None"),
+                                      opt,
+                                    ]);
+                                  } else {
+                                    setEditDietaryRestrictions((prev) => prev.filter((d) => d !== opt));
+                                  }
+                                }
+                              }}
+                            />
+                            <span className="text-xs font-normal select-none">{opt}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {/* Other option with free text input */}
+                    <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                      <label className="flex cursor-pointer items-center gap-2 shrink-0">
+                        <Checkbox
+                          checked={Boolean(editDietaryOther.trim())}
+                          onCheckedChange={(checked) => {
+                            if (!checked) {
+                              setEditDietaryOther("");
+                            }
+                          }}
+                        />
+                        <span className="text-xs font-normal select-none">Other:</span>
+                      </label>
+                      <Input
+                        value={editDietaryOther}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditDietaryOther(val);
+                          if (val.trim()) {
+                            setEditDietaryRestrictions((prev) => prev.filter((d) => d !== "None"));
+                          }
+                        }}
+                        placeholder="e.g. Nut allergy, Halal only, Seafood allergy"
+                        className="h-8 text-xs flex-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <Label htmlFor="edit_additional_inquiry">Additional Inquiry / Organizer Notes</Label>
+                  <Textarea
+                    id="edit_additional_inquiry"
+                    value={editAdditionalInquiry}
+                    onChange={(e) => setEditAdditionalInquiry(e.target.value)}
+                    placeholder="Any special equipment, logistics requirements, or organizer notes..."
+                    className="min-h-[50px] text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Bevy Sync Option */}
+              <div className="flex items-center justify-between rounded-lg border bg-muted/20 p-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="edit_sync_bevy" className="cursor-pointer font-medium text-xs">
+                    Sync Directly to Bevy Roster
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    {editingSpeaker.bevy_person_id
+                      ? `Updates Bevy Person ID #${editingSpeaker.bevy_person_id} with social links and company`
+                      : "Syncs updated speaker details to the Bevy chapter people roster"}
+                  </p>
+                </div>
+                <Switch id="edit_sync_bevy" checked={syncToBevyOnSave} onCheckedChange={setSyncToBevyOnSave} />
+              </div>
+
+              <DialogFooter className="gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditingSpeakerOpen(false)}
+                  className="text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={isUpdatingSpeaker} className="gap-1.5 text-xs">
+                  {isUpdatingSpeaker ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Pencil className="size-3.5" />
+                  )}
+                  <span>Save Changes</span>
+                </Button>
+              </DialogFooter>
+            </form>
           )}
         </DialogContent>
       </Dialog>

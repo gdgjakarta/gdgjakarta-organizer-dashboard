@@ -9,13 +9,16 @@ import {
   Calendar,
   CheckCircle2,
   ExternalLink,
+  ImageIcon,
   Loader2,
   MapPin,
   Mic,
   Pencil,
   Presentation,
+  Ruler,
   Search,
   Send,
+  Shirt,
   Sparkles,
   UserCheck,
   X,
@@ -25,6 +28,22 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Carousel,
+  type CarouselApi,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -75,13 +94,20 @@ const ECOSYSTEMS: SpeakerEcosystemType[] = [
 
 const TSHIRT_SIZES = ["S", "M", "L", "XL", "2XL", "3XL", "4XL"];
 const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Halal", "Gluten-free", "None"] as const;
-const CONTACT_CHANNELS = ["Whatsapp", "Telegram", "Email only"] as const;
+const CONTACT_CHANNELS = ["Whatsapp", "Telegram", "Email"] as const;
 
 export interface ResolvedSpeakerSwagItem {
   id: string; // e.g. "merch_123" or "custom_0"
   label: string;
   description?: string;
   options: string[];
+  imageUrl?: string;
+  images?: string[];
+  guideline?: {
+    title?: string;
+    text?: string;
+    image_url?: string;
+  };
 }
 
 export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFormProps) {
@@ -282,6 +308,13 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
         label: m.name,
         description: m.description,
         options,
+        imageUrl: m.image_url || (Array.isArray(m.images) ? m.images[0] : undefined),
+        images: Array.isArray(m.images) && m.images.length > 0 ? m.images : (m.image_url ? [m.image_url] : undefined),
+        guideline: m.guideline ? {
+          title: m.guideline.title || "Size & Product Guideline",
+          text: m.guideline.text,
+          image_url: m.guideline.image_url,
+        } : undefined,
       });
     });
 
@@ -326,6 +359,22 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [isRegeneratingTitle, setIsRegeneratingTitle] = useState(false);
   const [isRegeneratingDesc, setIsRegeneratingDesc] = useState(false);
+
+  // Merchandise Guideline modal state
+  const [viewingGuidelineItem, setViewingGuidelineItem] = useState<ResolvedSpeakerSwagItem | null>(null);
+  const [viewingImageGallery, setViewingImageGallery] = useState<{ label: string; images: string[] } | null>(null);
+  const [galleryCarouselApi, setGalleryCarouselApi] = useState<CarouselApi | null>(null);
+  const [activeGalleryIndex, setActiveGalleryIndex] = useState(0);
+
+  // Sync activeGalleryIndex when carousel slides or modal opens
+  const handleSetGalleryApi = (api: CarouselApi) => {
+    setGalleryCarouselApi(api);
+    if (!api) return;
+    setActiveGalleryIndex(api.selectedScrollSnap());
+    api.on("select", () => {
+      setActiveGalleryIndex(api.selectedScrollSnap());
+    });
+  };
 
   const maxPhotoSizeMb = event.speaker_config?.max_photo_size_mb ?? 5;
 
@@ -1702,30 +1751,102 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
               <div className="space-y-4">
                 {speakerSwagItems.map((item) => {
                   const currentValue = swagSelections[item.id] || item.options[0] || "";
+                  const hasGuideline = Boolean(item.guideline && (item.guideline.title || item.guideline.text || item.guideline.image_url));
+                  const hasImages = Boolean(item.images && item.images.length > 0) || Boolean(item.imageUrl);
+                  const displayImage = item.imageUrl || (item.images && item.images[0]);
+
                   return (
-                    <div key={item.id} className="space-y-1.5">
-                      <Label className="font-semibold text-xs">{item.label}</Label>
-                      {item.description && <p className="text-[11px] text-muted-foreground">{item.description}</p>}
-                      <Select
-                        value={currentValue}
-                        onValueChange={(val) => {
-                          setSwagSelections((prev) => ({ ...prev, [item.id]: val }));
-                          if (item.id === "default_tshirt" || !tshirtSize) {
-                            setTshirtSize(val);
-                          }
-                        }}
-                      >
-                        <SelectTrigger className="max-w-xs">
-                          <SelectValue placeholder="Select variant / size" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {item.options.map((opt) => (
-                            <SelectItem key={opt} value={opt}>
-                              {opt}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                    <div
+                      key={item.id}
+                      className="rounded-xl border bg-muted/20 p-4 transition-colors"
+                      style={{ borderColor: "var(--theme-border)" }}
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                        {/* Merchandise Product Image Thumbnail */}
+                        {displayImage && (
+                          <div
+                            className="relative size-20 shrink-0 cursor-pointer overflow-hidden rounded-lg border bg-background transition-opacity hover:opacity-90"
+                            onClick={() => {
+                              if (item.images && item.images.length > 0) {
+                                setViewingImageGallery({ label: item.label, images: item.images });
+                              }
+                            }}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            {/* biome-ignore lint/performance/noImgElement: product thumbnail */}
+                            <img
+                              src={displayImage}
+                              alt={item.label}
+                              className="size-full object-cover"
+                            />
+                            {item.images && item.images.length > 1 && (
+                              <span className="absolute bottom-1 right-1 rounded-sm bg-black/75 px-1 py-0.5 font-mono text-[9px] text-white">
+                                +{item.images.length}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <Label className="font-semibold text-sm text-foreground">{item.label}</Label>
+                              {item.description && (
+                                <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">{item.description}</p>
+                              )}
+                            </div>
+
+                            {/* Guideline & Product Preview Action Buttons */}
+                            <div className="flex items-center gap-1.5">
+                              {hasImages && item.images && item.images.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingImageGallery({ label: item.label, images: item.images || [] })}
+                                  className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground shadow-2xs hover:bg-muted transition-colors"
+                                >
+                                  <ImageIcon className="size-3 text-muted-foreground" />
+                                  <span>View Photo</span>
+                                </button>
+                              )}
+
+                              {hasGuideline && (
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingGuidelineItem(item)}
+                                  className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary shadow-2xs hover:bg-primary/20 transition-colors"
+                                >
+                                  <Ruler className="size-3" />
+                                  <span>{item.guideline?.title || "Size Guideline"}</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pt-1">
+                            <Label className="text-[11px] font-medium text-muted-foreground">Select Size / Variation:</Label>
+                            <Select
+                              value={currentValue}
+                              onValueChange={(val) => {
+                                setSwagSelections((prev) => ({ ...prev, [item.id]: val }));
+                                if (item.id === "default_tshirt" || !tshirtSize) {
+                                  setTshirtSize(val);
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="mt-1 max-w-xs h-9 text-xs">
+                                <SelectValue placeholder="Select variant / size" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {item.options.map((opt) => (
+                                  <SelectItem key={opt} value={opt} className="text-xs">
+                                    {opt}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -1812,6 +1933,158 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
           </Button>
         </CardFooter>
       </Card>
+
+      {/* Sizing & Product Guideline Dialog */}
+      <Dialog open={Boolean(viewingGuidelineItem)} onOpenChange={(open) => !open && setViewingGuidelineItem(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ruler className="size-5 text-primary" />
+              {viewingGuidelineItem?.guideline?.title || "Sizing & Product Guideline"}
+            </DialogTitle>
+            <DialogDescription>
+              Size chart and specifications for {viewingGuidelineItem?.label}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 pt-2">
+            {viewingGuidelineItem?.guideline?.image_url && (
+              <div className="overflow-hidden rounded-lg border bg-muted p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {/* biome-ignore lint/performance/noImgElement: guideline preview */}
+                <img
+                  src={viewingGuidelineItem.guideline.image_url}
+                  alt="Size Chart"
+                  className="max-h-64 w-auto rounded object-contain mx-auto"
+                />
+              </div>
+            )}
+
+            {viewingGuidelineItem?.guideline?.text && (
+              <div className="rounded-lg border bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap leading-relaxed text-foreground">
+                {viewingGuidelineItem.guideline.text}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setViewingGuidelineItem(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Product Image Gallery Carousel Dialog */}
+      <Dialog
+        open={Boolean(viewingImageGallery)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setViewingImageGallery(null);
+            setGalleryCarouselApi(null);
+            setActiveGalleryIndex(0);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl md:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shirt className="size-5 text-primary" />
+              {viewingImageGallery?.label || "Merchandise Product Preview"}
+            </DialogTitle>
+            <DialogDescription>
+              Official commemorative speaker merchandise preview
+            </DialogDescription>
+          </DialogHeader>
+
+          {viewingImageGallery && viewingImageGallery.images.length > 0 && (
+            <div className="space-y-4 pt-1">
+              <div className="relative overflow-hidden rounded-xl border bg-muted/30">
+                <Carousel setApi={handleSetGalleryApi} className="w-full">
+                  <CarouselContent>
+                    {viewingImageGallery.images.map((imgUrl, idx) => (
+                      <CarouselItem key={idx}>
+                        <div className="relative flex aspect-square max-h-[60vh] w-full items-center justify-center p-2 sm:p-4">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          {/* biome-ignore lint/performance/noImgElement: product gallery view */}
+                          <img
+                            src={imgUrl}
+                            alt={`${viewingImageGallery.label} view ${idx + 1}`}
+                            className="size-full rounded-lg object-contain"
+                          />
+                        </div>
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+
+                  {viewingImageGallery.images.length > 1 && (
+                    <>
+                      <CarouselPrevious className="left-3 bg-background/80 shadow-md backdrop-blur-xs hover:bg-background" />
+                      <CarouselNext className="right-3 bg-background/80 shadow-md backdrop-blur-xs hover:bg-background" />
+                    </>
+                  )}
+                </Carousel>
+
+                {/* Counter Badge */}
+                {viewingImageGallery.images.length > 1 && (
+                  <div className="absolute right-3 bottom-3 z-10">
+                    <Badge
+                      variant="secondary"
+                      className="border border-border/50 bg-background/90 font-mono text-xs shadow-xs backdrop-blur-xs"
+                    >
+                      {activeGalleryIndex + 1} / {viewingImageGallery.images.length}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+
+              {/* Thumbnails strip */}
+              {viewingImageGallery.images.length > 1 && (
+                <div className="flex items-center justify-center gap-2 overflow-x-auto pb-1">
+                  {viewingImageGallery.images.map((imgUrl, idx) => {
+                    const isActive = idx === activeGalleryIndex;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => galleryCarouselApi?.scrollTo(idx)}
+                        className={`relative size-16 shrink-0 overflow-hidden rounded-lg border bg-muted/40 transition-all cursor-pointer ${
+                          isActive
+                            ? "border-primary ring-2 ring-primary/40 shadow-xs"
+                            : "border-border/70 opacity-60 hover:opacity-100"
+                        }`}
+                        aria-label={`Go to slide ${idx + 1}`}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {/* biome-ignore lint/performance/noImgElement: thumbnail item */}
+                        <img
+                          src={imgUrl}
+                          alt={`Thumbnail ${idx + 1}`}
+                          className="size-full object-cover"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setViewingImageGallery(null);
+                setGalleryCarouselApi(null);
+                setActiveGalleryIndex(0);
+              }}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

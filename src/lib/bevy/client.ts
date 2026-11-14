@@ -118,7 +118,8 @@ export async function bevyFetchWithResponse<T>(
   });
 
   const executeFetch = async (headers: Record<string, string>) => {
-    const signal = options.signal || (typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(10_000) : undefined);
+    const signal =
+      options.signal || (typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(10_000) : undefined);
     const response = await fetch(url, {
       ...options,
       headers,
@@ -445,7 +446,13 @@ export async function getChapterTeam(
 
   if (Array.isArray(slimTeamData) && slimTeamData.length > 0) {
     console.log(`[Bevy Auth] Retrieved ${slimTeamData.length} team members from /chapter_slim/${chapterSlug}/team/`);
-    return slimTeamData;
+    // Ensure every member has a deterministic unique id for UI key rendering and sorting,
+    // and preserve title and visible (public chapter_slim members are by definition visible=true)
+    return slimTeamData.map((m, idx) => ({
+      ...m,
+      id: m.id || m.user?.id || `team-member-${idx}-${m.user?.email || m.user?.full_name || idx}`,
+      visible: m.visible !== undefined ? m.visible : true,
+    }));
   }
 
   // 3. Fallback without trailing slash
@@ -680,6 +687,60 @@ export async function updateBevyChapterTeamMember(
     return { success: true, data: result.data };
   } catch (error) {
     console.error(`[updateBevyChapterTeamMember] Exception:`, error);
+    return { success: false, error: extractApiMessage(error, "Failed to connect to Bevy server") };
+  }
+}
+
+/**
+ * Reorder chapter team members in Bevy.
+ * Endpoint: PATCH /chapter/{chapterId}/team/
+ * Referer: https://gdg.community.dev/dashboard/{chapterSlug}/settings/team
+ * Payload: { order: [teamMemberId1, teamMemberId2, ...] }
+ */
+export async function reorderBevyChapterTeam(
+  order: Array<number | string>,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const referer = `https://gdg.community.dev/dashboard/${chapterSlug}/settings/team/`;
+
+    const numericOrder = order
+      .map((id) => (typeof id === "number" ? id : Number.parseInt(String(id), 10)))
+      .filter((id) => !Number.isNaN(id));
+
+    if (numericOrder.length === 0) {
+      return { success: false, error: "No valid team member IDs provided for reordering" };
+    }
+
+    console.log(`[reorderBevyChapterTeam] Reordering ${numericOrder.length} team members in chapter ${chapterId}...`);
+
+    const result = await bevyFetchWithResponse<unknown>(
+      `/chapter/${chapterId}/team/`,
+      {
+        method: "PATCH",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: referer,
+          "Auth-Type": "AUTHORIZED",
+          "X-Requested-With": "XMLHttpRequest",
+          Accept: "application/json; version=bevy.1.0",
+        },
+        body: JSON.stringify({ order: numericOrder }),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!result.ok) {
+      const errorMsg = extractApiMessage(result.data, `Failed to reorder team members (HTTP ${result.status})`);
+      console.error(`[reorderBevyChapterTeam] Failed:`, errorMsg, result.data);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: result.data };
+  } catch (error) {
+    console.error(`[reorderBevyChapterTeam] Exception:`, error);
     return { success: false, error: extractApiMessage(error, "Failed to connect to Bevy server") };
   }
 }
@@ -2094,17 +2155,36 @@ export interface BevyPersonInput {
   first_name: string;
   last_name: string;
   title: string;
+  company?: string;
   bio?: string;
   picture?: string;
+  personal_twitter?: string;
+  company_twitter?: string;
+  personal_linkedin_page?: string;
+  [key: string]: unknown;
 }
 
 export interface BevyPersonResponse {
   id: number;
   first_name: string;
   last_name: string;
+  company?: string;
   title: string;
   bio: string;
-  picture: string;
+  picture:
+    | string
+    | {
+        url?: string;
+        path?: string;
+        thumbnail_width?: number;
+        thumbnail_height?: number;
+        thumbnail_format?: string;
+        thumbnail_url?: string;
+      };
+  personal_twitter?: string;
+  company_twitter?: string;
+  personal_linkedin_page?: string;
+  is_linked_to_user?: boolean;
   [key: string]: unknown;
 }
 
@@ -2164,6 +2244,8 @@ export async function updateBevyPerson(
 ): Promise<{ success: boolean; data?: BevyPersonResponse | null; error?: string }> {
   try {
     const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    // Bevy PATCH /person/{id}/ returns 500 when picture is sent as a raw URL string
+    const { picture: _omittedPicture, ...safePerson } = person;
     const response = await bevyFetchWithResponse<BevyPersonResponse>(
       `/person/${personId}/`,
       {
@@ -2174,7 +2256,7 @@ export async function updateBevyPerson(
           "Auth-Type": "AUTHORIZED",
           "X-Requested-With": "XMLHttpRequest",
         },
-        body: JSON.stringify(person),
+        body: JSON.stringify(safePerson),
         requireAuth: true,
       },
       chapterId,
@@ -2207,7 +2289,7 @@ export async function getBevyPerson(
       {
         method: "GET",
         headers: {
-          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/${eventId}/people/`,
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/${eventId}/people`,
           "Auth-Type": "AUTHORIZED",
           "X-Requested-With": "XMLHttpRequest",
         },

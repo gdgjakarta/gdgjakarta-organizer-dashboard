@@ -3,9 +3,8 @@ import type { Metadata } from "next";
 import { APP_CONFIG } from "@/config/app-config";
 import { BEVY_CONFIG } from "@/config/bevy-config";
 import { getGoogleThemeByKey, getRandomGoogleTheme } from "@/config/homepage-themes";
-import { getBevyChapterEvents, getBevyChapterSponsors } from "@/lib/bevy/client";
+import { getBevyChapterEvents, getBevyChapterSlim, getBevyChapterSponsors } from "@/lib/bevy/client";
 
-import { CategoryPillFilter } from "./_components/category-pill-filter";
 import { CommunityAccessSpotlight } from "./_components/community-access-spotlight";
 import { CommunityCtaBanner } from "./_components/community-cta-banner";
 import { CommunityHero } from "./_components/community-hero";
@@ -53,34 +52,35 @@ export default async function Home(props: HomeProps) {
   const requestedColor = themeParam ?? colorParam;
   const initialTheme = requestedColor ? getGoogleThemeByKey(requestedColor) : getRandomGoogleTheme();
 
-  // Fetch upcoming events and chapter sponsors in parallel
-  const [eventsData, sponsors] = await Promise.all([
-    getBevyChapterEvents(BEVY_CONFIG.chapterId, 12, 1, false, "Published"),
+  // Fetch upcoming events, chapter sponsors, and live chapter metrics in parallel
+  const [eventsData, sponsors, chapterSlim] = await Promise.all([
+    getBevyChapterEvents(BEVY_CONFIG.chapterId, 24, 1, false, "Published"),
     getBevyChapterSponsors(BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId),
+    getBevyChapterSlim(BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId).catch(() => null),
   ]);
 
-  const upcomingEvents = (eventsData?.results ?? [])
-    .filter(
-      (e) =>
-        (e.status ? e.status.toLowerCase() === "published" : true) &&
-        !e.is_hidden &&
-        !(e as { hidden?: boolean }).hidden &&
-        !e.is_test,
-    )
-    .slice(0, 6);
+  const upcomingEvents = (eventsData?.results ?? []).filter(
+    (e) =>
+      (e.status ? e.status.toLowerCase() === "published" : true) &&
+      !e.is_hidden &&
+      !(e as { hidden?: boolean }).hidden &&
+      !e.is_test,
+  );
+
+  const heroLiveStats = {
+    membersCount: chapterSlim?.members_count ?? 17878,
+    eventsCount: eventsData?.count ?? 121,
+  };
 
   return (
     <HomepageThemeContainer initialTheme={initialTheme}>
       {/* 1. Hero Section (Includes dynamic Featured Event card with autoplay video) */}
-      <CommunityHero />
+      <CommunityHero liveStats={heroLiveStats} />
 
-      {/* 2. Category Pill Filter Bar */}
-      <CategoryPillFilter />
-
-      {/* 3. Featured Events Grid */}
+      {/* 2. Featured Events Grid with Category Pill Filter Bar */}
       <FeaturedEventsSection events={upcomingEvents} />
 
-      {/* 4. Large Editorial Quote Section */}
+      {/* 3. Large Editorial Quote Section */}
       <CommunityQuoteSection />
 
       {/* 5. Complete Developer Empowerment (3 Value Pillars) */}

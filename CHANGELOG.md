@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.29] - 2026-11-15
+
+### Added
+- **Featured Event Dynamic Spotlight & Bevy Data Binding (`/dashboard/partnership`)**: Integrated live Bevy event selector (`BevyEventSelector`), allowing organizers to bind the partnership featured event spotlight directly to published Bevy events. Automatically extracts technology focus tags and description narrative with custom editorial overrides.
+- **Dynamic Event Data Tokenizer & Drag-and-Drop Parameter Chips**: Added comprehensive event token resolution (`{{event:title}}`, `{{event:date}}`, `{{event:hours}}`, `{{event:venue}}`, `{{event:capacity}}`) across partnership hero lead paragraphs, highlight cards, and sponsor FAQs with 1-click draggable chips, live resolved preview, and 2-6 card quota limits.
+- **Dynamic Sponsor FAQ Event Tokenization (`/partnership`)**: Bound partnership sponsor FAQ questions and answers to live featured event data, updating automatically on the public partnership accordion whenever a new event is set as featured.
+- **Event Visibility Toggle**: Added an instant toggle switch on both dashboard configuration and public display for the Featured Event Spotlight section.
+- **Contextual Action Links for "Why Us" Value Cards**: Replaced static repetition with tailored contextual action links and dedicated handlers for all 6 partnership value propositions.
+
+### Fixed
+- **Mobile Overflow & Button Truncation**: Fixed flexbox wrap, textarea min-height, and button layout overflow in the highlight cards and sponsor FAQ authoring panels.
+- **Organizer Dashboard Card Hierarchy**: Swapped card layout positioning so Community Organizers is displayed above the Referral Leaderboard.
+- **Homepage Ticketing Accuracy & Community Access Redesign**: Modernized `CommunityAccessSpotlight` with verified monogram, lanyard slot, and updated admission copy clarifying that while most meetups are 100% free, flagship summits offer subsidized community pricing.
+
+---
+
 ## [1.0.28] - 2026-11-14
 
 ### Fixed

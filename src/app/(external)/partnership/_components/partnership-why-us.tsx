@@ -1,6 +1,8 @@
 "use client";
 
-import { Award, Compass, HeartHandshake, Lightbulb, Users, Zap } from "lucide-react";
+import Link from "next/link";
+
+import { ArrowRight, Award, Compass, HeartHandshake, Lightbulb, Users, Zap } from "lucide-react";
 
 import { usePartnershipContent } from "@/lib/content/hooks";
 
@@ -11,6 +13,15 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Users,
   Award,
   HeartHandshake,
+};
+
+const DEFAULT_CARD_ACTIONS: Record<number, { text: string; url: string }> = {
+  0: { text: "Explore Community Reach", url: "#tiers" },
+  1: { text: "View Conference Sessions", url: "#featured-event" },
+  2: { text: "See Collaboration Formats", url: "#formats" },
+  3: { text: "Explore Talent Activations", url: "#deliverables" },
+  4: { text: "View Chapter Trust & Sponsors", url: "#sponsors" },
+  5: { text: "Request Custom Proposal", url: "#inquiry" },
 };
 
 export function PartnershipWhyUs() {
@@ -43,6 +54,18 @@ export function PartnershipWhyUs() {
       <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {visibleWhyUs.map((item, idx) => {
           const Icon = ICON_MAP[item.iconName] || Zap;
+          const fallbackAction = DEFAULT_CARD_ACTIONS[idx] || {
+            text: "Explore opportunities",
+            url: "#tiers",
+          };
+          const resolvedActionText =
+            item.actionText &&
+            item.actionText !== "Designed for developer resonance →" &&
+            item.actionText !== "Designed for developer resonance"
+              ? item.actionText
+              : fallbackAction.text;
+          const resolvedActionUrl = item.actionUrl || fallbackAction.url;
+
           return (
             <div
               key={item.id || item.title || idx}
@@ -75,9 +98,20 @@ export function PartnershipWhyUs() {
               </div>
 
               <div className="mt-6 border-t pt-4">
-                <span className="font-medium text-[12px] text-[var(--theme-primary)]">
-                  Designed for developer resonance &rarr;
-                </span>
+                {resolvedActionUrl ? (
+                  <Link
+                    href={resolvedActionUrl}
+                    className="inline-flex items-center gap-1.5 font-medium text-[13px] text-[var(--theme-primary)] transition-colors hover:underline group-hover:text-[var(--theme-primary)]"
+                  >
+                    <span>{resolvedActionText}</span>
+                    <ArrowRight className="size-3.5 transition-transform duration-200 group-hover:translate-x-1" />
+                  </Link>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 font-medium text-[13px] text-[var(--theme-primary)]">
+                    <span>{resolvedActionText}</span>
+                    <ArrowRight className="size-3.5 transition-transform duration-200 group-hover:translate-x-1" />
+                  </span>
+                )}
               </div>
             </div>
           );

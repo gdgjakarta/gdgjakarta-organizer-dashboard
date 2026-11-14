@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Check, Copy, ExternalLink, HelpCircle, Mail, Phone, Send, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { usePartnershipContent } from "@/lib/content/hooks";
+import { type EventTokenContext, resolveEventTokens } from "@/lib/content/token-resolver";
+import { fetchBevyEventDetailForSpotlightAction } from "@/server/bevy-actions";
 
 function InstagramIcon({ className = "size-4" }: { className?: string }) {
   return (
@@ -37,6 +39,48 @@ export function PartnershipCta() {
   const officialEmail = contact.contactEmail || "hello@gdgjakarta.org";
   const instagramUrl = contact.instagramUrl || "https://instagram.com/gdgjakarta";
   const featuredEventTitle = content.devfest.title || "Featured Event";
+
+  const [eventContext, setEventContext] = useState<EventTokenContext>({
+    title: content.devfest.title || "DevFest Jakarta 2026",
+    formattedDate: "Sun, 1 Nov 2026",
+    formattedHours: "09:00 - 18:00 WIB",
+    venueName: "Jakarta, Indonesia",
+    totalCapacity: "1,500+",
+  });
+
+  useEffect(() => {
+    if (!content.devfest.eventId) {
+      setEventContext({
+        title: content.devfest.title || "DevFest Jakarta 2026",
+        formattedDate: "Sun, 1 Nov 2026",
+        formattedHours: "09:00 - 18:00 WIB",
+        venueName: "Jakarta, Indonesia",
+        totalCapacity: "1,500+",
+      });
+      return;
+    }
+    let isCancelled = false;
+    fetchBevyEventDetailForSpotlightAction(content.devfest.eventId)
+      .then((res) => {
+        if (!isCancelled && res.success && res.data) {
+          setEventContext({
+            title: res.data.title || content.devfest.title || "Featured Event",
+            formattedDate: res.data.formattedDate || "Coming Soon",
+            formattedHours: res.data.formattedHours || "Full Day",
+            venueName: res.data.venueName || "Jakarta, Indonesia",
+            venueAddress: res.data.venueAddress || "",
+            totalCapacity: res.data.totalCapacity || "1,500+",
+            totalAttendees: res.data.totalAttendees || 0,
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn("[PartnershipCta] Failed to fetch event details for FAQ tokenization:", err);
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [content.devfest.eventId, content.devfest.title]);
 
   const [copied, setCopied] = useState(false);
   const [companyName, setCompanyName] = useState("");
@@ -104,7 +148,7 @@ export function PartnershipCta() {
         ];
 
   return (
-    <section id="contact" className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+    <section id="inquiry" className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
       {/* Main CTA Container */}
       <div
         className="relative overflow-hidden rounded-[2.5rem] border p-8 shadow-xl sm:p-12 lg:p-16"
@@ -311,16 +355,25 @@ export function PartnershipCta() {
             </div>
 
             <Accordion type="single" collapsible className="w-full rounded-2xl border bg-background/80 p-2 shadow-xs">
-              {content.faqs.map((faq, i) => (
-                <AccordionItem key={faq.id || i} value={`faq-${faq.id || i}`} className="border-b px-4 last:border-b-0">
-                  <AccordionTrigger className="text-left font-semibold text-xs hover:no-underline sm:text-sm">
-                    {faq.question}
-                  </AccordionTrigger>
-                  <AccordionContent className="text-muted-foreground text-xs leading-relaxed">
-                    {faq.answer}
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
+              {content.faqs.map((faq, i) => {
+                const resolvedQuestion = resolveEventTokens(faq.question, eventContext);
+                const resolvedAnswer = resolveEventTokens(faq.answer, eventContext);
+
+                return (
+                  <AccordionItem
+                    key={faq.id || i}
+                    value={`faq-${faq.id || i}`}
+                    className="border-b px-4 last:border-b-0"
+                  >
+                    <AccordionTrigger className="text-left font-semibold text-xs hover:no-underline sm:text-sm">
+                      {resolvedQuestion}
+                    </AccordionTrigger>
+                    <AccordionContent className="text-muted-foreground text-xs leading-relaxed whitespace-pre-line">
+                      {resolvedAnswer}
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
             </Accordion>
           </div>
         )}

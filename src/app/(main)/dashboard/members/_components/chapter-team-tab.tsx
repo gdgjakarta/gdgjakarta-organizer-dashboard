@@ -2,21 +2,22 @@
 
 import * as React from "react";
 
-import { EyeOff, Pencil, Plus, RefreshCw, Search, Shield, Trash2, Users } from "lucide-react";
+import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
+import { isSortable } from "@dnd-kit/react/sortable";
+import { Plus, RefreshCw, Search, Shield } from "lucide-react";
 import { toast } from "sonner";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { BevyChapterTeamMember } from "@/lib/bevy/types";
-import { getInitials } from "@/lib/utils";
-import { fetchBevyChapterTeamsAction } from "@/server/bevy-actions";
+import { fetchBevyChapterTeamsAction, reorderBevyChapterTeamAction } from "@/server/bevy-actions";
 
 import { AddTeamMemberDialog } from "./add-team-member-dialog";
 import { DeleteTeamMemberDialog } from "./delete-team-member-dialog";
 import { EditTeamMemberDialog } from "./edit-team-member-dialog";
+import { SortableTeamMemberCard } from "./sortable-team-member-card";
 
 interface ChapterTeamTabProps {
   initialTeamMembers: BevyChapterTeamMember[];
@@ -67,8 +68,11 @@ function getRoleBadgeVariant(roleName: string) {
 
 export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
   const [team, setTeam] = React.useState<BevyChapterTeamMember[]>(initialTeamMembers);
-  const [isRefreshing, setIsRefreshing] = React.useState(false);
-  const [isSyncingRoles, setIsSyncingRoles] = React.useState(false);
+  const [initialOrder, setInitialOrder] = React.useState<Array<number | string>>(() =>
+    initialTeamMembers.map((m) => m.id).filter(Boolean),
+  );
+  const [isSyncing, setIsSyncing] = React.useState(false);
+  const [isSavingOrder, setIsSavingOrder] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
 
   // Dialog states
@@ -79,50 +83,85 @@ export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
   // Sync state if initial prop changes
   React.useEffect(() => {
     setTeam(initialTeamMembers);
+    setInitialOrder(initialTeamMembers.map((m) => m.id).filter(Boolean));
   }, [initialTeamMembers]);
 
-  const handleRefresh = async (syncToFirestore = false) => {
-    setIsRefreshing(true);
-    try {
-      const freshTeam = await fetchBevyChapterTeamsAction();
-      setTeam(freshTeam);
-      if (syncToFirestore && freshTeam.length > 0) {
-        const { syncChapterTeamRolesToFirestore } = await import("@/lib/firestore/sync-service");
-        await syncChapterTeamRolesToFirestore(freshTeam);
-      }
-      toast.success("Team roster refreshed.");
-    } catch {
-      toast.error("Failed to refresh team roster.");
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
+  const currentOrder = React.useMemo(() => team.map((m) => m.id).filter(Boolean), [team]);
+  const isOrderDirty = React.useMemo(() => {
+    if (initialOrder.length !== currentOrder.length) return false;
+    return initialOrder.some((id, idx) => String(id) !== String(currentOrder[idx]));
+  }, [initialOrder, currentOrder]);
 
-  const handleSyncRolesToFirestore = async () => {
-    if (isSyncingRoles) return;
-    setIsSyncingRoles(true);
+  const handleSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
     try {
       const freshTeam = await fetchBevyChapterTeamsAction();
-      const rosterToSync = freshTeam.length > 0 ? freshTeam : team;
+      const roster = freshTeam.length > 0 ? freshTeam : team;
       if (freshTeam.length > 0) {
         setTeam(freshTeam);
+        setInitialOrder(freshTeam.map((m) => m.id).filter(Boolean));
       }
       const { syncChapterTeamRolesToFirestore } = await import("@/lib/firestore/sync-service");
-      const res = await syncChapterTeamRolesToFirestore(rosterToSync);
+      const res = await syncChapterTeamRolesToFirestore(roster);
       if (res.success) {
-        toast.success(`Synced ${res.totalSynced} chapter team roles to Firestore!`);
+        toast.success(`Refreshed and synced ${res.totalSynced} team roles to Firestore!`);
       } else {
-        toast.error(res.error || "Failed to sync chapter team roles to Firestore.");
+        toast.info("Team roster refreshed (role sync to Firestore had warnings).");
       }
     } catch {
-      toast.error("Failed to sync chapter team roles to Firestore.");
+      toast.error("Failed to sync team roles.");
     } finally {
-      setIsSyncingRoles(false);
+      setIsSyncing(false);
     }
   };
 
+  const handleSaveOrder = async () => {
+    if (!isOrderDirty || isSavingOrder) return;
+    setIsSavingOrder(true);
+    try {
+      const res = await reorderBevyChapterTeamAction(currentOrder);
+      if (res.success) {
+        setInitialOrder(currentOrder);
+        toast.success("Team member order saved successfully to Bevy!");
+      } else {
+        toast.error(res.error || "Failed to save team member order.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save team member order.");
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
+
+  const handleDiscardOrder = () => {
+    // Revert back to initialOrder
+    const orderMap = new Map(team.map((m) => [m.id, m]));
+    const reverted = initialOrder.map((id) => orderMap.get(id)).filter(Boolean) as BevyChapterTeamMember[];
+    setTeam(reverted);
+    toast.info("Discarded order changes.");
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { source } = event.operation;
+    if (event.canceled || !isSortable(source) || source.initialIndex === source.index) {
+      return;
+    }
+
+    setTeam((prev) => {
+      const next = [...prev];
+      const [movedItem] = next.splice(source.initialIndex, 1);
+      if (movedItem) {
+        next.splice(source.index, 0, movedItem);
+      }
+      return next;
+    });
+  };
+
+  const isFiltering = Boolean(searchQuery.trim());
+
   const filteredTeam = React.useMemo(() => {
-    if (!searchQuery.trim()) return team;
+    if (!isFiltering) return team;
     const q = searchQuery.toLowerCase().trim();
     return team.filter((tm) => {
       const fullName = (tm.user?.full_name || `${tm.user?.first_name || ""} ${tm.user?.last_name || ""}`).toLowerCase();
@@ -131,10 +170,10 @@ export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
       const customTitle = (tm.title || "").toLowerCase();
       return fullName.includes(q) || email.includes(q) || roleTitle.includes(q) || customTitle.includes(q);
     });
-  }, [team, searchQuery]);
+  }, [team, searchQuery, isFiltering]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20">
       {/* Action Bar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 items-center gap-2">
@@ -151,30 +190,21 @@ export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => void handleRefresh(false)}
-            disabled={isRefreshing}
+            onClick={handleSync}
+            disabled={isSyncing || isSavingOrder}
             className="size-9 shrink-0 rounded-lg"
-            title="Refresh team roster"
+            title="Sync Bevy roles to Firestore"
+            aria-label="Sync Bevy roles to Firestore"
           >
-            <RefreshCw className={`size-3.5 ${isRefreshing ? "animate-spin text-primary" : "text-muted-foreground"}`} />
+            <RefreshCw className={`size-3.5 ${isSyncing ? "animate-spin text-primary" : "text-muted-foreground"}`} />
           </Button>
         </div>
 
         <div className="flex items-center gap-2">
           <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSyncRolesToFirestore}
-            disabled={isSyncingRoles}
-            className="h-9 gap-1.5 rounded-lg font-medium text-xs sm:text-sm"
-            title="Sync all chapter team roles into Firestore member profiles"
-          >
-            <RefreshCw className={`size-3.5 ${isSyncingRoles ? "animate-spin" : ""}`} />
-            <span>{isSyncingRoles ? "Syncing Roles..." : "Sync Roles to Firestore"}</span>
-          </Button>
-          <Button
             size="sm"
             onClick={() => setIsAddOpen(true)}
+            disabled={isSavingOrder}
             className="h-9 gap-1.5 rounded-lg font-medium text-xs sm:text-sm shadow-xs"
           >
             <Plus className="size-3.5" />
@@ -209,101 +239,55 @@ export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {filteredTeam.map((member) => {
-            const fullName =
-              member.user?.full_name?.trim() ||
-              `${member.user?.first_name || ""} ${member.user?.last_name || ""}`.trim() ||
-              "Community Member";
-            const roleName = resolveRoleTitle(member);
-            const subtitle = member.title?.trim() || roleName;
-            const isVisible = member.visible ?? false;
-            const maskedEmail = maskEmailDisplay(member.user?.email);
+        <DragDropProvider onDragEnd={handleDragEnd}>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {filteredTeam.map((member, index) => {
+              const roleName = resolveRoleTitle(member);
+              const roleVariant = getRoleBadgeVariant(roleName);
+              const maskedEmail = maskEmailDisplay(member.user?.email);
+              const itemKey =
+                member.id != null && String(member.id).trim() !== ""
+                  ? String(member.id)
+                  : member.user?.id != null
+                    ? `user-${member.user.id}`
+                    : `team-${index}-${member.user?.email || member.user?.full_name || index}`;
 
-            return (
-              <div
-                key={member.id}
-                className="group relative flex items-center justify-between gap-3 rounded-xl border bg-card p-3.5 shadow-xs transition-all hover:border-primary/50 hover:shadow-sm"
-              >
-                <button
-                  type="button"
-                  onClick={() => setMemberToEdit(member)}
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left focus:outline-none"
-                >
-                  <Avatar className="size-10 rounded-full border border-border">
-                    <AvatarImage
-                      src={member.user?.avatar?.thumbnail_url || member.user?.avatar?.url || undefined}
-                      alt={fullName}
-                    />
-                    <AvatarFallback className="rounded-full bg-muted text-xs font-semibold text-foreground">
-                      {getInitials(fullName)}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    {/* Role & Visibility Badge */}
-                    <div className="flex items-center gap-1.5">
-                      {!isVisible && (
-                        <span title="Hidden on chapter public page" className="text-muted-foreground">
-                          <EyeOff className="size-3.5" />
-                        </span>
-                      )}
-                      <Badge
-                        variant="outline"
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${getRoleBadgeVariant(roleName)}`}
-                      >
-                        {roleName}
-                      </Badge>
-                    </div>
-
-                    {/* Member Name */}
-                    <div className="truncate font-semibold text-sm text-foreground leading-tight">{fullName}</div>
-
-                    {/* Subtitle / Custom Title */}
-                    <div className="truncate text-xs text-muted-foreground leading-none">{subtitle}</div>
-
-                    {/* Email */}
-                    <div className="truncate font-mono text-[10px] text-muted-foreground/80 leading-tight">
-                      {member.user?.email || maskedEmail}
-                    </div>
-                  </div>
-                </button>
-
-                {/* Actions: Edit & Delete */}
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setMemberToEdit(member)}
-                    className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-                    title="Edit team member"
-                  >
-                    <Pencil className="size-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setMemberToDelete(member)}
-                    className="size-8 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    title="Remove from chapter team"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              return (
+                <SortableTeamMemberCard
+                  key={itemKey}
+                  member={member}
+                  index={index}
+                  roleName={roleName}
+                  roleBadgeVariant={roleVariant}
+                  maskedEmail={maskedEmail}
+                  onEdit={setMemberToEdit}
+                  onDelete={setMemberToDelete}
+                  isDragDisabled={isFiltering || isSavingOrder}
+                />
+              );
+            })}
+          </div>
+        </DragDropProvider>
       )}
+
+      {/* Fixed Floating Bottom Save Bar for Order Changes */}
+      <FloatingSaveBar
+        isDirty={isOrderDirty}
+        isSaving={isSavingOrder}
+        onSave={handleSaveOrder}
+        onDiscard={handleDiscardOrder}
+        saveLabel="Save Team Order"
+        savingLabel="Saving Order..."
+        discardLabel="Discard"
+        unsavedBadgeLabel="Team Order Modified"
+      />
 
       {/* Add Team Member Dialog */}
       <AddTeamMemberDialog
         open={isAddOpen}
         onOpenChange={setIsAddOpen}
         onSuccess={() => {
-          void handleRefresh(true);
+          void handleSync();
         }}
       />
 
@@ -316,7 +300,7 @@ export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
         member={memberToEdit}
         onSuccess={() => {
           setMemberToEdit(null);
-          void handleRefresh(true);
+          void handleSync();
         }}
       />
 
@@ -329,7 +313,7 @@ export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
         member={memberToDelete}
         onSuccess={() => {
           setMemberToDelete(null);
-          void handleRefresh();
+          void handleSync();
         }}
       />
     </div>

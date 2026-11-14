@@ -499,37 +499,39 @@ export async function restoreSessionCookieAction(token: string, cachedRole?: str
 
     const verifiedEmail = tokenVerification.email.toLowerCase().trim();
 
-    // Query Bevy API authoritatively for the user's role
-    let validation: OrganizerValidationResult = {
-      isValidOrganizer: false,
-      role: "member",
-      bevyUserId: null,
-      chapterRole: "Member",
-    };
-    try {
-      validation = await validateBevyOrganizer(verifiedEmail);
-    } catch (valErr) {
-      console.error("[Auth Restore] Validation error:", valErr);
-    }
+    // Read role from Firestore `members` collection (Bevy API is only queried on sign-in, sync role, and sync chapter team)
+    const { queryFirestoreDocs } = await import("@/server/firestore-admin");
+    const matchedMembers = await queryFirestoreDocs<{
+      role?: string;
+      chapter_role?: string;
+      bevy_user_id?: string | number;
+    }>("members", [
+      {
+        fieldFilter: {
+          field: { fieldPath: "email" },
+          op: "EQUAL",
+          value: { stringValue: verifiedEmail },
+        },
+      },
+    ]);
+    const memberDoc = matchedMembers[0];
 
     const isExecutive = isExecutiveOrganizer({
-      role: validation.role,
-      chapterRole: validation.chapterRole,
-      chapterRoleType: validation.chapterRoleType,
-      roleId: validation.roleId,
+      role: memberDoc?.role,
+      chapterRole: memberDoc?.chapter_role,
     });
     const isCoreStaff = isCoreTeamOrStaff({
-      role: validation.role,
-      chapterRole: validation.chapterRole,
-      chapterRoleType: validation.chapterRoleType,
-      roleId: validation.roleId,
+      role: memberDoc?.role,
+      chapterRole: memberDoc?.chapter_role,
     });
 
-    const isAuthorizedTeam = validation.isValidOrganizer || isExecutive || isCoreStaff;
-    const isCheckInStaff = validation.role === "check_in_staff" || validation.roleId === 3;
+    const isAuthorizedTeam = isExecutive || isCoreStaff;
+    const isCheckInStaff =
+      memberDoc?.role === "check_in_staff" ||
+      (typeof memberDoc?.chapter_role === "string" && memberDoc.chapter_role.toLowerCase().includes("check-in"));
     const role = isExecutive ? "organizer" : isCheckInStaff ? "check_in_staff" : isCoreStaff ? "core_team" : "member";
     const chapterRole = isAuthorizedTeam
-      ? (validation.chapterRole ?? (isExecutive ? "Organizer" : isCheckInStaff ? "Check-in Staff" : "Core Team"))
+      ? (memberDoc?.chapter_role ?? (isExecutive ? "Organizer" : isCheckInStaff ? "Check-in Staff" : "Core Team"))
       : "Member";
 
     let resolvedRoleType: ChapterRole = ChapterRole.MEMBER;
@@ -544,10 +546,10 @@ export async function restoreSessionCookieAction(token: string, cachedRole?: str
       success: true,
       role,
       chapterRole,
-      chapterRoleType: validation.chapterRoleType ?? resolvedRoleType,
-      roleId: validation.roleId ?? (isExecutive ? 1 : isCheckInStaff ? 3 : isCoreStaff ? 2 : null),
-      roleTitle: validation.roleTitle ?? chapterRole,
-      bevyUserId: validation.bevyUserId ? String(validation.bevyUserId) : null,
+      chapterRoleType: resolvedRoleType,
+      roleId: isExecutive ? 1 : isCheckInStaff ? 3 : isCoreStaff ? 2 : null,
+      roleTitle: chapterRole,
+      bevyUserId: memberDoc?.bevy_user_id ? String(memberDoc.bevy_user_id) : null,
       isValidOrganizer: isAuthorizedTeam,
     };
   } catch (err) {

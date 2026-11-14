@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import {
   type AddBevyChapterTeamMemberParams,
   addBevyChapterTeamMember,
+  type BevyPersonInput,
+  type BevyPersonResponse,
   createBevyExternalEvent,
   createBevyPerson,
   deleteBevyAttendee,
@@ -21,6 +23,7 @@ import {
   importMemberToBevy,
   modifyBevyAiEventContent,
   putBevyAttendeeCheckIn,
+  reorderBevyChapterTeam,
   searchBevyChapterMembers,
   searchBevyPersons,
   type UpdateBevyChapterTeamMemberParams,
@@ -293,6 +296,32 @@ export async function updateBevyChapterTeamMemberAction(params: UpdateBevyChapte
     try {
       revalidatePath("/dashboard/members");
       revalidatePath("/dashboard/organizer");
+    } catch (e) {
+      console.debug("[revalidatePath] Cache revalidation skipped:", e);
+    }
+  }
+  return result;
+}
+
+/**
+ * Server action to reorder chapter team members in Bevy.
+ * Protected: requires an active organizer session.
+ */
+export async function reorderBevyChapterTeamAction(order: Array<number | string>): Promise<{
+  success: boolean;
+  data?: unknown;
+  error?: string;
+}> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized. Organizer session required." };
+  }
+
+  const result = await reorderBevyChapterTeam(order);
+  if (result.success) {
+    try {
+      revalidatePath("/dashboard/members");
+      revalidatePath("/dashboard/organizer");
+      revalidatePath("/dashboard/team");
     } catch (e) {
       console.debug("[revalidatePath] Cache revalidation skipped:", e);
     }
@@ -619,7 +648,7 @@ export async function createBevySpeakerPersonAction(
 export async function updateBevySpeakerPersonAction(
   personId: string | number,
   eventId: string | number,
-  person: Partial<{ first_name: string; last_name: string; title: string; bio?: string; picture?: string }>,
+  person: Partial<BevyPersonInput>,
 ) {
   if (!(await isAuthorizedOrganizerSession())) {
     return { success: false, error: "Unauthorized: Organizer privileges required" };
@@ -643,4 +672,110 @@ export async function getBevySpeakerPersonAction(personId: string | number, even
  */
 export async function searchBevyPersonsAction(query: string, limit = 10) {
   return await searchBevyPersons(query, limit);
+}
+
+/**
+ * Server action to fetch single event details directly from Bevy API,
+ * extracting title, tags, description, dates, and venue for featured event synchronization.
+ */
+export async function fetchBevyEventDetailForSpotlightAction(eventId: string | number) {
+  try {
+    const { getBevyEventById } = await import("@/lib/bevy/client");
+    const event = await getBevyEventById(eventId);
+    if (!event) {
+      return { success: false, error: "Event not found" };
+    }
+
+    // Clean description: strip HTML tags if present
+    const rawDesc = event.description || event.description_short || "";
+    const cleanDesc = rawDesc
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Extract tags
+    const tags = Array.isArray(event.tags) ? event.tags.map((t) => String(t).trim()).filter(Boolean) : [];
+
+    // Format start/end date and time
+    let formattedDate = "";
+    let formattedHours = "";
+    if (event.start_date) {
+      try {
+        const { format, parseISO } = await import("date-fns");
+        const parsedStart = parseISO(event.start_date);
+        formattedDate = format(parsedStart, "EEE, d MMM yyyy");
+        const startTime = format(parsedStart, "HH:mm");
+        if (event.end_date) {
+          const parsedEnd = parseISO(event.end_date);
+          const endTime = format(parsedEnd, "HH:mm");
+          formattedHours = `${startTime} - ${endTime} WIB`;
+        } else {
+          formattedHours = `${startTime} WIB`;
+        }
+      } catch {
+        formattedDate = event.start_date;
+      }
+    }
+
+    return {
+      success: true,
+      data: {
+        id: String(event.id),
+        title: event.title || "",
+        description: cleanDesc,
+        tags,
+        startDate: event.start_date || "",
+        endDate: event.end_date || "",
+        formattedDate,
+        formattedHours,
+        venueName: event.venue_name || "",
+        venueAddress: event.venue_address || "",
+        isVirtual: Boolean(event.is_virtual_event),
+        url: event.url || event.static_url || "",
+        totalCapacity: event.total_capacity || 0,
+        totalAttendees: event.total_attendees || 0,
+      },
+    };
+  } catch (error) {
+    console.error("[fetchBevyEventDetailForSpotlightAction] error:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to fetch event detail",
+    };
+  }
+}
+
+export async function fetchBevyChapterLiveMetricsAction() {
+  const { getBevyChapterSlim, getBevyChapterEvents, getBevyChapterTeams } = await import("@/lib/bevy/client");
+
+  const [slim, events, teams] = await Promise.all([
+    getBevyChapterSlim().catch(() => null),
+    getBevyChapterEvents(undefined, 1, 1, false, "Published").catch(() => null),
+    getBevyChapterTeams().catch(() => []),
+  ]);
+
+  const membersCount = slim?.members_count ?? 17878;
+  const eventsCount = events?.count ?? 121;
+  const visibleTeamCount = Array.isArray(teams) ? teams.filter((t) => t.visible !== false).length : 11;
+
+  // Format numbers nicely, e.g. 17878 -> "17.8K+"
+  const formatMembers = (num: number) => {
+    if (num >= 1000) {
+      const k = (num / 1000).toFixed(1).replace(/\.0$/, "");
+      return `${k}K+`;
+    }
+    return `${num}+`;
+  };
+
+  return {
+    success: true,
+    data: {
+      rawMembersCount: membersCount,
+      rawEventsCount: eventsCount,
+      rawTeamCount: visibleTeamCount,
+      formattedMembers: formatMembers(membersCount),
+      formattedEvents: `${eventsCount}+`,
+      formattedTeam: `${visibleTeamCount}+`,
+    },
+  };
 }

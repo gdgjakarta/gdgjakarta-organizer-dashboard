@@ -52,6 +52,7 @@ export interface PartnershipStat {
   id: string;
   label: string;
   value: string;
+  autoSyncMetric?: "members" | "events" | "team" | "none";
 }
 
 export interface PartnershipHeroConfig {
@@ -70,6 +71,8 @@ export interface PartnershipWhyUsItem {
   badge: string;
   iconName: string;
   isActive?: boolean;
+  actionText?: string;
+  actionUrl?: string;
 }
 
 export interface PartnershipDevfestHighlight {
@@ -79,11 +82,13 @@ export interface PartnershipDevfestHighlight {
 }
 
 export interface PartnershipDevfestConfig {
+  eventId?: string;
   badge: string;
   title: string;
   description: string;
   highlights: PartnershipDevfestHighlight[];
   tracks: string[];
+  visible?: boolean;
 }
 
 export type PartnershipFeaturedEventHighlight = PartnershipDevfestHighlight;

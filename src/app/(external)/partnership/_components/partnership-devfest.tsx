@@ -1,15 +1,52 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { Bot, Cpu, Sparkles, Users } from "lucide-react";
 
 import { usePartnershipContent } from "@/lib/content/hooks";
+import { type EventTokenContext, resolveEventTokens } from "@/lib/content/token-resolver";
+import { fetchBevyEventDetailForSpotlightAction } from "@/server/bevy-actions";
 
 export function PartnershipDevfest() {
   const { content } = usePartnershipContent();
   const { devfest } = content;
+  const [eventContext, setEventContext] = useState<EventTokenContext | undefined>(undefined);
+
+  useEffect(() => {
+    if (!devfest.eventId) {
+      setEventContext(undefined);
+      return;
+    }
+    let isCancelled = false;
+    fetchBevyEventDetailForSpotlightAction(devfest.eventId)
+      .then((res) => {
+        if (!isCancelled && res.success && res.data) {
+          setEventContext({
+            title: res.data.title,
+            formattedDate: res.data.formattedDate,
+            formattedHours: res.data.formattedHours,
+            venueName: res.data.venueName,
+            venueAddress: res.data.venueAddress,
+            totalCapacity: res.data.totalCapacity,
+            totalAttendees: res.data.totalAttendees,
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn("[PartnershipDevfest] Failed to fetch spotlight event details:", err);
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [devfest.eventId]);
+
+  if (devfest.visible === false) {
+    return null;
+  }
 
   return (
-    <section className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+    <section id="featured-event" className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
       <div
         className="relative overflow-hidden rounded-[2.5rem] border p-8 sm:p-12 lg:p-16 shadow-xl"
         style={{
@@ -56,9 +93,11 @@ export function PartnershipDevfest() {
                 <div key={h.id || i} className="rounded-xl border bg-background/80 p-4 backdrop-blur-xs">
                   <div className="flex items-center gap-2.5 font-bold text-foreground text-sm">
                     <Cpu className="size-4 text-[var(--theme-primary)]" />
-                    <span>{h.value}</span>
+                    <span>{resolveEventTokens(h.value, eventContext)}</span>
                   </div>
-                  <p className="mt-1 text-muted-foreground text-xs leading-relaxed">{h.label}</p>
+                  <p className="mt-1 text-muted-foreground text-xs leading-relaxed">
+                    {resolveEventTokens(h.label, eventContext)}
+                  </p>
                 </div>
               ))}
             </div>

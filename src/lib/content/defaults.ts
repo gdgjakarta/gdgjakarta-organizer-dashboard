@@ -198,6 +198,8 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
       badge: "Direct Reach",
       description:
         "Jakarta is the vibrant heartbeat of Southeast Asian tech. Partnering with GDG Jakarta connects your brand directly with 15.6K+ developers, tech leads, system architects, and startup founders actively building Indonesia's digital products.",
+      actionText: "Explore Community Reach",
+      actionUrl: "#tiers",
     },
     {
       id: "why-2",
@@ -206,6 +208,8 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
       badge: "Beyond AI Hype",
       description:
         "We move beyond passive prompt tutorials. GDG Jakarta provides an authentic technical platform focused on architectural judgment, code quality, engineering trade-offs, and scaling systems in an AI-first era.",
+      actionText: "View Conference Sessions",
+      actionUrl: "#featured-event",
     },
     {
       id: "why-3",
@@ -214,6 +218,8 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
       badge: "Real Adoption",
       description:
         "Move beyond passive marketing. Our collaboration formats include silent headphone codelabs, live architecture teardowns, gamified venue challenges, and production deployment tracks that drive actual tool adoption.",
+      actionText: "See Collaboration Formats",
+      actionUrl: "#formats",
     },
     {
       id: "why-4",
@@ -222,6 +228,8 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
       badge: "Talent Pipeline",
       description:
         "With 53.6% engineering density and a core focus on practitioners with >2 years of experience, connect directly with senior software engineers, system architects, and engineering managers ready for complex challenges.",
+      actionText: "Explore Talent Activations",
+      actionUrl: "#deliverables",
     },
     {
       id: "why-5",
@@ -230,6 +238,8 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
       badge: "High Standard",
       description:
         "As an official Google Developer Group chapter, we uphold world-class event production standards, transparent communication, vetted code-of-conduct compliance, and seamless execution with sponsor partners.",
+      actionText: "View Chapter Trust & Sponsors",
+      actionUrl: "#sponsors",
     },
     {
       id: "why-6",
@@ -238,6 +248,8 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
       badge: "Custom Activations",
       description:
         "Whether your goal is developer signups for an API, cloud infrastructure adoption, employer branding, or interactive booth activations, we craft partnership packages to maximize your specific ROI.",
+      actionText: "Request Custom Proposal",
+      actionUrl: "#inquiry",
     },
   ],
   devfest: {
@@ -376,8 +388,8 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
       title: "Tech Talent & Recruitment Pipeline",
       category: "Talent Acquisition",
       points: [
-        "Direct access to 1,500+ attendees with 53.6% engineering density and >2 YOE practitioner core focus",
-        "Promote engineering roles through hiring campaigns, career showcase booths, and talent lead collection",
+        "Engage with 1,500+ attendees (53.6% engineering density, >2 YOE practitioner focus) through opt-in information gathering and permission-based talent outreach",
+        "Promote engineering roles through hiring campaigns, career showcase booths, and talent lead collection with attendee consent",
         "Dedicated career lounge and internship showcase opportunities",
         "Direct engagement with student builders, senior engineers, and engineering managers",
       ],
@@ -469,15 +481,15 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
   faqs: [
     {
       id: "sp-faq-1",
-      question: "When and where will DevFest Jakarta 2026 take place?",
+      question: "When and where will {{event:title}} take place?",
       answer:
-        "DevFest Jakarta 2026 is scheduled for Sunday, 1 November 2026, from 09:00 to 18:00 WIB. The conference is a hybrid event expected to bring together 1,500+ participants, with TMII entrance tickets and event merchandise included for in-person attendees.",
+        "{{event:title}} is scheduled for {{event:date}}, from {{event:hours}} at {{event:venue}}. The conference is expected to bring together {{event:capacity}} participants, with venue entrance and event merchandise included for in-person attendees.",
     },
     {
       id: "sp-faq-2",
-      question: "What is Road to DevFest 2026 and how can brands participate?",
+      question: "What is Road to {{event:title}} and how can brands participate?",
       answer:
-        "Road to DevFest is a 4-stage workshop series taking place in October 2026 with 3–4 sessions (100 participants per session). The program guides builder teams from conceptualizing to shipping live to production and pitching to tech talent recruiters. Partners can co-host workshop sessions, provide cloud/API credits, or participate as talent judges.",
+        "Road to {{event:title}} is a multi-stage technical workshop series leading up to the main conference. The program guides builder teams from conceptualizing to shipping live to production and pitching to tech talent recruiters. Partners can co-host workshop sessions, provide cloud/API credits, or participate as talent mentors.",
     },
     {
       id: "sp-faq-3",
@@ -487,7 +499,7 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
     },
     {
       id: "sp-faq-4",
-      question: "How do we receive the full DevFest 2026 sponsorship proposal deck?",
+      question: "How do we receive the full {{event:title}} sponsorship proposal deck?",
       answer:
         "Simply send an email to hello@gdgjakarta.org or submit the quick inquiry form on this page. Our partnership team will respond within 24–48 hours with our complete deck, floor plan, and activation details.",
     },
@@ -495,7 +507,7 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
       id: "sp-faq-5",
       question: "Can we collaborate on custom developer activations or workshops?",
       answer:
-        "Yes! We welcome custom collaborations such as co-hosting Road to DevFest workshops, branded hackathons, and interactive demo sandboxes. Reach out to our team to discuss customized activations.",
+        "Yes! We welcome custom collaborations such as co-hosting technical workshops, branded hackathons, and interactive demo sandboxes. Reach out to our team to discuss customized activations.",
     },
     {
       id: "sp-faq-6",

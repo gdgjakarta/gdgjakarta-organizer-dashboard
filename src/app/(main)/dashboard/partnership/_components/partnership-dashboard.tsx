@@ -1,12 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
 
-import { ExternalLink, Eye, EyeOff, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { ExternalLink, Eye, EyeOff, GripVertical, Pencil, Plus, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
+import {
+  fetchFeaturedEventBevyListAction,
+  type PublishedEventOption,
+} from "@/app/(main)/dashboard/featured-event/_actions/fetch-bevy-events";
+import { BevyEventSelector } from "@/app/(main)/dashboard/featured-event/_components/bevy-event-selector";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,15 +36,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { UnsavedChangesDialog } from "@/components/unsaved-changes-dialog";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { usePartnershipContent } from "@/lib/content/hooks";
+import { type EventTokenContext, resolveEventTokens, resolveStatTokens } from "@/lib/content/token-resolver";
 import type { PartnershipFaq, PartnershipFormat, PartnershipTier } from "@/lib/content/types";
 import { cn } from "@/lib/utils";
+import { fetchBevyChapterLiveMetricsAction, fetchBevyEventDetailForSpotlightAction } from "@/server/bevy-actions";
 
 import { FormatDialog } from "./format-dialog";
 import { TierDialog } from "./tier-dialog";
 
-export function PartnershipDashboard() {
+interface PartnershipDashboardProps {
+  initialEvents?: PublishedEventOption[];
+}
+
+export function PartnershipDashboard({ initialEvents = [] }: PartnershipDashboardProps = {}) {
   const { content, setContent, hasChanges, discardChanges, saving, saveContent, resetToDefaults } =
     usePartnershipContent();
+
+  const [availableEvents, setAvailableEvents] = useState<PublishedEventOption[]>(initialEvents);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(false);
+  const [isSyncingEvent, setIsSyncingEvent] = useState(false);
+  const [spotlightEventContext, setSpotlightEventContext] = useState<EventTokenContext | undefined>(undefined);
 
   const {
     showPrompt: showUnsavedPrompt,
@@ -53,8 +71,157 @@ export function PartnershipDashboard() {
   });
 
   const [activeTab, setActiveTab] = useState("hero");
+  const heroDescRef = useRef<HTMLTextAreaElement>(null);
 
-  // Tier modal state
+  const insertTokenIntoHeroDesc = (tokenStr: string) => {
+    const textarea = heroDescRef.current;
+    const currentVal = content.hero.description || "";
+    if (!textarea) {
+      setContent({ ...content, hero: { ...content.hero, description: `${currentVal} ${tokenStr}`.trim() } });
+      return;
+    }
+    const start = textarea.selectionStart ?? currentVal.length;
+    const end = textarea.selectionEnd ?? currentVal.length;
+    const nextVal = currentVal.substring(0, start) + tokenStr + currentVal.substring(end);
+    setContent({ ...content, hero: { ...content.hero, description: nextVal } });
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + tokenStr.length, start + tokenStr.length);
+    }, 0);
+  };
+  // Fetch / refresh published Bevy events list if not pre-populated
+  const handleRefreshBevyEvents = async () => {
+    setIsLoadingEvents(true);
+    try {
+      const res = await fetchFeaturedEventBevyListAction();
+      if (res.success && res.events) {
+        setAvailableEvents(res.events);
+        toast.success("Bevy events updated", {
+          description: `Loaded ${res.events.length} events from Bevy.`,
+        });
+      }
+    } catch {
+      toast.error("Failed to load Bevy events");
+    } finally {
+      setIsLoadingEvents(false);
+    }
+  };
+
+  // Auto-populate featured event fields from selected Bevy event
+  const handleSelectFeaturedEvent = async (selected: PublishedEventOption | null) => {
+    if (!selected) {
+      setSpotlightEventContext(undefined);
+      setContent({
+        ...content,
+        devfest: {
+          ...content.devfest,
+          eventId: undefined,
+        },
+      });
+      toast.info("Cleared linked event", {
+        description: "Featured event spotlight is now in custom manual mode.",
+      });
+      return;
+    }
+
+    setIsSyncingEvent(true);
+    try {
+      const detailRes = await fetchBevyEventDetailForSpotlightAction(selected.id);
+      const detailData = detailRes.success ? detailRes.data : null;
+
+      if (detailData) {
+        setSpotlightEventContext({
+          title: detailData.title,
+          formattedDate: detailData.formattedDate,
+          formattedHours: detailData.formattedHours,
+          venueName: detailData.venueName,
+          venueAddress: detailData.venueAddress,
+          totalCapacity: detailData.totalCapacity,
+          totalAttendees: detailData.totalAttendees,
+        });
+      } else {
+        setSpotlightEventContext({
+          title: selected.title,
+          formattedDate: selected.formattedDate,
+          formattedHours: selected.formattedTime ? `${selected.formattedTime} WIB` : undefined,
+          venueName: selected.venueName,
+          venueAddress: selected.venueAddress,
+        });
+      }
+
+      const title = detailData?.title || selected.title || content.devfest.title;
+      const narrative = detailData?.description || selected.descriptionShort || content.devfest.description;
+      const tracks = detailData?.tags && detailData.tags.length > 0 ? detailData.tags : content.devfest.tracks;
+
+      // Update highlight date card if start date exists
+      const updatedHighlights = [...content.devfest.highlights];
+      if (selected.formattedDate && updatedHighlights.length > 1) {
+        updatedHighlights[1] = {
+          ...updatedHighlights[1],
+          value: selected.formattedDate,
+        };
+      }
+
+      setContent({
+        ...content,
+        devfest: {
+          ...content.devfest,
+          eventId: selected.id,
+          title,
+          description: narrative,
+          tracks,
+          highlights: updatedHighlights,
+        },
+      });
+
+      toast.success("Linked Bevy Event Data!", {
+        description: `Imported title, narrative, ${tracks.length} technology focus tracks from event tags, and dates.`,
+      });
+    } catch (err) {
+      console.error("[PartnershipDashboard] Failed to fetch full event detail:", err);
+      setContent({
+        ...content,
+        devfest: {
+          ...content.devfest,
+          eventId: selected.id,
+          title: selected.title || content.devfest.title,
+          description: selected.descriptionShort || content.devfest.description,
+        },
+      });
+      toast.warning("Imported basic event data", {
+        description: "Could not fetch full tags, but event title and narrative were linked.",
+      });
+    } finally {
+      setIsSyncingEvent(false);
+    }
+  };
+
+  // Auto-load event detail context when initial or loaded content has an eventId
+  useEffect(() => {
+    if (!content.devfest.eventId) return;
+    let isCancelled = false;
+    fetchBevyEventDetailForSpotlightAction(content.devfest.eventId)
+      .then((res) => {
+        if (!isCancelled && res.success && res.data) {
+          setSpotlightEventContext({
+            title: res.data.title,
+            formattedDate: res.data.formattedDate,
+            formattedHours: res.data.formattedHours,
+            venueName: res.data.venueName,
+            venueAddress: res.data.venueAddress,
+            totalCapacity: res.data.totalCapacity,
+            totalAttendees: res.data.totalAttendees,
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn("[PartnershipDashboard] Failed to fetch spotlight event details:", err);
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [content.devfest.eventId]);
+
   const [tierDialogOpen, setTierDialogOpen] = useState(false);
   const [editingTier, setEditingTier] = useState<PartnershipTier | null>(null);
   const [tierToDelete, setItemTierToDelete] = useState<PartnershipTier | null>(null);
@@ -231,17 +398,62 @@ export function PartnershipDashboard() {
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="hero-desc" className="text-xs">
-                    Lead Paragraph
-                  </Label>
+                <div className="space-y-2">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <Label htmlFor="hero-desc" className="text-xs">
+                      Lead Paragraph
+                    </Label>
+                    <span className="text-[11px] text-muted-foreground">
+                      Drag or click token chips to inject dynamic stat numbers
+                    </span>
+                  </div>
+
+                  {/* Draggable & Clickable Stat Tokens Bar */}
+                  <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-[var(--theme-border)] bg-muted/40 p-2">
+                    <span className="mr-1 font-medium text-[11px] text-muted-foreground">Tokens:</span>
+                    {content.hero.stats.map((stat, idx) => {
+                      const tokenString = `{{stat:${stat.id}}}`;
+                      return (
+                        <button
+                          key={stat.id || idx}
+                          type="button"
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("text/plain", tokenString);
+                            e.dataTransfer.effectAllowed = "copy";
+                          }}
+                          onClick={() => insertTokenIntoHeroDesc(tokenString)}
+                          title={`Drag into paragraph or click to insert at cursor (${tokenString} -> ${stat.value})`}
+                          className="inline-flex cursor-grab items-center gap-1 rounded-md border border-[var(--theme-border)] bg-background px-2 py-0.5 font-mono text-[11px] text-foreground shadow-xs transition-all hover:border-[var(--theme-primary)] hover:bg-muted active:cursor-grabbing active:scale-95"
+                        >
+                          <GripVertical className="size-3 text-muted-foreground" />
+                          <span className="font-semibold text-[var(--theme-primary)]">{stat.value}</span>
+                          <span className="text-muted-foreground">({stat.label})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   <Textarea
+                    ref={heroDescRef}
                     id="hero-desc"
                     rows={4}
                     value={content.hero.description}
                     onChange={(e) => setContent({ ...content, hero: { ...content.hero, description: e.target.value } })}
-                    placeholder="Connect your brand with over 10,000+ passionate software engineers..."
+                    placeholder="Connect your brand with over {{stat:stat-1}} passionate software engineers..."
                   />
+
+                  {/* Live Resolved Preview */}
+                  <div className="rounded-md border border-dashed border-[var(--theme-border)] bg-muted/20 p-2.5">
+                    <p className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wider">
+                      Live Preview (Resolved):
+                    </p>
+                    <p className="mt-1 text-foreground/90 text-xs leading-relaxed">
+                      {resolveStatTokens(content.hero.description, content.hero.stats) || (
+                        <span className="italic text-muted-foreground">No description entered</span>
+                      )}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -278,38 +490,153 @@ export function PartnershipDashboard() {
 
             {/* Metrics Pills */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Key Metrics & Social Proof Pills</CardTitle>
-                <CardDescription className="text-xs">
-                  Stats rendered as highlights underneath the hero section.
-                </CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <div>
+                  <CardTitle className="text-base">Key Metrics & Social Proof Pills</CardTitle>
+                  <CardDescription className="text-xs">
+                    Stats rendered as highlights underneath the hero section (Quota: max 6 items).
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const res = await fetchBevyChapterLiveMetricsAction();
+                        if (res.success && res.data) {
+                          const updated = content.hero.stats.map((s) => {
+                            if (
+                              s.autoSyncMetric === "members" ||
+                              s.id === "stat-1" ||
+                              s.label.toLowerCase().includes("member")
+                            ) {
+                              return { ...s, value: res.data.formattedMembers, autoSyncMetric: "members" as const };
+                            }
+                            if (
+                              s.autoSyncMetric === "events" ||
+                              s.id === "stat-3" ||
+                              s.label.toLowerCase().includes("activities")
+                            ) {
+                              return { ...s, value: res.data.formattedEvents, autoSyncMetric: "events" as const };
+                            }
+                            if (s.autoSyncMetric === "team" || s.label.toLowerCase().includes("organizer")) {
+                              return { ...s, value: res.data.formattedTeam, autoSyncMetric: "team" as const };
+                            }
+                            return s;
+                          });
+                          setContent({ ...content, hero: { ...content.hero, stats: updated } });
+                          toast.success("Updated with live Bevy stats!", {
+                            description: `Members: ${res.data.formattedMembers}, Activities: ${res.data.formattedEvents}`,
+                          });
+                        }
+                      } catch {
+                        toast.error("Failed to fetch live stats from Bevy");
+                      }
+                    }}
+                    className="h-8 gap-1.5 text-xs"
+                    title="Pull latest live numbers from Bevy"
+                  >
+                    <Sparkles className="size-3.5 text-amber-500" />
+                    <span>Sync Live Numbers</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={content.hero.stats.length >= 6}
+                    onClick={() => {
+                      if (content.hero.stats.length >= 6) {
+                        toast.warning("Quota reached: Maximum of 6 key metric pills allowed.");
+                        return;
+                      }
+                      const newStat = {
+                        id: `stat-${Date.now()}`,
+                        label: "New Metric",
+                        value: "100+",
+                        autoSyncMetric: "none" as const,
+                      };
+                      setContent({
+                        ...content,
+                        hero: { ...content.hero, stats: [...content.hero.stats, newStat] },
+                      });
+                    }}
+                    className="h-8 gap-1 text-xs"
+                  >
+                    <Plus className="size-3.5" />
+                    <span>Add Metric ({content.hero.stats.length}/6)</span>
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 {content.hero.stats.map((stat, idx) => (
-                  <div key={stat.id || idx} className="grid grid-cols-2 items-center gap-3 rounded-lg border p-3">
-                    <div className="space-y-1">
-                      <Label className="text-[11px] text-muted-foreground">Stat Value</Label>
-                      <Input
-                        value={stat.value}
-                        onChange={(e) => {
-                          const updated = [...content.hero.stats];
-                          updated[idx] = { ...stat, value: e.target.value };
-                          setContent({ ...content, hero: { ...content.hero, stats: updated } });
-                        }}
-                        className="h-8 font-semibold text-xs"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[11px] text-muted-foreground">Description Label</Label>
-                      <Input
-                        value={stat.label}
-                        onChange={(e) => {
-                          const updated = [...content.hero.stats];
-                          updated[idx] = { ...stat, label: e.target.value };
-                          setContent({ ...content, hero: { ...content.hero, stats: updated } });
-                        }}
-                        className="h-8 text-xs"
-                      />
+                  <div key={stat.id || idx} className="rounded-lg border p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <div className="space-y-1 sm:w-1/4">
+                        <Label className="text-[11px] text-muted-foreground">Stat Value (Override)</Label>
+                        <Input
+                          value={stat.value}
+                          onChange={(e) => {
+                            const updated = [...content.hero.stats];
+                            updated[idx] = { ...stat, value: e.target.value };
+                            setContent({ ...content, hero: { ...content.hero, stats: updated } });
+                          }}
+                          className="h-8 font-semibold text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1 sm:flex-1">
+                        <Label className="text-[11px] text-muted-foreground">Description Label</Label>
+                        <Input
+                          value={stat.label}
+                          onChange={(e) => {
+                            const updated = [...content.hero.stats];
+                            updated[idx] = { ...stat, label: e.target.value };
+                            setContent({ ...content, hero: { ...content.hero, stats: updated } });
+                          }}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1 sm:w-44">
+                        <Label className="text-[11px] text-muted-foreground">Live Source</Label>
+                        <Select
+                          value={stat.autoSyncMetric || "none"}
+                          onValueChange={(val) => {
+                            const updated = [...content.hero.stats];
+                            updated[idx] = { ...stat, autoSyncMetric: val as "members" | "events" | "team" | "none" };
+                            setContent({ ...content, hero: { ...content.hero, stats: updated } });
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Manual / Custom</SelectItem>
+                            <SelectItem value="members">Bevy Members</SelectItem>
+                            <SelectItem value="events">Bevy Activities</SelectItem>
+                            <SelectItem value="team">Bevy Team</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex shrink-0 items-center justify-end sm:pb-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          disabled={content.hero.stats.length <= 1}
+                          onClick={() => {
+                            if (content.hero.stats.length <= 1) {
+                              toast.warning("At least 1 key metric pill must remain.");
+                              return;
+                            }
+                            const updated = content.hero.stats.filter((_, i) => i !== idx);
+                            setContent({ ...content, hero: { ...content.hero, stats: updated } });
+                          }}
+                          className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          title="Remove metric item"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -539,13 +866,75 @@ export function PartnershipDashboard() {
         <TabsContent value="formats" className="space-y-6">
           {/* Featured Event Spotlight Editor */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Featured Event Spotlight</CardTitle>
-              <CardDescription className="text-xs">
-                The high-impact section highlighting featured event metrics and technology focus tracks.
-              </CardDescription>
+            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-base">Featured Event Spotlight</CardTitle>
+                  <Badge
+                    variant={content.devfest.visible !== false ? "default" : "outline"}
+                    className={cn(
+                      "text-[10px]",
+                      content.devfest.visible === false && "border-dashed text-muted-foreground",
+                    )}
+                  >
+                    {content.devfest.visible !== false ? "Visible" : "Hidden"}
+                  </Badge>
+                </div>
+                <CardDescription className="text-xs">
+                  Link an actual published Bevy event to auto-populate title, narrative, dates, and technology focus
+                  tracks from event tags, or override manually.
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-3 self-start sm:self-auto">
+                <div className="flex items-center gap-2 rounded-md border border-[var(--theme-border)] bg-muted/40 px-2.5 py-1">
+                  <span className="text-xs font-medium text-foreground">Visible on Page</span>
+                  <Switch
+                    checked={content.devfest.visible !== false}
+                    onCheckedChange={(checked) =>
+                      setContent({ ...content, devfest: { ...content.devfest, visible: checked } })
+                    }
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefreshBevyEvents}
+                  disabled={isLoadingEvents}
+                  className="h-8 gap-1.5 text-xs"
+                  title="Refresh Bevy events list"
+                >
+                  <RefreshCw className={cn("size-3.5", isLoadingEvents && "animate-spin")} />
+                  <span>Refresh Events</span>
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Bevy Event Linker Selector */}
+              <div className="space-y-1.5 rounded-lg border border-[var(--theme-border)] bg-muted/30 p-3">
+                <div className="flex items-center justify-between">
+                  <Label className="font-semibold text-xs text-foreground">
+                    Link Actual Published Event (Bevy API)
+                  </Label>
+                  {isSyncingEvent && (
+                    <span className="flex items-center gap-1 text-[11px] text-[var(--theme-primary)]">
+                      <RefreshCw className="size-3 animate-spin" />
+                      Syncing tags & narrative...
+                    </span>
+                  )}
+                </div>
+                <BevyEventSelector
+                  events={availableEvents}
+                  selectedEventId={content.devfest.eventId}
+                  onSelectEvent={handleSelectFeaturedEvent}
+                  isLoading={isLoadingEvents || isSyncingEvent}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Selecting an event automatically sets the title, narrative from description, and technology tracks
+                  from tags. You can freely edit or override any field below.
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="df-name" className="text-xs">
@@ -572,12 +961,15 @@ export function PartnershipDashboard() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="df-desc" className="text-xs">
-                  Event Narrative
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="df-desc" className="text-xs">
+                    Event Narrative (from event description, overridable)
+                  </Label>
+                  <span className="text-[11px] text-muted-foreground">Custom editorial override supported</span>
+                </div>
                 <Textarea
                   id="df-desc"
-                  rows={3}
+                  rows={4}
                   value={content.devfest.description}
                   onChange={(e) =>
                     setContent({ ...content, devfest: { ...content.devfest, description: e.target.value } })
@@ -587,9 +979,16 @@ export function PartnershipDashboard() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="df-tracks" className="text-xs">
-                  Event Technology Focus & Tracks (comma separated)
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="df-tracks" className="text-xs">
+                    Event Technology Focus & Tracks (comma separated, sourced from event tags)
+                  </Label>
+                  {content.devfest.tracks.length > 0 && (
+                    <span className="text-[11px] text-muted-foreground font-mono">
+                      {content.devfest.tracks.length} track(s)
+                    </span>
+                  )}
+                </div>
                 <Input
                   id="df-tracks"
                   value={content.devfest.tracks.join(", ")}
@@ -602,36 +1001,159 @@ export function PartnershipDashboard() {
                   }}
                   placeholder="Generative AI & ML, Cloud Architecture & DevOps, Modern Web, Android..."
                 />
+                {content.devfest.tracks.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {content.devfest.tracks.map((tag, i) => (
+                      <Badge key={i} variant="secondary" className="text-[10px] font-normal">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {/* Event Highlight Stats */}
-              <div className="border-t pt-3">
-                <Label className="font-semibold text-xs">Featured Event Highlight Cards</Label>
-                <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {content.devfest.highlights.map((h, idx) => (
-                    <div key={h.id || idx} className="space-y-1 rounded-lg border p-2.5">
-                      <Input
-                        value={h.value}
-                        onChange={(e) => {
-                          const updated = [...content.devfest.highlights];
-                          updated[idx] = { ...h, value: e.target.value };
-                          setContent({ ...content, devfest: { ...content.devfest, highlights: updated } });
-                        }}
-                        className="h-7 font-bold text-xs"
-                        placeholder="1,000+ In-Person"
-                      />
-                      <Input
-                        value={h.label}
-                        onChange={(e) => {
-                          const updated = [...content.devfest.highlights];
-                          updated[idx] = { ...h, label: e.target.value };
-                          setContent({ ...content, devfest: { ...content.devfest, highlights: updated } });
-                        }}
-                        className="h-6 text-[11px] text-muted-foreground"
-                        placeholder="Target Attendees"
-                      />
-                    </div>
+              {/* Event Highlight Cards */}
+              <div className="space-y-3 border-t pt-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <Label className="font-semibold text-xs">Featured Event Highlight Cards</Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Quota: 2 to 6 cards. Drag or type tokens like{" "}
+                      <code className="rounded bg-muted px-1 font-mono text-[10px]">{"{{event:date}}"}</code> or{" "}
+                      <code className="rounded bg-muted px-1 font-mono text-[10px]">{"{{event:hours}}"}</code> to stay
+                      up-to-date with event data.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={content.devfest.highlights.length >= 6}
+                    onClick={() => {
+                      if (content.devfest.highlights.length >= 6) {
+                        toast.warning("Maximum 6 highlight cards reached.");
+                        return;
+                      }
+                      const newId = `h-${Date.now()}`;
+                      const updated = [
+                        ...content.devfest.highlights,
+                        { id: newId, label: "New Metric", value: "Custom Value" },
+                      ];
+                      setContent({ ...content, devfest: { ...content.devfest, highlights: updated } });
+                    }}
+                    className="h-8 gap-1 text-xs self-start sm:self-auto"
+                  >
+                    <Plus className="size-3.5" />
+                    <span>Add Card</span>
+                    <span className="ml-1 text-[10px] text-muted-foreground font-mono">
+                      ({content.devfest.highlights.length}/6)
+                    </span>
+                  </Button>
+                </div>
+
+                {/* Draggable Event Data Tokens Panel */}
+                <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-[var(--theme-border)] bg-muted/40 p-2">
+                  <span className="mr-1 font-medium text-[11px] text-muted-foreground">Event Tokens:</span>
+                  {[
+                    {
+                      tag: "{{event:date}}",
+                      label: "Date",
+                      preview: spotlightEventContext?.formattedDate || "Sun, 1 Nov 2026",
+                    },
+                    {
+                      tag: "{{event:hours}}",
+                      label: "Hours",
+                      preview: spotlightEventContext?.formattedHours || "09:00 - 18:00 WIB",
+                    },
+                    {
+                      tag: "{{event:capacity}}",
+                      label: "Capacity",
+                      preview: spotlightEventContext?.totalCapacity
+                        ? `${spotlightEventContext.totalCapacity}+`
+                        : "1,500+",
+                    },
+                    {
+                      tag: "{{event:venue}}",
+                      label: "Venue",
+                      preview: spotlightEventContext?.venueName || "Jakarta, Indonesia",
+                    },
+                  ].map((tok, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", tok.tag);
+                        e.dataTransfer.effectAllowed = "copy";
+                      }}
+                      title={`Drag token ${tok.tag} into any card input. Resolves to: ${tok.preview}`}
+                      className="inline-flex cursor-grab items-center gap-1 rounded-md border border-[var(--theme-border)] bg-background px-2 py-0.5 font-mono text-[11px] text-foreground shadow-xs transition-all hover:border-[var(--theme-primary)] hover:bg-muted active:cursor-grabbing active:scale-95"
+                    >
+                      <GripVertical className="size-3 text-muted-foreground" />
+                      <span className="font-semibold text-[var(--theme-primary)]">{tok.tag}</span>
+                      <span className="text-muted-foreground">({tok.preview})</span>
+                    </button>
                   ))}
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {content.devfest.highlights.map((h, idx) => {
+                    const resolvedValue = resolveEventTokens(h.value, spotlightEventContext);
+                    const isTokenized = h.value.includes("{{");
+
+                    return (
+                      <div key={h.id || idx} className="relative space-y-1 rounded-lg border p-2.5 bg-card/60">
+                        <div className="flex items-center justify-between pb-0.5">
+                          <span className="text-[10px] font-mono text-muted-foreground">Card #{idx + 1}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (content.devfest.highlights.length <= 1) {
+                                toast.warning("At least 1 highlight card must remain.");
+                                return;
+                              }
+                              const updated = content.devfest.highlights.filter((_, i) => i !== idx);
+                              setContent({ ...content, devfest: { ...content.devfest, highlights: updated } });
+                            }}
+                            className="size-6 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            title="Remove highlight card"
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </div>
+
+                        <Input
+                          value={h.value}
+                          onChange={(e) => {
+                            const updated = [...content.devfest.highlights];
+                            updated[idx] = { ...h, value: e.target.value };
+                            setContent({ ...content, devfest: { ...content.devfest, highlights: updated } });
+                          }}
+                          className="h-7 font-bold text-xs"
+                          placeholder="e.g. {{event:date}} or 1,500+ Hybrid"
+                        />
+                        <Input
+                          value={h.label}
+                          onChange={(e) => {
+                            const updated = [...content.devfest.highlights];
+                            updated[idx] = { ...h, label: e.target.value };
+                            setContent({ ...content, devfest: { ...content.devfest, highlights: updated } });
+                          }}
+                          className="h-6 text-[11px] text-muted-foreground"
+                          placeholder="e.g. Conference Date"
+                        />
+
+                        {isTokenized && (
+                          <div className="pt-1 text-[10px] text-muted-foreground">
+                            <span>Preview: </span>
+                            <span className="font-semibold text-foreground">{resolvedValue}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </CardContent>
@@ -818,6 +1340,36 @@ export function PartnershipDashboard() {
                       className="bg-background text-xs leading-relaxed"
                       placeholder="Description"
                     />
+
+                    {/* Action Link Config */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border-t pt-2">
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground">Action Text</Label>
+                        <Input
+                          value={item.actionText || ""}
+                          onChange={(e) => {
+                            const updated = [...content.whyUs];
+                            updated[idx] = { ...item, actionText: e.target.value };
+                            setContent({ ...content, whyUs: updated });
+                          }}
+                          className="h-7 bg-background text-[11px]"
+                          placeholder="e.g. See collaboration formats"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px] text-muted-foreground">Action Target URL / Anchor</Label>
+                        <Input
+                          value={item.actionUrl || ""}
+                          onChange={(e) => {
+                            const updated = [...content.whyUs];
+                            updated[idx] = { ...item, actionUrl: e.target.value };
+                            setContent({ ...content, whyUs: updated });
+                          }}
+                          className="h-7 bg-background font-mono text-[11px]"
+                          placeholder="e.g. #formats, #tiers, or https://..."
+                        />
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1028,63 +1580,149 @@ export function PartnershipDashboard() {
 
             {/* Sponsor FAQs */}
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Sponsor Frequently Asked Questions</CardTitle>
-                <CardDescription className="text-xs">
-                  Questions displayed inside the accordion on the partnership page.
-                </CardDescription>
+              <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="text-base">Sponsor Frequently Asked Questions</CardTitle>
+                  <CardDescription className="text-xs">
+                    Questions displayed inside the accordion on the partnership page. Tokenized with event data.
+                  </CardDescription>
+                </div>
+                {content.devfest.eventId && (
+                  <Badge variant="outline" className="w-fit text-[11px] font-normal text-muted-foreground gap-1">
+                    <Sparkles className="size-3 text-amber-500" />
+                    Bound to {content.devfest.title || "Featured Event"}
+                  </Badge>
+                )}
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Event Tokens Chips for FAQ Authoring */}
+                <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-[var(--theme-border)] bg-muted/40 p-2">
+                  <span className="mr-1 font-medium text-[11px] text-muted-foreground">Available Event Tokens:</span>
+                  {[
+                    {
+                      token: "{{event:title}}",
+                      label: "Title",
+                      val: spotlightEventContext?.title || content.devfest.title || "DevFest Jakarta 2026",
+                    },
+                    {
+                      token: "{{event:date}}",
+                      label: "Date",
+                      val: spotlightEventContext?.formattedDate || "Sun, 1 Nov 2026",
+                    },
+                    {
+                      token: "{{event:hours}}",
+                      label: "Hours",
+                      val: spotlightEventContext?.formattedHours || "09:00 - 18:00 WIB",
+                    },
+                    {
+                      token: "{{event:venue}}",
+                      label: "Venue",
+                      val: spotlightEventContext?.venueName || "Jakarta, Indonesia",
+                    },
+                    {
+                      token: "{{event:capacity}}",
+                      label: "Capacity",
+                      val: spotlightEventContext?.totalCapacity ? `${spotlightEventContext.totalCapacity}+` : "1,500+",
+                    },
+                  ].map((item) => (
+                    <button
+                      key={item.token}
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(item.token);
+                        toast.success(`Copied ${item.token}`, {
+                          description: `Resolves to: "${item.val}"`,
+                        });
+                      }}
+                      title={`Click to copy token (${item.token} -> ${item.val})`}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--theme-border)] bg-background px-2 py-0.5 font-mono text-[11px] text-foreground shadow-xs transition-all hover:border-[var(--theme-primary)] hover:bg-muted active:scale-95"
+                    >
+                      <span className="font-semibold text-[var(--theme-primary)]">{item.token}</span>
+                      <span className="text-muted-foreground">({item.val})</span>
+                    </button>
+                  ))}
+                </div>
+
                 {/* List of Sponsor FAQs */}
-                <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
-                  {content.faqs.map((f, idx) => (
-                    <div key={f.id || idx} className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <Input
-                          value={f.question}
+                <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
+                  {content.faqs.map((f, idx) => {
+                    const previewQuestion = resolveEventTokens(
+                      f.question,
+                      spotlightEventContext || {
+                        title: content.devfest.title || "DevFest Jakarta 2026",
+                        formattedDate: "Sun, 1 Nov 2026",
+                        formattedHours: "09:00 - 18:00 WIB",
+                        venueName: "Jakarta, Indonesia",
+                        totalCapacity: "1,500+",
+                      },
+                    );
+                    const previewAnswer = resolveEventTokens(
+                      f.answer,
+                      spotlightEventContext || {
+                        title: content.devfest.title || "DevFest Jakarta 2026",
+                        formattedDate: "Sun, 1 Nov 2026",
+                        formattedHours: "09:00 - 18:00 WIB",
+                        venueName: "Jakarta, Indonesia",
+                        totalCapacity: "1,500+",
+                      },
+                    );
+
+                    return (
+                      <div key={f.id || idx} className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <Input
+                            value={f.question}
+                            onChange={(e) => {
+                              const updated = [...content.faqs];
+                              updated[idx] = { ...f, question: e.target.value };
+                              setContent({ ...content, faqs: updated });
+                            }}
+                            className="h-7 bg-background font-semibold text-xs"
+                            placeholder="Question with {{event:title}}..."
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 shrink-0 text-destructive"
+                            onClick={() => handleDeleteSponsorFaq(f.id)}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                        <Textarea
+                          value={f.answer}
                           onChange={(e) => {
                             const updated = [...content.faqs];
-                            updated[idx] = { ...f, question: e.target.value };
+                            updated[idx] = { ...f, answer: e.target.value };
                             setContent({ ...content, faqs: updated });
                           }}
-                          className="h-7 bg-background font-semibold text-xs"
-                          placeholder="Question..."
+                          rows={2}
+                          className="bg-background text-xs leading-relaxed"
+                          placeholder="Answer with {{event:date}}, {{event:hours}}, {{event:venue}}..."
                         />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 shrink-0 text-destructive"
-                          onClick={() => handleDeleteSponsorFaq(f.id)}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
+                        {(f.question.includes("{{") || f.answer.includes("{{")) && (
+                          <div className="rounded border border-dashed border-[var(--theme-border)] bg-muted/40 p-2 text-[11px] text-muted-foreground space-y-0.5">
+                            <p className="font-semibold text-foreground">Preview (Resolved):</p>
+                            <p className="font-medium text-foreground">{previewQuestion}</p>
+                            <p className="line-clamp-2 leading-relaxed">{previewAnswer}</p>
+                          </div>
+                        )}
                       </div>
-                      <Textarea
-                        value={f.answer}
-                        onChange={(e) => {
-                          const updated = [...content.faqs];
-                          updated[idx] = { ...f, answer: e.target.value };
-                          setContent({ ...content, faqs: updated });
-                        }}
-                        rows={2}
-                        className="bg-background text-xs leading-relaxed"
-                        placeholder="Answer..."
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Add new FAQ item */}
                 <div className="space-y-2 border-t pt-3">
                   <Label className="font-semibold text-xs">Add Sponsor Question</Label>
                   <Input
-                    placeholder="Question (e.g. Can you provide official invoices?)..."
+                    placeholder="Question (e.g. When and where will {{event:title}} take place?)..."
                     value={newFaqQuestion}
                     onChange={(e) => setNewFaqQuestion(e.target.value)}
                     className="h-8 text-xs"
                   />
                   <Textarea
-                    placeholder="Clear answer explaining terms, timelines, or procedures..."
+                    placeholder="Clear answer explaining terms, timelines, or procedures (supports {{event:date}}, {{event:venue}})..."
                     value={newFaqAnswer}
                     onChange={(e) => setNewFaqAnswer(e.target.value)}
                     rows={2}
