@@ -1676,7 +1676,7 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                               </div>
                             </TableCell>
                             <TableCell>
-                              {conf.bevy_synced ? (
+                              {conf.bevy_synced || conf.bevy_person_id ? (
                                 <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 dark:text-blue-400">
                                   Bevy #{conf.bevy_person_id}
                                 </Badge>
