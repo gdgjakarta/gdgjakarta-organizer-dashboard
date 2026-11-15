@@ -203,17 +203,19 @@ export async function getMappedRemoteConfigValue(
  * If not found in Remote Config, returns an empty string (no fallback).
  */
 export async function getBevyCookie(chapterId: string | number = DEFAULT_CHAPTER_ID): Promise<string> {
+  const envCookie = process.env.BEVY_COOKIE?.trim();
   const resolved = await getMappedRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_COOKIE, chapterId, "");
-  return resolved.trim();
+  return resolved.trim() || envCookie || "";
 }
 
 /**
  * Resolves the Bevy X-CSRFToken for a chapter from Remote Config (`cfg_bevy_x_csrftoken`).
- * If not found in Remote Config, returns an empty string (no fallback).
+ * Falls back to process.env.BEVY_CSRF_TOKEN if Remote Config value is not set.
  */
 export async function getBevyCsrfToken(chapterId: string | number = DEFAULT_CHAPTER_ID): Promise<string> {
+  const envCsrf = process.env.BEVY_CSRF_TOKEN?.trim();
   const resolved = await getMappedRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_X_CSRFTOKEN, chapterId, "");
-  return resolved.trim();
+  return resolved.trim() || envCsrf || "";
 }
 
 /**
@@ -223,14 +225,16 @@ export async function getBevyAuthCredentials(chapterId: string | number = DEFAUL
   cookie: string;
   csrfToken: string;
 }> {
+  const envCookie = process.env.BEVY_COOKIE?.trim() || "";
+  const envCsrf = process.env.BEVY_CSRF_TOKEN?.trim() || "";
   try {
     const rawCookie = await getRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_COOKIE);
     const rawCsrf = await getRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_X_CSRFTOKEN);
-    const cookie = parseMappedConfigValue(rawCookie, chapterId).trim();
-    const csrfToken = parseMappedConfigValue(rawCsrf, chapterId).trim();
+    const cookie = (parseMappedConfigValue(rawCookie, chapterId).trim() || envCookie);
+    const csrfToken = (parseMappedConfigValue(rawCsrf, chapterId).trim() || envCsrf);
     return { cookie, csrfToken };
   } catch {
-    return { cookie: "", csrfToken: "" };
+    return { cookie: envCookie, csrfToken: envCsrf };
   }
 }
 

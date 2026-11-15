@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.31] - 2026-11-15
+
+### Added
+- **Interactive Image Adjuster (`AdjustImageDialog`)**: Added macOS Preview-style dark frosted glass backdrop for transparent speaker avatars and 0.5x–3.0x zoom-out range.
+- **GDGoC / GDSC Ecosystem Role**: Added `"GDGoC / GDSC"` across speaker confirmation forms, dashboard Add/Edit speaker dialogs, and public event pages.
+
+### Improved
+- **Public Speaker Ecosystem Badges**: Assigned distinct color palettes per ecosystem (GDE = Amber, Googler = Blue, WTM = Emerald, GDGoC / GDSC = Cyan, GDG = Rose) and stacked badge pills vertically below speaker names.
+
+### Fixed
+- **Public Event Speaker Roster Sync**: Merged Firestore event presenters into Bevy public event tabs (`extractEventSpeakerGroups`, `getAllEventSpeakers`, `getTotalSpeakersCount`) so manually added speakers appear on live event pages with matching counts.
+- **Manual Speaker `confirmation_id` Linking**: Included `confirmation_id` when syncing `newSpeakerObj` in `addManualSpeakerConfirmationAction` so public ecosystem badges resolve directly from `event_speaker_confirmations`.
+
+---
+
+## [1.0.30] - 2026-11-15
+
+### Added
+- **Bevy `#ID` Badge**: Displayed Bevy person ID badge on speaker items when `bevy_person_id` is present.
+
+### Improved
+- **Unified Dietary Restrictions Selector**: Reused the same dietary restrictions checkbox/other component across both Add Speaker and Edit Speaker dialogs.
+
+---
+
 ## [1.0.29] - 2026-11-15
 
 ### Added

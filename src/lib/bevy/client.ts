@@ -110,7 +110,7 @@ export async function bevyFetchWithResponse<T>(
   const buildHeaders = (includeAuth: boolean) => ({
     Accept: "application/json; version=bevy.1.0",
     "User-Agent": "GDGJakartaDashboard/2.2 (compatible; CloudflareWorkers/1.0)",
-    ...(options.body ? { "Content-Type": "application/json" } : {}),
+    ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
     ...(includeAuth && csrfToken ? { "X-Csrftoken": csrfToken } : {}),
     ...(includeAuth && cookie ? { Cookie: cookie, "Auth-Type": "AUTHORIZED" } : {}),
     ...(BEVY_CONFIG.apiToken ? { Authorization: `Token ${BEVY_CONFIG.apiToken}` } : {}),
@@ -2232,6 +2232,7 @@ export async function createBevyPerson(
   }
 }
 
+
 /**
  * Updates a speaker/person in Bevy.
  * PATCH /api/person/{personId}/
@@ -2244,8 +2245,9 @@ export async function updateBevyPerson(
 ): Promise<{ success: boolean; data?: BevyPersonResponse | null; error?: string }> {
   try {
     const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
-    // Bevy PATCH /person/{id}/ returns 500 when picture is sent as a raw URL string
-    const { picture: _omittedPicture, ...safePerson } = person;
+    // Bevy PATCH /person/{id}/ returns 500 when picture is sent as a raw URL string; allow Bevy image objects
+    const safePerson =
+      typeof person.picture === "string" ? (({ picture: _, ...rest }) => rest)(person) : person;
     const response = await bevyFetchWithResponse<BevyPersonResponse>(
       `/person/${personId}/`,
       {
@@ -2272,6 +2274,7 @@ export async function updateBevyPerson(
     return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
   }
 }
+
 
 /**
  * Gets a speaker/person from Bevy.
@@ -2306,6 +2309,54 @@ export async function getBevyPerson(
     return { success: true, data: response.data };
   } catch (err) {
     return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
+  }
+}
+
+export interface BevyImageUploadResponse {
+  url?: string;
+  path?: string;
+  thumbnail_width?: number;
+  thumbnail_height?: number;
+  thumbnail_format?: string;
+  thumbnail_url?: string;
+  [key: string]: unknown;
+}
+
+export async function uploadBevyImage(
+  file: Blob,
+  eventId: string | number,
+  container = "events",
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: BevyImageUploadResponse | null; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const formData = new FormData();
+    formData.append("image", file, "blob");
+    formData.append("container", container);
+
+    const response = await bevyFetchWithResponse<BevyImageUploadResponse>(
+      `/image/`,
+      {
+        method: "POST",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/${eventId}/people/`,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: formData,
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!response.ok || !response.data) {
+      const errorMsg = extractApiMessage(response.data, `Failed to upload image to Bevy (HTTP ${response.status})`);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: response.data };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to upload image to Bevy.") };
   }
 }
 

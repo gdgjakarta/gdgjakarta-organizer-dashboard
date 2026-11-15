@@ -16,10 +16,54 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.31",
+    releaseDate: "2026-11-15",
+    title: "Speaker Ecosystem Badges, GDGoC/GDSC Role, Image Cropper & Public Roster Sync",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Added AdjustImageDialog with macOS Preview-style frosted glass backdrop for transparent avatars and 0.5x–3.0x zoom-out support.",
+      },
+      {
+        category: "Added",
+        text: "Added GDGoC / GDSC (Campus Chapter) as a Google Developer Ecosystem role across speaker confirmation forms, dashboard dialogs, and public event pages.",
+      },
+      {
+        category: "Improved",
+        text: "Styled public speaker ecosystem badges with distinct color palettes (GDE, Googler, WTM, GDG, GDGoC / GDSC) stacked vertically below speaker names.",
+      },
+      {
+        category: "Fixed",
+        text: "Merged Firestore event presenters into Bevy public event tabs so manually added speakers appear on live event pages with accurate speaker counts.",
+      },
+      {
+        category: "Fixed",
+        text: "Linked confirmation_id on manually added speakers in addManualSpeakerConfirmationAction so public ecosystem badges resolve directly from speaker confirmation records.",
+      },
+    ],
+  },
+  {
+    version: "1.0.30",
+    releaseDate: "2026-11-15",
+    title: "Speaker Bevy #ID Badge & Confirmation Details",
+    badge: "Update",
+    items: [
+      {
+        category: "Added",
+        text: "Displayed Bevy #ID badge on speaker items when bevy_person_id is present.",
+      },
+      {
+        category: "Improved",
+        text: "Unified dietary restrictions selector across Add Speaker and Edit Speaker dialogs.",
+      },
+    ],
+  },
+  {
     version: "1.0.29",
     releaseDate: "2026-11-15",
     title: "Partnership Dynamic Event Tokenizer, Bevy Binding & Sponsor FAQ Automation",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Added",

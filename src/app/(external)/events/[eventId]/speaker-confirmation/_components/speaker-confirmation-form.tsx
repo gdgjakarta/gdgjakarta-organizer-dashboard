@@ -70,7 +70,7 @@ interface SpeakerConfirmationFormProps {
   token: string;
 }
 
-const GOOGLE_ECOSYSTEM_CHOICES = ["GDG", "GDE", "WTM", "Googler", "None above"] as const;
+const GOOGLE_ECOSYSTEM_CHOICES = ["GDG", "GDE", "WTM", "Googler", "GDGoC / GDSC", "None above"] as const;
 type GoogleEcosystemChoice = (typeof GOOGLE_ECOSYSTEM_CHOICES)[number];
 
 const TALK_TYPES: { id: SpeakerTalkType; label: string; desc: string }[] = [
@@ -1634,21 +1634,27 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
               </div>
             )}
 
-            {(isFromGoogleEcosystem === "GDG" || isFromGoogleEcosystem === "WTM") && (
+            {(isFromGoogleEcosystem === "GDG" || isFromGoogleEcosystem === "WTM" || isFromGoogleEcosystem === "GDGoC / GDSC") && (
               <div className="mt-4 space-y-2 border-t pt-3">
                 <Label htmlFor="chapter_details" className="font-semibold text-xs">
-                  From which chapter?{" "}
+                  {isFromGoogleEcosystem === "GDGoC / GDSC" ? "From which GDGoC / GDSC Campus chapter?" : "From which chapter?"}{" "}
                   <span className="font-normal text-muted-foreground text-xs">(Optional, Displayed on Poster)</span>
                 </Label>
                 <Input
                   id="chapter_details"
-                  placeholder="e.g. GDG Jakarta, GDG Cloud Jakarta, WTM Jakarta"
+                  placeholder={
+                    isFromGoogleEcosystem === "GDGoC / GDSC"
+                      ? "e.g. GDGoC Universitas Indonesia, GDSC ITB"
+                      : "e.g. GDG Jakarta, GDG Cloud Jakarta, WTM Jakarta"
+                  }
                   value={ecosystemDetails ?? ""}
                   onChange={(e) => setEcosystemDetails(e.target.value)}
                   className="text-xs"
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Optional: If you are an organizer or lead in a GDG or Women Techmakers chapter.
+                  {isFromGoogleEcosystem === "GDGoC / GDSC"
+                    ? "Optional: If you are an organizer, lead, or core team member of a GDGoC or GDSC campus chapter."
+                    : "Optional: If you are an organizer or lead in a GDG or Women Techmakers chapter."}
                 </p>
               </div>
             )}

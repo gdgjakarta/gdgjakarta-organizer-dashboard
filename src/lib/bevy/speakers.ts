@@ -83,18 +83,68 @@ export function normalizeSpeaker(speaker: BevySpeaker, defaultRoleTitle?: string
 }
 
 /**
- * Extracts and groups all presenters from a Bevy event into categorized groups
+ * Extracts and groups all presenters from an event into categorized groups
  * (e.g. Speakers, Panelists, Moderators, etc.).
+ * When firestoreEvent is provided, merges newly added presenters from Firestore
+ * so any confirmed/added speakers not yet on Bevy immediately show on the public page.
  */
-export function extractEventSpeakerGroups(event: BevyEvent | null | undefined): BevySpeakerGroup[] {
-  if (!event) return [];
+export function extractEventSpeakerGroups(
+  event: BevyEvent | null | undefined,
+  firestoreEvent?: Partial<BevyEvent> | null,
+): BevySpeakerGroup[] {
+  if (!event && !firestoreEvent) return [];
 
   const groups: BevySpeakerGroup[] = [];
 
+  // Build lookup of names across other roles to avoid duplicating panelists/moderators into speakers
+  const otherRoleNames = new Set<string>();
   for (const role of SPEAKER_ROLES_CONFIG) {
-    const rawList = event[role.key as keyof BevyEvent];
-    if (Array.isArray(rawList) && rawList.length > 0) {
-      const normalizedSpeakers = (rawList as BevySpeaker[]).map((sp) => normalizeSpeaker(sp, role.title));
+    if (role.key === "speakers") continue;
+    const list = [
+      ...(Array.isArray(event?.[role.key as keyof BevyEvent]) ? (event![role.key as keyof BevyEvent] as BevySpeaker[]) : []),
+      ...(Array.isArray(firestoreEvent?.[role.key as keyof BevyEvent]) ? (firestoreEvent![role.key as keyof BevyEvent] as BevySpeaker[]) : []),
+    ];
+    for (const sp of list) {
+      const name = (sp.full_name || sp.first_name || "").trim().toLowerCase();
+      if (name) otherRoleNames.add(name);
+    }
+  }
+
+  for (const role of SPEAKER_ROLES_CONFIG) {
+    const bevyList = Array.isArray(event?.[role.key as keyof BevyEvent])
+      ? (event![role.key as keyof BevyEvent] as BevySpeaker[])
+      : [];
+    const fsList = Array.isArray(firestoreEvent?.[role.key as keyof BevyEvent])
+      ? (firestoreEvent![role.key as keyof BevyEvent] as BevySpeaker[])
+      : [];
+
+    const mergedList: BevySpeaker[] = [...bevyList];
+    const seenNames = new Set(
+      bevyList.map((s) => (s.full_name || s.first_name || "").trim().toLowerCase()).filter(Boolean),
+    );
+    const seenIds = new Set(
+      bevyList.map((s) => (s.id ? String(s.id) : "")).filter(Boolean),
+    );
+
+    for (const sp of fsList) {
+      const name = (sp.full_name || sp.first_name || "").trim().toLowerCase();
+      const idStr = sp.id ? String(sp.id) : "";
+
+      // For the generic "speakers" group, avoid adding people who belong to specialized roles (panelists/moderators)
+      if (role.key === "speakers" && name && otherRoleNames.has(name)) {
+        continue;
+      }
+
+      if (idStr && seenIds.has(idStr)) continue;
+      if (name && seenNames.has(name)) continue;
+
+      if (idStr) seenIds.add(idStr);
+      if (name) seenNames.add(name);
+      mergedList.push(sp);
+    }
+
+    if (mergedList.length > 0) {
+      const normalizedSpeakers = mergedList.map((sp) => normalizeSpeaker(sp, role.title));
       groups.push({
         type: role.key,
         title: role.title,
@@ -110,10 +160,13 @@ export function extractEventSpeakerGroups(event: BevyEvent | null | undefined): 
  * Gathers a deduplicated list of all presenters (speakers, panelists, etc.) from an event.
  * Useful for timeline agenda matching and slide deck bindings.
  */
-export function getAllEventSpeakers(event: BevyEvent | null | undefined): BevySpeaker[] {
-  if (!event) return [];
+export function getAllEventSpeakers(
+  event: BevyEvent | null | undefined,
+  firestoreEvent?: Partial<BevyEvent> | null,
+): BevySpeaker[] {
+  if (!event && !firestoreEvent) return [];
 
-  const groups = extractEventSpeakerGroups(event);
+  const groups = extractEventSpeakerGroups(event, firestoreEvent);
   const seenIds = new Set<string>();
   const all: BevySpeaker[] = [];
 
@@ -133,7 +186,10 @@ export function getAllEventSpeakers(event: BevyEvent | null | undefined): BevySp
 /**
  * Returns the total count of presenters across all speaker categories for an event.
  */
-export function getTotalSpeakersCount(event: BevyEvent | null | undefined): number {
-  if (!event) return 0;
-  return extractEventSpeakerGroups(event).reduce((sum, g) => sum + g.speakers.length, 0);
+export function getTotalSpeakersCount(
+  event: BevyEvent | null | undefined,
+  firestoreEvent?: Partial<BevyEvent> | null,
+): number {
+  if (!event && !firestoreEvent) return 0;
+  return extractEventSpeakerGroups(event, firestoreEvent).reduce((sum, g) => sum + g.speakers.length, 0);
 }

@@ -392,7 +392,7 @@ export const SPEAKER_SLIDE_TEMPLATE_PRESETS: Record<string, SpeakerSlideTemplate
   },
 };
 
-export type SpeakerEcosystemType = "GDG" | "GDE" | "WTM" | "Googler" | "None above" | string;
+export type SpeakerEcosystemType = "GDG" | "GDE" | "WTM" | "Googler" | "GDGoC / GDSC" | "None above" | string;
 
 export interface GdeExpertiseItem {
   pillar: "Cloud" | "AI" | "Web" | "Mobile";
@@ -548,7 +548,7 @@ export interface EventSpeakerConfirmation {
   linkedin_or_social_url?: string; // legacy fallback
   speaker_profile_url?: string; // Photo / Avatar (Displayed on Poster)
   google_ecosystem_or_technology?: string;
-  is_from_google_ecosystem?: "GDG" | "GDE" | "WTM" | "Googler" | "None above" | string;
+  is_from_google_ecosystem?: "GDG" | "GDE" | "WTM" | "Googler" | "GDGoC / GDSC" | "None above" | string;
   ecosystem_details?: string; // Chapter [GDG/WTM] or Expertise [GDE/Googler] (Displayed on Poster)
   talk_type: SpeakerTalkType;
   talk_title: string;
