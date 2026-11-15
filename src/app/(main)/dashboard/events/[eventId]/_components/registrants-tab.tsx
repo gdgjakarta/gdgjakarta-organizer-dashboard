@@ -129,6 +129,7 @@ import {
   requestDriveAccessToken,
   revokeVenueTicketAccessForItems,
 } from "@/lib/google-drive/venue-tickets";
+import { enqueueCheckInBadgeIfEnabled } from "@/lib/printers/checkin-auto-print";
 import { cn, getInitials } from "@/lib/utils";
 import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
 import {
@@ -2929,6 +2930,16 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
 
       setRegistrationsList((prev) => prev.map((r) => (r.id === registration.id ? updatedReg : r)));
       setInspectRegistration((prev) => (prev?.id === registration.id ? updatedReg : prev));
+
+      if (isCheckedIn) {
+        void enqueueCheckInBadgeIfEnabled({
+          eventId,
+          eventTitle: currentEvent?.title,
+          registration: updatedReg,
+          attendeeIdOverride: matchedBevyAttendee?.id ?? registration.bevy_attendee_id,
+          questions: currentEvent?.custom_questions,
+        });
+      }
 
       if (email && bevyAttendeesMap.has(email)) {
         const existingBevy = bevyAttendeesMap.get(email);

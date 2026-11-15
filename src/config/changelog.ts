@@ -16,10 +16,46 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.32",
+    releaseDate: "2026-11-15",
+    title: "Native macOS Print Station Menu Bar App, Notch Dynamic Island HUD & USB Auto-Print",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Built native Swift Menu Bar app (GDG Print Station.app v2.4.0) with Notch and Floating Dynamic Island HUD, replacing legacy Terminal SEA worker.",
+      },
+      {
+        category: "Added",
+        text: "Packaged signed DMG and ZIP releases on Cloudflare R2 with one-line Terminal install and Gatekeeper bypass script.",
+      },
+      {
+        category: "Added",
+        text: "Integrated background print station runner in dashboard layout for continuous printing across tab navigation and universal QR check-in auto-print.",
+      },
+      {
+        category: "Improved",
+        text: "Implemented dual-index station deduplication (hardware ID + normalized name/model) to eliminate duplicate online/offline Mac station entries.",
+      },
+      {
+        category: "Improved",
+        text: "Updated printer device copywriting and enabled word-wrapping on notch HUD to eliminate text truncation.",
+      },
+      {
+        category: "Fixed",
+        text: "Enforced physical USB presence checks before CUPS submission to prevent false successful prints when USB cables are unplugged.",
+      },
+      {
+        category: "Fixed",
+        text: "Fixed UI thread lock contention and force-close crashes when clicking refresh printers with USB devices unplugged.",
+      },
+    ],
+  },
+  {
     version: "1.0.31",
     releaseDate: "2026-11-15",
     title: "Speaker Ecosystem Badges, GDGoC/GDSC Role, Image Cropper & Public Roster Sync",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Added",

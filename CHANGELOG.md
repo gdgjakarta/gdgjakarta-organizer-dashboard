@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.32] - 2026-11-15
+
+### Added
+- **Native macOS Menu Bar App (`GDG Print Station.app` v2.4.0)**: Built native Swift Menu Bar app with Dynamic Island / Notch Live Activity HUD, replacing the Node.js SEA CLI worker. Includes 1-click test prints, live USB status, auto-fixing shared USB ports, and instant CUPS queue flushing.
+- **Direct macOS Disk Image (`GDG-Print-Station-macOS.dmg`)**: Packaged signed native application into DMG and ZIP distributions hosted on Cloudflare R2 with a 1-line quarantine-free installation script.
+- **Universal Check-in Auto-Print**: Wired real-time Firestore auto-print into QR Scanner and Registrants tab with deterministic deduplication across multiple stations and browser tabs.
+
+### Improved
+- **Dual-Index Print Station Deduplication**: Prevented duplicate Mac listings (Online + Offline) by indexing on both hardware UUID and normalized host name/model, automatically cleaning up stale offline records.
+- **Menu Bar & Station Copywriting**: Clarified device status by switching "queue(s)" references to "printer(s)" and enabling full word wrapping on Notch HUD banners to prevent text truncation.
+
+### Fixed
+- **Pre-Spool USB Connection Verification**: Verified physical USB presence before sending jobs to CUPS to prevent false success reports when USB cables are unplugged.
+- **Stuck CUPS Spool Job Cancellation**: Monitored spool transitions and automatically canceled unprinted jobs when printers are offline or unplugged.
+- **Refresh Crash Prevention**: Moved shell calls off the UI thread and outside locks when refreshing printer lists with all USB devices disconnected.
+
+---
+
 ## [1.0.31] - 2026-11-15
 
 ### Added

@@ -39,14 +39,14 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { BevyAttendee } from "@/lib/bevy/types";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import {
-  enqueuePrintJobAction,
-  fetchPrinterConfigAction,
   updateBreakoutSessionCheckInAction,
   updateRegistrationCheckInAction,
   updateRegistrationMerchandiseCollectionAction,
 } from "@/lib/firestore/actions";
+import { subscribePendingPrintQueue, subscribePrintStations } from "@/lib/firestore/client";
 import type { CustomQuestion, EventSession, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
-import { DEFAULT_LABEL_TEMPLATE, renderLabelTemplate } from "@/lib/printers/templates";
+import { enqueueCheckInBadgeIfEnabled } from "@/lib/printers/checkin-auto-print";
+import { isPrintStationOnline, type PrintStation } from "@/lib/printers/types";
 import { cn, getInitials } from "@/lib/utils";
 import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -346,6 +346,45 @@ export function QrCheckInScannerDialog({
       localStorage.setItem("gdg_auto_print_enabled", String(checked));
     }
   };
+
+  const [printStations, setPrintStations] = React.useState<PrintStation[]>([]);
+  const [pendingPrintJobsCount, setPendingPrintJobsCount] = React.useState(0);
+  const [printQueueError, setPrintQueueError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open || mode !== "event_checkin") return;
+    const unsubStations = subscribePrintStations(
+      (stations) => {
+        setPrintStations(stations);
+        setPrintQueueError(null);
+      },
+      (err) => setPrintQueueError(err.message),
+    );
+    const unsubPending = subscribePendingPrintQueue(
+      (jobs) => setPendingPrintJobsCount(jobs.length),
+      (err) => setPrintQueueError(err.message),
+    );
+    return () => {
+      unsubStations();
+      unsubPending();
+    };
+  }, [open, mode]);
+
+  const onlineTakingStations = React.useMemo(
+    () =>
+      printStations.filter(
+        (s) => s.station_running && s.worker_connected && isPrintStationOnline(s) && s.printers.length > 0,
+      ),
+    [printStations],
+  );
+  const totalOnlinePrinters = React.useMemo(
+    () =>
+      onlineTakingStations.reduce(
+        (sum, s) => sum + s.printers.filter((p) => p.available).length,
+        0,
+      ),
+    [onlineTakingStations],
+  );
 
   const [qrInput, setQrInput] = React.useState("");
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -933,87 +972,16 @@ export function QrCheckInScannerDialog({
               ...prev.slice(0, 19),
             ]);
 
-            // Auto-print badge if enabled and attendee has a valid attendee ID
+            // Auto-print badge if enabled (deterministic job ID + paper dimensions stored on job)
             if (autoPrintEnabled) {
-              void (async () => {
-                try {
-                  // Check event-level printer config first; fallback to system default printer config
-                  let eventPrinterCfg: Partial<import("@/lib/printers/types").PrinterConfig> | null = null;
-                  try {
-                    const { getFirestoreEventById } = await import("@/lib/firestore/client");
-                    const evDoc = await getFirestoreEventById(eventId);
-                    if (evDoc?.printer_config) {
-                      eventPrinterCfg = evDoc.printer_config;
-                    }
-                  } catch (e) {
-                    console.warn("[QR Scanner] Could not fetch event printer config:", e);
-                  }
-
-                  const cfgRes = await fetchPrinterConfigAction();
-                  const systemPrinterCfg = cfgRes.success && cfgRes.config ? cfgRes.config : null;
-
-                  // If event-level config explicitly disables printing, return
-                  if (eventPrinterCfg && eventPrinterCfg.enabled === false) return;
-                  if (!eventPrinterCfg && systemPrinterCfg && !systemPrinterCfg.enabled) return;
-
-                  const templateToUse =
-                    eventPrinterCfg?.template_html || systemPrinterCfg?.template_html || DEFAULT_LABEL_TEMPLATE;
-                  const finalAttendeeId = attendeeIdToUse || reg.bevy_attendee_id || reg.id;
-                  const resolvedRole = getRegistrantRole(reg, questions) || "Participant";
-                  const resolvedCompany = getRegistrantOrg(reg, questions) || "GDG Community";
-                  const resolvedTicketCode = reg.attendee_code || `#${finalAttendeeId}`;
-                  const resolvedTicketType =
-                    reg.ticket_type === "free"
-                      ? "Free RSVP"
-                      : reg.ticket_type === "commitment_fee"
-                        ? "Commitment Fee"
-                        : reg.ticket_type === "paid" || reg.ticket_price
-                          ? "Paid Pass"
-                          : "Paid Pass";
-                  const resolvedTicketName = reg.ticket_name || reg.ticket_tier || "Regular";
-                  const qrPayload = `${eventId}:${finalAttendeeId}`;
-                  const renderedHtml = renderLabelTemplate(templateToUse, {
-                    name: String(
-                      reg.member_name ||
-                        reg.answers?.full_name ||
-                        reg.answers?.["Full Name"] ||
-                        reg.answers?.Name ||
-                        reg.member_email ||
-                        "Attendee",
-                    ),
-                    email: reg.member_email || undefined,
-                    title: resolvedRole,
-                    company: resolvedCompany,
-                    ticketType: resolvedTicketType,
-                    ticketName: resolvedTicketName,
-                    sessionTrack:
-                      (reg.answers?.session_title as string) ||
-                      (reg.answers?.Session as string) ||
-                      (reg.answers?.session as string) ||
-                      undefined,
-                    eventTitle: eventTitle || `Event #${eventId}`,
-                    eventId,
-                    attendeeId: finalAttendeeId,
-                    ticketCode: resolvedTicketCode,
-                    attendeeCode: resolvedTicketCode,
-                    qrPayload,
-                    answers: reg.answers || {},
-                  });
-
-                  await enqueuePrintJobAction({
-                    event_id: String(eventId),
-                    attendee_id: finalAttendeeId,
-                    registration_id: reg.id,
-                    member_name: reg.member_name || reg.member_email || "Attendee",
-                    member_title: resolvedRole,
-                    member_company: resolvedCompany,
-                    qr_payload: qrPayload,
-                    rendered_html: renderedHtml,
-                  });
-                } catch (printErr) {
-                  console.warn("[QR Scanner] Auto-print queue error:", printErr);
-                }
-              })();
+              void enqueueCheckInBadgeIfEnabled({
+                eventId: String(eventId),
+                eventTitle,
+                registration: updated,
+                attendeeIdOverride: attendeeIdToUse,
+                questions,
+                forceAutoPrint: true,
+              });
             }
           }
 
@@ -1678,6 +1646,53 @@ export function QrCheckInScannerDialog({
                     </div>
                   )}
                 </div>
+
+                {/* Live Print Station & Queue Status Banner (`Weakness A`, `Weakness B`, `Weakness I`) */}
+                {mode === "event_checkin" && autoPrintEnabled && (
+                  <div
+                    className={cn(
+                      "flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3.5 py-2 text-xs",
+                      printQueueError
+                        ? "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+                        : onlineTakingStations.length > 0
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                          : "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Printer className="size-3.5 shrink-0" />
+                      {printQueueError ? (
+                        <span>
+                          <strong>Print Queue Error:</strong> {printQueueError}
+                        </span>
+                      ) : onlineTakingStations.length > 0 ? (
+                        <span>
+                          <strong>
+                            {onlineTakingStations.length}{" "}
+                            {onlineTakingStations.length === 1 ? "Print Station" : "Print Stations"} Online
+                          </strong>{" "}
+                          ({totalOnlinePrinters} {totalOnlinePrinters === 1 ? "printer" : "printers"} ready:{" "}
+                          {onlineTakingStations.map((s) => s.name).join(", ")})
+                        </span>
+                      ) : (
+                        <span>
+                          <strong>No Print Station Online:</strong> Scanned badges will queue in Firestore until a Mac
+                          opens <strong>GDG Print Station.app</strong> and clicks <strong>Start Print Station</strong>.
+                        </span>
+                      )}
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px]",
+                        pendingPrintJobsCount > 5 &&
+                          "border-amber-500/40 bg-amber-500/20 text-amber-800 dark:text-amber-200",
+                      )}
+                    >
+                      {pendingPrintJobsCount} waiting in queue
+                    </Badge>
+                  </div>
+                )}
               </>
             )}
 

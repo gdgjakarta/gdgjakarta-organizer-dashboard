@@ -5,6 +5,7 @@ import * as React from "react";
 import {
   Activity,
   AlertCircle,
+  AlertTriangle,
   Calendar,
   CheckCircle2,
   Clock,
@@ -40,7 +41,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { enqueuePrintJobAction, fetchEventRegistrationsAction, savePrinterConfigAction } from "@/lib/firestore/actions";
 import { retryPrintJob } from "@/lib/firestore/client";
 import type { FirestoreRegistration } from "@/lib/firestore/types";
-import { printViaWorker } from "@/lib/printers/local-worker";
+import { PRINT_STATION_APP_NAME, printViaWorker } from "@/lib/printers/local-worker";
 import {
   buildPrintDocument,
   DEFAULT_LABEL_TEMPLATE,
@@ -52,8 +53,10 @@ import {
   BROWSER_PRINTER_NAME,
   CLABEL_PAPER_PRESETS,
   isPrintStationOnline,
+  isWorkerVersionOutdated,
   type LabelTemplateData,
   MAX_PRINT_ATTEMPTS,
+  MIN_PRINT_WORKER_VERSION,
   type PrinterConfig,
   type PrintJob,
 } from "@/lib/printers/types";
@@ -63,7 +66,7 @@ import { InstallPrintWorkerDialog } from "./install-print-worker-dialog";
 import { LabelHtmlEditorPreview } from "./label-html-editor-preview";
 import { PrintStationsCard } from "./print-stations-card";
 import { PrintWorkerStatus } from "./print-worker-status";
-import { usePrintStation } from "./use-print-station";
+import { readPersistedStationRunning, usePrintStation, writePersistedStationRunning } from "./use-print-station";
 
 const CLIENT_EVENTS_CACHE_KEY = "gdg_email_published_events_cache_v1";
 const CLIENT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -132,8 +135,28 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
   const [config, setConfig] = React.useState<PrinterConfig>(() => normalizeConfig(initialConfig));
   const [savedConfig, setSavedConfig] = React.useState<PrinterConfig>(() => normalizeConfig(initialConfig));
   const [isSaving, setIsSaving] = React.useState(false);
-  const [isStationRunning, setIsStationRunning] = React.useState(false);
+  const [isStationRunning, setIsStationRunningState] = React.useState<boolean>(() => readPersistedStationRunning());
+  const [isSetupDialogOpen, setIsSetupDialogOpen] = React.useState(false);
   const [recentJobs, setRecentJobs] = React.useState<PrintJob[]>([]);
+
+  const setIsStationRunning = React.useCallback((next: boolean | ((prev: boolean) => boolean)) => {
+    setIsStationRunningState((prev) => {
+      const resolved = typeof next === "function" ? next(prev) : next;
+      writePersistedStationRunning(resolved);
+      return resolved;
+    });
+  }, []);
+
+  React.useEffect(() => {
+    setIsStationRunningState(readPersistedStationRunning());
+    const syncRunning = () => setIsStationRunningState(readPersistedStationRunning());
+    window.addEventListener("gdg-print-station-running-change", syncRunning);
+    window.addEventListener("storage", syncRunning);
+    return () => {
+      window.removeEventListener("gdg-print-station-running-change", syncRunning);
+      window.removeEventListener("storage", syncRunning);
+    };
+  }, []);
   const [selectedPreset, setSelectedPreset] = React.useState<string>(() => {
     const matched = CLABEL_PAPER_PRESETS.find(
       (p) =>
@@ -411,13 +434,19 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
 
           const img = iframeDoc.querySelector("img");
           const triggerPrint = () => {
-            try {
-              iframe.contentWindow?.focus();
-              iframe.contentWindow?.print();
-              setTimeout(() => resolve(), 600);
-            } catch (err) {
-              reject(err);
-            }
+            void (async () => {
+              try {
+                if (iframeDoc.fonts?.ready) {
+                  await Promise.race([iframeDoc.fonts.ready, new Promise((r) => setTimeout(r, 400))]);
+                }
+                await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+                setTimeout(() => resolve(), 600);
+              } catch (err) {
+                reject(err);
+              }
+            })();
           };
 
           if (img && !img.complete) {
@@ -434,8 +463,13 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
   );
 
   const buildDocument = React.useCallback(
-    (renderedBodyHtml: string) =>
-      buildPrintDocument(renderedBodyHtml, config.paper_width_mm, config.paper_height_mm, config.orientation),
+    (renderedBodyHtml: string, widthMm?: number, heightMm?: number, orientation?: "portrait" | "landscape") =>
+      buildPrintDocument(
+        renderedBodyHtml,
+        widthMm ?? config.paper_width_mm,
+        heightMm ?? config.paper_height_mm,
+        orientation ?? config.orientation,
+      ),
     [config.paper_width_mm, config.paper_height_mm, config.orientation],
   );
 
@@ -448,31 +482,42 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     isCheckingWorker,
     recheckWorker,
     stations,
+    queueError,
   } = usePrintStation({
     isStationRunning,
     userEmail: user?.email,
+    selectedEventId: selectedEvent?.id || config.selected_event_id,
     buildDocument,
     widthMm: config.paper_width_mm,
     heightMm: config.paper_height_mm,
+    orientation: config.orientation,
     printInBrowser,
     recentJobs,
   });
 
   // Prints right now on this laptop, outside the queue (test print while the station is off). Returns the printer used.
   const executeSilentPrint = React.useCallback(
-    async (renderedBodyHtml: string): Promise<string | null> => {
+    async (renderedBodyHtml: string, attendeeName?: string): Promise<string | null> => {
       if (workerHealthRef.current) {
         const result = await printViaWorker({
           html: buildDocument(renderedBodyHtml),
           widthMm: config.paper_width_mm,
           heightMm: config.paper_height_mm,
+          attendeeName: attendeeName || activeSampleData.name,
         });
         return result.printer;
       }
       await printInBrowser(renderedBodyHtml);
       return BROWSER_PRINTER_NAME;
     },
-    [workerHealthRef, buildDocument, printInBrowser, config.paper_width_mm, config.paper_height_mm],
+    [
+      workerHealthRef,
+      buildDocument,
+      printInBrowser,
+      config.paper_width_mm,
+      config.paper_height_mm,
+      activeSampleData.name,
+    ],
   );
 
   // Handle Preset Selection
@@ -581,6 +626,23 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     }
   };
 
+  const handleToggleStationRunning = React.useCallback(() => {
+    if (!isStationRunning && !workerHealth) {
+      toast.warning(`Open ${PRINT_STATION_APP_NAME} on this Mac first so badges print without browser dialogs.`);
+      setIsSetupDialogOpen(true);
+      return;
+    }
+    setIsStationRunning((prev) => {
+      const next = !prev;
+      if (next) {
+        toast.success(`Print Station started on ${stationName}.`);
+      } else {
+        toast.info("Print Station stopped on this laptop.");
+      }
+      return next;
+    });
+  }, [isStationRunning, workerHealth, stationName, setIsStationRunning]);
+
   // Run Test Print
   const handleTestPrint = async () => {
     try {
@@ -594,20 +656,26 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         member_company: activeSampleData.company,
         qr_payload: activeSampleData.qrPayload,
         rendered_html: renderedHtml,
+        paper_width_mm: config.paper_width_mm,
+        paper_height_mm: config.paper_height_mm,
+        orientation: config.orientation,
       };
 
       if (isStationRunning) {
         // This laptop takes jobs, so the queue hands the test label to whichever printer is idle.
-        const res = await enqueuePrintJobAction(jobPayload);
+        const res = await enqueuePrintJobAction(jobPayload, { forceNewJob: true });
         if (!res.success) throw new Error(res.error || "Could not queue the test print.");
         toast.success("Test print queued.");
         return;
       }
 
       // Station is off here: print directly on this laptop and log it as already printed.
-      const printedOn = await executeSilentPrint(renderedHtml);
+      const printedOn = await executeSilentPrint(renderedHtml, activeSampleData.name);
       if (stationId) {
-        await enqueuePrintJobAction(jobPayload, { printedBy: { stationId, stationName, printer: printedOn } });
+        await enqueuePrintJobAction(jobPayload, {
+          printedBy: { stationId, stationName, printer: printedOn },
+          forceNewJob: true,
+        });
       }
       toast.success(`Test print sent to ${printedOn ?? "the default printer"}.`);
     } catch (err) {
@@ -619,16 +687,22 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
 
   // Reprint = a fresh job in the queue, so it gets assigned to a printer and logged like any other.
   const handleReprint = async (job: PrintJob) => {
-    const res = await enqueuePrintJobAction({
-      event_id: job.event_id,
-      attendee_id: job.attendee_id,
-      registration_id: job.registration_id,
-      member_name: job.member_name,
-      member_title: job.member_title,
-      member_company: job.member_company,
-      qr_payload: job.qr_payload,
-      rendered_html: job.rendered_html,
-    });
+    const res = await enqueuePrintJobAction(
+      {
+        event_id: job.event_id,
+        attendee_id: job.attendee_id,
+        registration_id: job.registration_id,
+        member_name: job.member_name,
+        member_title: job.member_title,
+        member_company: job.member_company,
+        qr_payload: job.qr_payload,
+        rendered_html: job.rendered_html,
+        paper_width_mm: job.paper_width_mm ?? config.paper_width_mm,
+        paper_height_mm: job.paper_height_mm ?? config.paper_height_mm,
+        orientation: job.orientation ?? config.orientation,
+      },
+      { forceNewJob: true },
+    );
     if (!res.success) {
       toast.error(res.error || "Could not queue the reprint.");
       return;
@@ -671,8 +745,8 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         <div className="space-y-1">
           <div className="font-semibold text-3xl text-foreground tracking-tight">Thermal Printers & Label Station</div>
           <p className="text-muted-foreground text-sm">
-            Configure Clabel 221B badge roll dimensions, customize label templates, and run the automated kiosk print
-            listener.
+            Configure Clabel 221B badge roll dimensions, customize label templates, and run the automated print station
+            with <strong>{PRINT_STATION_APP_NAME}</strong>.
           </p>
         </div>
 
@@ -681,14 +755,20 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
             health={workerHealth}
             isChecking={isCheckingWorker}
             onRecheck={() => void recheckWorker()}
+            onOpenSetupGuide={() => setIsSetupDialogOpen(true)}
           />
 
-          <InstallPrintWorkerDialog health={workerHealth} onRecheck={() => void recheckWorker()} />
+          <InstallPrintWorkerDialog
+            health={workerHealth}
+            onRecheck={() => void recheckWorker()}
+            open={isSetupDialogOpen}
+            onOpenChange={setIsSetupDialogOpen}
+          />
 
           <Button
             size="sm"
-            variant={isStationRunning ? "destructive" : "outline"}
-            onClick={() => setIsStationRunning((prev) => !prev)}
+            variant={isStationRunning ? "destructive" : workerHealth ? "default" : "outline"}
+            onClick={handleToggleStationRunning}
             className="gap-1.5"
           >
             {isStationRunning ? (
@@ -710,6 +790,52 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
           </Button>
         </div>
       </div>
+
+      {/* Diagnostic / Permission / Worker Disconnected Banners */}
+      {queueError && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3.5 py-2.5 text-rose-700 text-xs dark:text-rose-300">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
+          <div className="space-y-0.5">
+            <div className="font-semibold">Print Queue Access Error</div>
+            <div>{queueError}</div>
+          </div>
+        </div>
+      )}
+
+      {isStationRunning && !workerHealth && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 py-2.5 text-amber-800 text-xs dark:text-amber-300">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span>
+              <strong>{PRINT_STATION_APP_NAME} is not responding on port 17777.</strong> Queue claiming is paused on
+              this laptop so badges don&apos;t pop up browser print dialogs. Open {PRINT_STATION_APP_NAME} from your
+              Menu Bar or Applications folder to resume.
+            </span>
+          </div>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setIsSetupDialogOpen(true)}>
+            Setup &amp; Launch Guide
+          </Button>
+        </div>
+      )}
+
+      {workerHealth && isWorkerVersionOutdated(workerHealth.version) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 py-2.5 text-amber-800 text-xs dark:text-amber-300">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span>
+              <strong>Legacy Print Worker v{workerHealth.version} detected.</strong> Upgrade to{" "}
+              <strong>
+                {PRINT_STATION_APP_NAME} v{MIN_PRINT_WORKER_VERSION}
+              </strong>{" "}
+              for zero-Terminal Menu Bar controls, Notch Dynamic Island live print status, and dual-printer hardware
+              deduplication.
+            </span>
+          </div>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setIsSetupDialogOpen(true)}>
+            Upgrade to Menu Bar App
+          </Button>
+        </div>
+      )}
 
       {/* KPI Summary Cards (matches /dashboard/organizer GDGKpiCards) */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -740,8 +866,12 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
             </div>
             <div className="mt-2 text-right text-muted-foreground text-xs">
               {isStationRunning
-                ? `Taking jobs as ${stationName}`
-                : "Click Start Print Station to take jobs on this laptop"}
+                ? workerHealth
+                  ? `Taking jobs as ${stationName} (${workerHealth.printers.length} ${workerHealth.printers.length === 1 ? "printer" : "printers"})`
+                  : `Waiting for ${PRINT_STATION_APP_NAME} on this Mac`
+                : workerHealth
+                  ? `${PRINT_STATION_APP_NAME} ready — click Start Print Station`
+                  : `Launch ${PRINT_STATION_APP_NAME} & click Start Print Station`}
             </div>
           </CardContent>
         </Card>
@@ -1158,22 +1288,25 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
 
               <div className="space-y-2 rounded-lg border border-primary/40 p-4 md:col-span-2">
                 <div className="font-semibold text-foreground text-sm">
-                  3. Install the Local Print Worker (Recommended, macOS Apple Silicon)
+                  3. Install &amp; Launch {PRINT_STATION_APP_NAME} (Recommended, Native macOS Menu Bar App)
                 </div>
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  A tiny background app on the check-in Mac prints badges straight to your Clabel printers, so no
-                  browser print dialog ever appears. Click <strong>Preparation &amp; Config</strong> at the top of this
-                  page: follow the setup guide to configure the printers and run the worker. The <strong>Worker</strong>{" "}
-                  indicator turns green once it is running. Keep this page open with{" "}
-                  <strong>Start Print Station</strong> on.
+                  <strong>{PRINT_STATION_APP_NAME}</strong> lives in your macOS Menu Bar and renders badges natively via
+                  macOS WebKit PDF straight to your Clabel USB printers—no Terminal window needs to stay open, no Chrome
+                  binary is required, and no browser print dialog ever appears. Click{" "}
+                  <strong>Preparation &amp; Config</strong> at the top of this page to clean up any legacy Terminal
+                  worker, download <strong>{PRINT_STATION_APP_NAME}</strong>, and verify your printers. Once the{" "}
+                  <strong>Print Station App: Connected</strong> pill turns green, click{" "}
+                  <strong>Start Print Station</strong>.
                 </p>
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  With several printers selected during setup, badges print in parallel: every queued label is assigned
-                  to one free printer and the Print Queue shows which laptop and printer printed it. Several laptops can
-                  run a station at the same time (each one opens this page and clicks{" "}
-                  <strong>Start Print Station</strong>); a label is only ever printed by one of them. The worker does
-                  not auto-start: keep its Terminal window open while printing and press <strong>Ctrl+C</strong> there
-                  to stop it. Chrome may ask once to allow local network access; choose <strong>Allow</strong>.
+                  <strong>One Laptop, 2+ Parallel Printers (Zero Duplicate Prints):</strong> When two Clabel printers
+                  are connected to one Mac, each printer receives its own independent queue slot and claims jobs in
+                  parallel. Whenever a badge starts printing, a live <strong>Dynamic Island HUD</strong> expands from
+                  the top-center MacBook notch (or manifests as a floating top-centered Dynamic Island pill on iMac, Mac
+                  mini, Mac Studio, or external monitors) showing the attendee name and assigned printer. Works across{" "}
+                  <strong>Safari</strong>, <strong>Chrome</strong>, <strong>Brave</strong>, <strong>Edge</strong>, and{" "}
+                  <strong>Arc</strong>, and keeps running across all dashboard tabs.
                 </p>
               </div>
 

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import type { Metadata } from "next";
 
 import { AppSidebar } from "@/app/(main)/dashboard/_components/sidebar/app-sidebar";
+import { PrintStationGlobalRunner } from "@/app/(main)/dashboard/printers/_components/print-station-provider";
 import { WhatsNewAutoTrigger } from "@/components/changelog/whats-new-auto-trigger";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -88,6 +89,7 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
           {children}
         </div>
         <WhatsNewAutoTrigger />
+        <PrintStationGlobalRunner />
       </SidebarInset>
     </SidebarProvider>
   );

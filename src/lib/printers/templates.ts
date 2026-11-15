@@ -39,15 +39,18 @@ export function buildLabelCoreCss(
         print-color-adjust: exact;
       }
 
+      html,
       body {
         margin: 0;
+        padding: 0;
         width: ${widthMm}mm;
         height: ${heightMm}mm;
         overflow: hidden;
-        font-family: 'Google Sans', 'Google Sans Flex', Arial, sans-serif;
+        font-family: 'Google Sans', 'Google Sans Flex', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
         font-weight: 400;
         background-color: #ffffff;
         color: #000000;
+        -webkit-font-smoothing: antialiased;
       }
 
       .ticket-badge {
@@ -187,6 +190,8 @@ export function buildLabelCoreCss(
         height: 100%;
         display: block;
         shape-rendering: crispEdges;
+        image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
         image-rendering: pixelated;
       }`;
 }

@@ -5947,14 +5947,29 @@ export type PrintJobOutcome =
   /** `retryElsewhere` is true when another online printer could still take the job. */
   | { ok: false; error: string; retryElsewhere: boolean };
 
+export interface EnqueuePrintJobOptions {
+  printedBy?: PrintJobClaimant;
+  /**
+   * Optional deterministic job ID (e.g. `job_${eventId}_${registrationId}`).
+   * When set (and `forceNewJob` is not true), if a job with this ID already exists and is `pending`, `printing`,
+   * or `completed`, it will not be overwritten or duplicated.
+   */
+  deterministicId?: string;
+  forceNewJob?: boolean;
+}
+
 export async function enqueuePrintJob(
   jobData: Omit<PrintJob, "id" | "status" | "created_at">,
-  options?: { printedBy?: PrintJobClaimant },
+  options?: EnqueuePrintJobOptions,
 ): Promise<string> {
   if (typeof window === "undefined") return "";
   await waitForAuthReady();
   const now = new Date().toISOString();
-  const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const useDeterministic = Boolean(options?.deterministicId && !options?.forceNewJob && !options?.printedBy);
+  const jobId = useDeterministic
+    ? (options?.deterministicId as string).replace(/[^a-zA-Z0-9_-]/g, "_")
+    : `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
   // A job that was already printed directly (test print) is logged as completed so no station picks it up.
   const printedBy = options?.printedBy;
   const newJob = sanitizeFirestoreData<PrintJob>({
@@ -5972,7 +5987,28 @@ export async function enqueuePrintJob(
         }
       : {}),
   });
-  await setDoc(doc(db, PRINT_JOBS_COLLECTION, jobId), newJob);
+
+  const jobRef = doc(db, PRINT_JOBS_COLLECTION, jobId);
+  if (useDeterministic) {
+    await runTransaction(db, async (transaction) => {
+      const existing = await transaction.get(jobRef);
+      if (existing.exists()) {
+        const existingData = existing.data() as PrintJob;
+        // Already queued, printing, or printed: do not create a duplicate label.
+        if (
+          existingData.status === "pending" ||
+          existingData.status === "printing" ||
+          existingData.status === "completed"
+        ) {
+          return;
+        }
+      }
+      transaction.set(jobRef, newJob);
+    });
+    return jobId;
+  }
+
+  await setDoc(jobRef, newJob);
   return jobId;
 }
 
@@ -6156,10 +6192,9 @@ export function subscribePendingPrintQueue(
       onJobsUpdate(pendingJobs);
     },
     (err) => {
+      console.warn("[Firestore] subscribePendingPrintQueue error:", err);
       if (isPermissionDeniedError(err)) {
         onJobsUpdate([]);
-      } else {
-        console.warn("[Firestore] subscribePendingPrintQueue error:", err);
       }
       onError?.(err);
     },
@@ -6182,10 +6217,9 @@ export function subscribeRecentPrintQueue(
       onJobsUpdate(snap.docs.map((d) => d.data() as PrintJob));
     },
     (err) => {
+      console.warn("[Firestore] subscribeRecentPrintQueue error:", err);
       if (isPermissionDeniedError(err)) {
         onJobsUpdate([]);
-      } else {
-        console.warn("[Firestore] subscribeRecentPrintQueue error:", err);
       }
       onError?.(err);
     },
@@ -6227,10 +6261,9 @@ export function subscribePrintStations(
       );
     },
     (err) => {
+      console.warn("[Firestore] subscribePrintStations error:", err);
       if (isPermissionDeniedError(err)) {
         onUpdate([]);
-      } else {
-        console.warn("[Firestore] subscribePrintStations error:", err);
       }
       onError?.(err);
     },

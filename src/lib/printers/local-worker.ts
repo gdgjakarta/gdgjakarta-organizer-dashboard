@@ -1,15 +1,17 @@
-// Client for the local print worker (`scripts/print-worker/worker.mjs`) running on the check-in PC.
-// The dashboard talks to it over loopback HTTP so badges print with no browser print dialog.
+// Client for the local GDG Print Station App (`GDG Print Station.app` / `scripts/print-worker/worker.mjs`) running on the check-in Mac.
+// Supports both Chromium (Chrome, Brave, Edge, Arc) and WebKit (Safari, Orion) over loopback HTTP (`127.0.0.1` and `localhost`).
 
 export const DEFAULT_PRINT_WORKER_URL = "http://127.0.0.1:17777";
-/** Where the packaged worker archive lives (Media page, `community-dashboard/app/`; note `-tar.gz`, not `.tar.gz`). */
+export const FALLBACK_PRINT_WORKER_URL = "http://localhost:17777";
+/** Where the packaged Print Station macOS Disk Image (.dmg) lives (Media page, `community-dashboard/app/`). */
 export const PRINT_WORKER_DOWNLOAD_URL =
-  "https://gdgjakarta.com/api/media/community-dashboard/app/gdg-print-worker-macos-arm64-tar.gz";
-/** Production dashboard address the worker is told to accept (`setup --origin`). */
+  "https://gdgjakarta.com/api/media/community-dashboard/app/GDG-Print-Station-macOS.dmg?v=2.4.0";
+/** Production dashboard address the worker accepts out of the box. */
 export const PRINT_WORKER_DASHBOARD_ORIGIN = "https://gdgjakarta.com";
 export const PRINT_WORKER_BINARY_NAME = "gdg-print-worker";
+export const PRINT_STATION_APP_NAME = "GDG Print Station.app";
 const WORKER_URL_STORAGE_KEY = "gdg_print_worker_url";
-const HEALTH_TIMEOUT_MS = 1500;
+const HEALTH_TIMEOUT_MS = 3000;
 const PRINT_TIMEOUT_MS = 45_000;
 
 export interface PrintWorkerPrinter {
@@ -21,12 +23,20 @@ export interface PrintWorkerPrinter {
   /** False while the worker is skipping this printer after a failure. */
   available: boolean;
   lastError: string | null;
+  /** Number of incomplete CUPS jobs currently queued on this printer (workers from 2.4.0). */
+  queueDepth?: number;
+  /** Whether the USB device is physically present on the USB bus (workers from 2.4.0). */
+  usbConnected?: boolean;
 }
 
 export interface PrintWorkerDevice {
+  /** Stable hardware machine identifier (e.g. macOS IOPlatformUUID hash) so 1 Mac = 1 station across Safari & Chrome. */
+  id?: string;
   computerName: string;
   model: string | null;
   os: string;
+  /** "menubar" when running as the native macOS Menu Bar app (`GDG Print Station.app`), "cli" when running via Node. */
+  appMode?: "menubar" | "cli";
 }
 
 export interface PrintWorkerHealth {
@@ -40,6 +50,10 @@ export interface PrintWorkerHealth {
 }
 
 export interface PrintWorkerPayload {
+  /** Deterministic job ID for worker-side idempotency so timed-out retries never print twice. */
+  jobId?: string;
+  /** Attendee name displayed on the macOS Notch Dynamic Island HUD while printing. */
+  attendeeName?: string;
   html: string;
   widthMm: number;
   heightMm: number;
@@ -56,47 +70,94 @@ export interface PrintWorkerResult {
 /** Thrown when the worker cannot be reached at all (not running, blocked, or permission denied). */
 export class PrintWorkerUnreachableError extends Error {
   constructor(cause?: unknown) {
-    super("Print worker is not reachable");
+    super("GDG Print Station App is not running or not reachable on this Mac");
     this.name = "PrintWorkerUnreachableError";
     this.cause = cause;
   }
 }
 
+let activeBaseUrl: string | null = null;
+
 export function getPrintWorkerUrl(): string {
   try {
-    return window.localStorage.getItem(WORKER_URL_STORAGE_KEY)?.trim() || DEFAULT_PRINT_WORKER_URL;
+    const custom = window.localStorage.getItem(WORKER_URL_STORAGE_KEY)?.trim();
+    if (custom) return custom;
   } catch {
-    return DEFAULT_PRINT_WORKER_URL;
+    // ignore storage access errors
+  }
+  return activeBaseUrl || DEFAULT_PRINT_WORKER_URL;
+}
+
+function getCandidateWorkerUrls(): string[] {
+  try {
+    const custom = window.localStorage.getItem(WORKER_URL_STORAGE_KEY)?.trim();
+    if (custom) return [custom];
+  } catch {
+    // ignore
+  }
+  if (activeBaseUrl === FALLBACK_PRINT_WORKER_URL) {
+    return [FALLBACK_PRINT_WORKER_URL, DEFAULT_PRINT_WORKER_URL];
+  }
+  return [DEFAULT_PRINT_WORKER_URL, FALLBACK_PRINT_WORKER_URL];
+}
+
+/** Cross-browser fetch with timeout that works cleanly across older & newer WebKit (Safari) and Chromium engines. */
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    globalThis.clearTimeout(timer);
   }
 }
 
 export async function fetchPrintWorkerHealth(): Promise<PrintWorkerHealth | null> {
-  try {
-    const res = await fetch(`${getPrintWorkerUrl()}/health`, { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) });
-    if (!res.ok) return null;
-    const data = (await res.json()) as PrintWorkerHealth;
-    return data.ok ? data : null;
-  } catch {
-    return null;
+  for (const baseUrl of getCandidateWorkerUrls()) {
+    try {
+      const res = await fetchWithTimeout(`${baseUrl}/health`, { method: "GET" }, HEALTH_TIMEOUT_MS);
+      if (!res.ok) continue;
+      const data = (await res.json()) as PrintWorkerHealth;
+      if (data.ok) {
+        activeBaseUrl = baseUrl;
+        return data;
+      }
+    } catch {
+      // Try next loopback candidate (`127.0.0.1` <-> `localhost` for WebKit/Chromium compatibility)
+    }
   }
+  return null;
 }
 
 export async function printViaWorker(payload: PrintWorkerPayload): Promise<PrintWorkerResult> {
-  let res: Response;
-  try {
-    res = await fetch(`${getPrintWorkerUrl()}/print`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(PRINT_TIMEOUT_MS),
-    });
-  } catch (err) {
-    throw new PrintWorkerUnreachableError(err);
+  let res: Response | null = null;
+  let lastNetworkErr: unknown = null;
+
+  for (const baseUrl of getCandidateWorkerUrls()) {
+    try {
+      res = await fetchWithTimeout(
+        `${baseUrl}/print`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        PRINT_TIMEOUT_MS,
+      );
+      activeBaseUrl = baseUrl;
+      break;
+    } catch (err) {
+      lastNetworkErr = err;
+    }
+  }
+
+  if (!res) {
+    throw new PrintWorkerUnreachableError(lastNetworkErr);
   }
 
   const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; printer?: string | null } | null;
   if (!res.ok || !data?.ok) {
-    throw new Error(data?.error ?? `Print worker responded with ${res.status}`);
+    throw new Error(data?.error ?? `Print Station App responded with ${res.status}`);
   }
   return { printer: data.printer ?? null };
 }
@@ -119,5 +180,5 @@ export function getPrintWorkerArchiveFileName(): string {
   } catch {
     // fall through to the default file name
   }
-  return PRINT_WORKER_DOWNLOAD_URL.split("/").pop() ?? "gdg-print-worker-macos-arm64-tar.gz";
+  return "GDG-Print-Station-macOS.dmg";
 }

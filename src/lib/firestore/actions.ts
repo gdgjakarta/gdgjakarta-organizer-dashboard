@@ -1626,7 +1626,7 @@ export async function savePrinterConfigAction(config: Partial<import("@/lib/prin
 
 export async function enqueuePrintJobAction(
   jobData: Omit<import("@/lib/printers/types").PrintJob, "id" | "status" | "created_at">,
-  options?: { printedBy?: import("./client").PrintJobClaimant },
+  options?: import("./client").EnqueuePrintJobOptions,
 ) {
   try {
     const { enqueuePrintJob } = await import("./client");

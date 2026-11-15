@@ -60,6 +60,22 @@ export interface PrintJobAttempt {
 export const MAX_PRINT_ATTEMPTS = 3;
 /** Printer label used when a laptop has no print worker and prints through the browser dialog. */
 export const BROWSER_PRINTER_NAME = "Browser print dialog";
+/** Minimum Print Station App / worker version supporting hardware device ID, Notch HUD, and CUPS tracking. */
+export const MIN_PRINT_WORKER_VERSION = "2.4.0";
+
+export function isWorkerVersionOutdated(version?: string | null): boolean {
+  if (!version) return true;
+  const parse = (v: string) =>
+    v
+      .replace(/^v/i, "")
+      .split(".")
+      .map((n) => Number.parseInt(n, 10) || 0);
+  const [majA = 0, minA = 0, patA = 0] = parse(version);
+  const [majB = 0, minB = 0, patB = 0] = parse(MIN_PRINT_WORKER_VERSION);
+  if (majA !== majB) return majA < majB;
+  if (minA !== minB) return minA < minB;
+  return patA < patB;
+}
 
 export interface PrintJob {
   id: string;
@@ -71,6 +87,10 @@ export interface PrintJob {
   member_company?: string;
   qr_payload: string; // e.g. "eventId:attendeeId"
   rendered_html: string;
+  /** Stored per job so each badge prints at the exact paper dimensions configured when it was enqueued. */
+  paper_width_mm?: number;
+  paper_height_mm?: number;
+  orientation?: "portrait" | "landscape";
   status: PrintJobStatus;
   error_message?: string;
   created_at: string;
@@ -99,17 +119,23 @@ export interface PrintStationPrinter {
   last_error: string | null;
   /** Job this printer is printing right now. */
   current_job_id?: string | null;
+  /** Number of incomplete CUPS jobs queued on this printer. */
+  queue_depth?: number;
+  /** Whether the physical USB printer is currently detected on the bus (when known). */
+  usb_connected?: boolean;
 }
 
 /** A laptop with the dashboard open, written to `print_workers/{id}` as a heartbeat. */
 export interface PrintStation {
   id: string;
+  /** Canonical hardware device identifier (e.g. macOS IOPlatformUUID hash) so 1 laptop = 1 station across browsers/tabs. */
+  device_id?: string;
   /** Computer name, e.g. "Fachridan's MacBook Pro". */
   name: string;
   model?: string;
   os?: string;
   worker_version?: string;
-  /** False when the worker is not running and the laptop would print through the browser dialog. */
+  /** False when the worker is not running and the laptop cannot claim background queue jobs. */
   worker_connected: boolean;
   /** True while Start Print Station is on, i.e. this laptop takes jobs. */
   station_running: boolean;

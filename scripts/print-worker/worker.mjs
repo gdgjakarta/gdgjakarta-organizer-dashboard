@@ -20,7 +20,7 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_QUEUED_JOBS = 100;
 const MAX_WAIT_MS = 120_000; // a job that finds no free printer for this long is rejected
 const PRINTER_COOLDOWN_MS = 30_000; // a printer that just failed is skipped for this long
-export const VERSION = "2.3.0";
+export const VERSION = "2.4.0";
 
 async function loadConfig() {
   try {
@@ -79,21 +79,39 @@ async function readCommand(command, args) {
   }
 }
 
-/** Which laptop this is, shown next to its printers in the dashboard (computer name, hardware model, OS). */
+/** Which laptop this is, shown next to its printers in the dashboard (hardware UUID, computer name, hardware model, OS). */
 async function readDeviceInfo() {
   if (platform() === "darwin") {
-    const [computerName, model, osVersion] = await Promise.all([
+    const [computerName, model, osVersion, ioreg] = await Promise.all([
       readCommand("scutil", ["--get", "ComputerName"]),
       readCommand("sysctl", ["-n", "hw.model"]),
       readCommand("sw_vers", ["-productVersion"]),
+      readCommand("ioreg", ["-rd1", "-c", "IOPlatformExpertDevice"]),
     ]);
+    const uuidMatch = ioreg.match(/"IOPlatformUUID"\s*=\s*"([^"]+)"/);
+    const cleanId = (uuidMatch?.[1] || computerName || hostname())
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, "-")
+      .slice(0, 28);
     return {
+      id: `mac-${cleanId}`,
       computerName: computerName || hostname(),
       model: model || null,
       os: osVersion ? `macOS ${osVersion}` : `macOS ${release()}`,
+      appMode: "cli",
     };
   }
-  return { computerName: hostname(), model: null, os: `${platform()} ${release()}` };
+  const cleanHost = hostname()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .slice(0, 28);
+  return {
+    id: `dev-${cleanHost}`,
+    computerName: hostname(),
+    model: null,
+    os: `${platform()} ${release()}`,
+    appMode: "cli",
+  };
 }
 
 // Filled in by startWorker().

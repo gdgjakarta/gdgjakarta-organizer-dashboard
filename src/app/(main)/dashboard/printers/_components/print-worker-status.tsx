@@ -1,32 +1,36 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { AlertTriangle, Apple, RefreshCw, Sparkles, Usb } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   getPrintWorkerUrl,
-  PRINT_WORKER_BINARY_NAME,
+  PRINT_STATION_APP_NAME,
   type PrintWorkerHealth,
   type PrintWorkerPrinter,
 } from "@/lib/printers/local-worker";
+import { isWorkerVersionOutdated, MIN_PRINT_WORKER_VERSION } from "@/lib/printers/types";
 import { cn } from "@/lib/utils";
 
 interface PrintWorkerStatusProps {
   health: PrintWorkerHealth | null;
   isChecking: boolean;
   onRecheck: () => void;
+  onOpenSetupGuide?: () => void;
 }
 
-function workerLabel(health: PrintWorkerHealth): string {
-  if (health.printers.length === 1) return health.printers[0].name ?? "Default printer";
-  const ready = health.printers.filter((printer) => printer.available).length;
+function appStatusLabel(health: PrintWorkerHealth): string {
+  if (health.printers.length === 1) return health.printers[0].name ?? "1 printer";
+  const ready = health.printers.filter((printer) => printer.available && printer.usbConnected !== false).length;
   return `${ready}/${health.printers.length} printers`;
 }
 
-const INSTALLED_WORKER_PATH = `~/.gdg-print-worker/bin/${PRINT_WORKER_BINARY_NAME}`;
-
 function printerBadge(printer: PrintWorkerPrinter): { label: string; className: string } {
+  if (printer.usbConnected === false) {
+    return { label: "USB Unplugged", className: "bg-rose-500/10 text-rose-700 dark:text-rose-300" };
+  }
   if (!printer.available) {
     return { label: "Skipped", className: "bg-amber-500/10 text-amber-700 dark:text-amber-300" };
   }
@@ -36,94 +40,178 @@ function printerBadge(printer: PrintWorkerPrinter): { label: string; className: 
   return { label: "Ready", className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" };
 }
 
-export function PrintWorkerStatus({ health, isChecking, onRecheck }: PrintWorkerStatusProps) {
+export function PrintWorkerStatus({ health, isChecking, onRecheck, onOpenSetupGuide }: PrintWorkerStatusProps) {
   const isConnected = health !== null;
+  const isOutdated = isConnected && isWorkerVersionOutdated(health.version);
   const workerUrl = typeof window === "undefined" ? "" : getPrintWorkerUrl();
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button size="sm" variant="outline" className="gap-2" aria-label="Print worker status">
+        <Button size="sm" variant="outline" className="gap-2" aria-label="Print Station App status">
           <span className="relative flex size-2">
-            {isConnected && (
+            {isConnected && !isOutdated && (
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-60" />
             )}
             <span
               className={cn(
                 "relative inline-flex size-2 rounded-full",
-                isConnected ? "bg-emerald-500" : "bg-amber-500",
+                !isConnected ? "bg-amber-500" : isOutdated ? "bg-amber-500" : "bg-emerald-500",
               )}
             />
           </span>
-          {isConnected ? `Worker: ${workerLabel(health)}` : "Worker: Not connected"}
+          {isConnected
+            ? `Print Station App: ${appStatusLabel(health)}${isOutdated ? " (Update)" : ""}`
+            : "Print Station App: Not Running"}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80">
-        <div className="space-y-0.5">
-          <div className="font-semibold text-sm">
-            {isConnected ? "Print worker connected" : "Print worker not detected"}
+      <PopoverContent align="end" className="w-88 space-y-3">
+        <div className="space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 font-semibold text-sm">
+              <Apple className="size-4 text-primary" />
+              {isConnected ? "GDG Print Station App Connected" : "Print Station App Not Detected"}
+            </div>
+            {isConnected && (
+              <Badge
+                variant="outline"
+                className={cn(
+                  "px-1.5 py-0 font-mono text-[10px]",
+                  isOutdated
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                )}
+              >
+                v{health.version}
+              </Badge>
+            )}
           </div>
-          <p className="text-muted-foreground text-xs">
+          <p className="text-muted-foreground text-xs leading-relaxed">
             {isConnected
-              ? "Badges print straight to the printers with no browser dialog. Each queued job is assigned to one free printer and logged in the Print Queue."
-              : "Printing falls back to the browser print dialog until the worker is running."}
+              ? "Native macOS Menu Bar app is running with in-process WebKit PDF rendering and Notch Dynamic Island live activity HUD."
+              : `Open ${PRINT_STATION_APP_NAME} on this Mac so badges print straight to your USB printers with zero browser dialogs (supports Safari & Chrome).`}
           </p>
         </div>
 
-        {isConnected ? (
-          <div className="space-y-2 text-xs">
-            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-              <dt className="text-muted-foreground">Address</dt>
-              <dd className="truncate font-mono">{workerUrl}</dd>
-              <dt className="text-muted-foreground">Version</dt>
-              <dd>{health.version}</dd>
-              <dt className="text-muted-foreground">Waiting jobs</dt>
-              <dd>{health.queued}</dd>
-            </dl>
-            <ul className="space-y-1.5">
-              {health.printers.map((printer) => (
-                <li key={printer.name ?? "default"} className="rounded-md border p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-medium">{printer.name ?? "System default"}</span>
-                    <span className={cn("shrink-0 rounded-sm px-1.5 py-0.5", printerBadge(printer).className)}>
-                      {printerBadge(printer).label}
-                    </span>
-                  </div>
-                  <div className="mt-0.5 break-words text-muted-foreground">{printer.lastError ?? printer.state}</div>
-                </li>
-              ))}
-            </ul>
-            <p className="text-muted-foreground">
-              To stop: press <span className="font-mono text-foreground">Ctrl+C</span> in the Terminal window running
-              the worker, or run{" "}
-              <span className="break-all font-mono text-foreground">{`${INSTALLED_WORKER_PATH} stop`}</span>.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-1 text-xs">
-            <p className="text-muted-foreground">
-              Looked for it at <span className="font-mono text-foreground">{workerUrl}</span>. On the check-in Mac run:
-            </p>
-            <p className="text-muted-foreground">
-              Not installed yet? Click <strong className="text-foreground">Preparation &amp; Config</strong> at the top
-              of this page.
-            </p>
-            <p className="text-muted-foreground">
-              Already installed but stopped? Start it again in Terminal (keep that window open):
-            </p>
-            <div className="break-all rounded-md bg-zinc-950 p-2 font-mono text-emerald-400">
-              {`${INSTALLED_WORKER_PATH} run`}
+        {isOutdated && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-800 text-xs dark:text-amber-200">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="space-y-1">
+              <div className="font-semibold">
+                Outdated Worker Detected (v{health?.version} &lt; v{MIN_PRINT_WORKER_VERSION})
+              </div>
+              <p className="text-[11px] leading-relaxed opacity-90">
+                Upgrade to the new Menu Bar app (
+                <strong>
+                  {PRINT_STATION_APP_NAME} v{MIN_PRINT_WORKER_VERSION}
+                </strong>
+                ) for Notch Dynamic Island HUD, hardware device ID deduplication, and zero-Terminal operation.
+              </p>
+              {onOpenSetupGuide && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-1 h-6 text-[11px]"
+                  onClick={onOpenSetupGuide}
+                >
+                  Open Upgrade Guide
+                </Button>
+              )}
             </div>
-            <p className="text-muted-foreground">
-              Still not connecting? Re-run <span className="font-mono text-foreground">gdg-print-worker setup</span> and
-              make sure this dashboard&apos;s address is in the allowed origins.
-            </p>
           </div>
         )}
 
-        <Button size="sm" variant="outline" className="gap-1.5" onClick={onRecheck} disabled={isChecking}>
+        {isConnected ? (
+          <div className="space-y-2.5 text-xs">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-md bg-muted/40 p-2">
+              <dt className="text-muted-foreground">Device</dt>
+              <dd className="truncate font-medium">
+                {health.device?.computerName ?? "This Mac"}
+                {health.device?.model ? ` (${health.device.model})` : ""}
+              </dd>
+              <dt className="text-muted-foreground">Loopback</dt>
+              <dd className="truncate font-mono text-[11px]">{workerUrl}</dd>
+              <dt className="text-muted-foreground">Mode</dt>
+              <dd className="flex items-center gap-1">
+                <Sparkles className="size-3 text-emerald-500" />
+                {health.device?.appMode === "cli" ? "CLI Service" : "macOS Menu Bar + Notch HUD"}
+              </dd>
+              <dt className="text-muted-foreground">In-flight</dt>
+              <dd>{health.queued} queued in local pool</dd>
+            </dl>
+            <div className="space-y-1">
+              <div className="font-medium text-[11px] text-muted-foreground uppercase tracking-wider">
+                Assigned Printer Queues ({health.printers.length})
+              </div>
+              <ul className="space-y-1.5">
+                {health.printers.map((printer) => (
+                  <li key={printer.name ?? "default"} className="rounded-md border p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium">{printer.name ?? "System default"}</span>
+                      <span
+                        className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-[10px]", printerBadge(printer).className)}
+                      >
+                        {printerBadge(printer).label}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                      <span className="truncate">{printer.lastError ?? printer.state}</span>
+                      {typeof printer.queueDepth === "number" && printer.queueDepth > 0 && (
+                        <span className="shrink-0 font-mono text-[10px] text-amber-600 dark:text-amber-400">
+                          CUPS: {printer.queueDepth}
+                        </span>
+                      )}
+                    </div>
+                    {printer.uri && (
+                      <div className="mt-0.5 flex items-center gap-1 truncate font-mono text-[10px] text-muted-foreground/80">
+                        <Usb className="size-2.5 shrink-0" />
+                        <span className="truncate">{printer.uri}</span>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Manage printers, refresh USB ports, or quit anytime from the printer icon in your macOS top{" "}
+              <strong className="text-foreground">Menu Bar</strong>.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2 rounded-md border bg-muted/30 p-2.5 text-xs">
+            <div className="font-medium text-foreground">How to connect in 10 seconds:</div>
+            <ol className="list-decimal space-y-1 pl-4 text-muted-foreground text-[11px] leading-relaxed">
+              <li>
+                Open <strong className="text-foreground">{PRINT_STATION_APP_NAME}</strong> from your{" "}
+                <span className="font-mono text-foreground">Applications</span> or{" "}
+                <span className="font-mono text-foreground">Downloads</span> folder.
+              </li>
+              <li>
+                Look for the printer icon in the top-right <strong className="text-foreground">macOS Menu Bar</strong>.
+              </li>
+              <li>
+                Click <strong className="text-foreground">Start Print Station</strong> on this page.
+              </li>
+            </ol>
+            {onOpenSetupGuide && (
+              <Button type="button" size="sm" className="mt-1 w-full text-xs" onClick={onOpenSetupGuide}>
+                Download &amp; Setup Guide
+              </Button>
+            )}
+          </div>
+        )}
+
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="w-full gap-2"
+          onClick={onRecheck}
+          disabled={isChecking}
+        >
           <RefreshCw className={cn("size-3.5", isChecking && "animate-spin")} />
-          Check again
+          {isChecking ? "Checking..." : "Check Connection Now"}
         </Button>
       </PopoverContent>
     </Popover>
