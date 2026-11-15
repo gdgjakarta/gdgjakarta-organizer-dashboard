@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { getPublicEventById } from "@/lib/bevy/client";
+import { getEventSpeakerEcosystemPublicAction } from "@/server/speaker-confirmation-actions";
 import { getFirestoreEventByIdServer } from "@/server/firestore-admin";
 
 import { PublicEventDetailView } from "./_components/public-event-detail-view";
@@ -80,9 +81,10 @@ export async function generateMetadata({ params }: PublicEventDetailPageProps): 
 
 export default async function PublicEventDetailPage({ params }: PublicEventDetailPageProps) {
   const { eventId } = await params;
-  const [event, firestoreEvent] = await Promise.all([
+  const [event, firestoreEvent, speakerEcosystemRes] = await Promise.all([
     getPublicEventById(eventId),
     getFirestoreEventByIdServer(eventId),
+    getEventSpeakerEcosystemPublicAction(eventId),
   ]);
 
   if (!event) {
@@ -107,5 +109,11 @@ export default async function PublicEventDetailPage({ params }: PublicEventDetai
     } as typeof firestoreEvent;
   }
 
-  return <PublicEventDetailView event={event} initialFirestoreEvent={safeFirestoreEvent} />;
+  return (
+    <PublicEventDetailView
+      event={event}
+      initialFirestoreEvent={safeFirestoreEvent}
+      speakerEcosystemMap={speakerEcosystemRes.success ? speakerEcosystemRes.speakers : undefined}
+    />
+  );
 }

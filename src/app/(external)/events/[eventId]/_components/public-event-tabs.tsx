@@ -43,6 +43,7 @@ import { buildUnifiedAgenda, normalizeRelatedLink } from "@/lib/events/agenda-un
 import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
 import type { EventSession, FirestoreEvent } from "@/lib/firestore/types";
 import { sanitizeHtml } from "@/lib/utils";
+import type { PublicSpeakerEcosystemItem } from "@/server/speaker-confirmation-actions";
 
 import { UnifiedAgendaTimeline } from "./unified-agenda-timeline";
 import { VenueMapFloatingButton } from "./venue-map-floating-button";
@@ -78,6 +79,7 @@ interface PublicEventTabsProps {
   event: BevyEvent;
   firestoreSessions?: EventSession[];
   firestoreEvent?: FirestoreEvent | null;
+  speakerEcosystemMap?: Record<string, PublicSpeakerEcosystemItem>;
   activeTab?: string;
   onActiveTabChange?: (tab: string) => void;
 }
@@ -86,12 +88,22 @@ export function PublicEventTabs({
   event,
   firestoreSessions,
   firestoreEvent,
+  speakerEcosystemMap,
   activeTab: controlledActiveTab,
   onActiveTabChange,
 }: PublicEventTabsProps) {
-  const speakerGroups = useMemo(() => extractEventSpeakerGroups(event), [event]);
-  const totalSpeakersCount = useMemo(() => getTotalSpeakersCount(event), [event]);
-  const allSpeakers = useMemo(() => getAllEventSpeakers(event), [event]);
+  const speakerGroups = useMemo(
+    () => extractEventSpeakerGroups(event, firestoreEvent as Partial<BevyEvent> | null),
+    [event, firestoreEvent],
+  );
+  const totalSpeakersCount = useMemo(
+    () => getTotalSpeakersCount(event, firestoreEvent as Partial<BevyEvent> | null),
+    [event, firestoreEvent],
+  );
+  const allSpeakers = useMemo(
+    () => getAllEventSpeakers(event, firestoreEvent as Partial<BevyEvent> | null),
+    [event, firestoreEvent],
+  );
   const hasSpeakers = totalSpeakersCount > 0;
 
   const partners =
@@ -305,7 +317,11 @@ export function PublicEventTabs({
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                     {group.speakers.map((speaker) => (
-                      <SpeakerCard key={speaker.id ?? speaker.full_name} speaker={speaker} />
+                      <SpeakerCard
+                        key={speaker.id ?? speaker.full_name}
+                        speaker={speaker}
+                        speakerEcosystemMap={speakerEcosystemMap}
+                      />
                     ))}
                   </div>
                 </div>
@@ -653,7 +669,40 @@ export function PublicEventTabs({
   );
 }
 
-function SpeakerCard({ speaker }: { speaker: BevySpeaker }) {
+// Helper to get Google ecosystem badge styling based on ecosystem type
+function getEcosystemBadgeClass(ecosystem?: string): string {
+  const eco = ecosystem?.toLowerCase() ?? "";
+  if (eco.includes("gde") || eco.includes("developer expert")) {
+    // Amber / Warm Google Orange-Gold
+    return "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20";
+  }
+  if (eco.includes("googler") || eco.includes("google employee")) {
+    // Google Blue
+    return "bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20";
+  }
+  if (eco.includes("wtm") || eco.includes("women techmakers")) {
+    // Google Green / Teal (official WTM branding)
+    return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20";
+  }
+  if (eco.includes("gdoc") || eco.includes("gdgoc") || eco.includes("gdsc") || eco.includes("developer student")) {
+    // Google Cyan / Sky (GDGoC / GDSC Student Clubs)
+    return "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border border-cyan-500/20";
+  }
+  if (eco.includes("gdg") || eco.includes("developer group")) {
+    // Google Red / Coral
+    return "bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20";
+  }
+  // Default violet / primary
+  return "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-500/20";
+}
+
+function SpeakerCard({
+  speaker,
+  speakerEcosystemMap,
+}: {
+  speaker: BevySpeaker;
+  speakerEcosystemMap?: Record<string, PublicSpeakerEcosystemItem>;
+}) {
   const [bioOpen, setBioOpen] = useState(false);
   const avatarUrl = speaker.picture_url ?? speaker.picture?.url ?? speaker.picture?.thumbnail_url;
   const fullName =
@@ -663,6 +712,46 @@ function SpeakerCard({ speaker }: { speaker: BevySpeaker }) {
   const hasSocials = Boolean(linkedInUrl || twitterUrl);
   const cleanBioText = speaker.bio?.replace(/<[^>]*>/g, "").trim();
   const hasBio = Boolean(cleanBioText && cleanBioText.length > 0);
+
+  // Resolve GDE / GDG / WTM ecosystem badge info
+  const ecosystemInfo = useMemo(() => {
+    const cleanName = fullName.trim().toLowerCase();
+    const byName = speakerEcosystemMap?.[cleanName];
+    if (byName) return byName;
+    if (speaker.id && speakerEcosystemMap?.[String(speaker.id)]) {
+      return speakerEcosystemMap[String(speaker.id)];
+    }
+    if (speaker.event_person_id && speakerEcosystemMap?.[String(speaker.event_person_id)]) {
+      return speakerEcosystemMap[String(speaker.event_person_id)];
+    }
+
+    // Fallback: check speaker.title, speaker.company, or speaker.bio for explicit GDE / GDG / GDGoC indicators
+    const textPool = `${speaker.title || ""} | ${speaker.company || ""} | ${cleanBioText || ""}`;
+    const gdeMatch = textPool.match(/\b(GDE(?:\s+[^|@,\n<]+)?)/i);
+    if (gdeMatch) {
+      const raw = gdeMatch[1].trim();
+      const cleanDetails = raw.replace(/^GDE\s*/i, "").trim();
+      return {
+        ecosystem: "GDE",
+        details: cleanDetails ? `GDE ${cleanDetails}` : "GDE",
+      };
+    }
+    const gdscMatch = textPool.match(/\b(GDGoC|GDSC)(?:\s+[^|@,\n<]+)?/i);
+    if (gdscMatch) {
+      return {
+        ecosystem: "GDGoC / GDSC",
+        details: gdscMatch[0].trim(),
+      };
+    }
+    const gdgMatch = textPool.match(/\b(GDG(?:\s+[^|@,\n<]+)?)/i);
+    if (gdgMatch) {
+      return {
+        ecosystem: "GDG",
+        details: gdgMatch[1].trim(),
+      };
+    }
+    return null;
+  }, [fullName, speaker.id, speaker.event_person_id, speaker.title, speaker.company, cleanBioText, speakerEcosystemMap]);
 
   return (
     <Card className="flex flex-col items-center justify-between rounded-2xl border-border/60 bg-card p-5 text-center shadow-2xs transition-all hover:bg-muted/10">
@@ -702,12 +791,30 @@ function SpeakerCard({ speaker }: { speaker: BevySpeaker }) {
         )}
 
         <div className="mt-3 w-full space-y-1">
-          <h4 className="font-bold text-base text-foreground tracking-tight line-clamp-1">{fullName}</h4>
+          <h4 className="font-bold text-base text-foreground tracking-tight break-words">{fullName}</h4>
+
+          {/* Ecosystem details badge (GDE / GDG / WTM / Googler) */}
+          {ecosystemInfo && (
+            <div className="flex flex-col items-center justify-center gap-0.5 pt-0.5">
+              <Badge
+                variant="secondary"
+                className={`h-4.5 px-1.5 font-bold text-[10px] ${getEcosystemBadgeClass(ecosystemInfo.ecosystem)}`}
+              >
+                {ecosystemInfo.ecosystem}
+              </Badge>
+              {ecosystemInfo.details && (
+                <span className="text-[11px] text-muted-foreground break-words font-medium text-center">
+                  {ecosystemInfo.details.startsWith("(") ? ecosystemInfo.details : `(${ecosystemInfo.details})`}
+                </span>
+              )}
+            </div>
+          )}
+
           {speaker.company && (
-            <p className="text-muted-foreground text-xs leading-snug line-clamp-2">{speaker.company}</p>
+            <p className="text-muted-foreground text-xs leading-snug break-words">{speaker.company}</p>
           )}
           {speaker.title && (
-            <p className="font-medium text-foreground/85 text-[11px] leading-snug line-clamp-2">{speaker.title}</p>
+            <p className="font-medium text-foreground/85 text-[11px] leading-snug break-words">{speaker.title}</p>
           )}
         </div>
       </div>
@@ -733,6 +840,24 @@ function SpeakerCard({ speaker }: { speaker: BevySpeaker }) {
                     <DialogTitle className="font-bold text-lg sm:text-xl text-foreground tracking-tight">
                       {fullName}
                     </DialogTitle>
+
+                    {/* Ecosystem Badge in Bio Dialog Header */}
+                    {ecosystemInfo && (
+                      <div className="flex flex-col items-center sm:items-start gap-0.5 pt-0.5">
+                        <Badge
+                          variant="secondary"
+                          className={`h-5 px-2 font-bold text-xs ${getEcosystemBadgeClass(ecosystemInfo.ecosystem)}`}
+                        >
+                          {ecosystemInfo.ecosystem}
+                        </Badge>
+                        {ecosystemInfo.details && (
+                          <span className="text-xs text-muted-foreground font-medium text-center sm:text-left">
+                            {ecosystemInfo.details.startsWith("(") ? ecosystemInfo.details : `(${ecosystemInfo.details})`}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     {speaker.company && (
                       <p className="text-muted-foreground text-xs sm:text-sm leading-snug">{speaker.company}</p>
                     )}

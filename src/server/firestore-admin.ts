@@ -24,11 +24,15 @@ import type {
  * Using native fetch and Firestore REST eliminates Node gRPC and @grpc/proto-loader dependencies,
  * avoiding the protobufjs eval/codegen EvalError in Cloudflare Workers V8 isolates.
  */
-const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "";
+function getFirebaseProjectId(): string {
+  return process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "";
+}
 function getFirebaseApiKey(): string {
   return process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "";
 }
-const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+function getFirestoreBaseUrl(): string {
+  return `https://firestore.googleapis.com/v1/projects/${getFirebaseProjectId()}/databases/(default)/documents`;
+}
 
 /**
  * Pure utility function to strip undefined values before serializing payload.
@@ -184,7 +188,7 @@ export async function getFirestoreDoc(
   token?: string,
 ): Promise<Record<string, unknown> | null> {
   try {
-    const url = `${FIRESTORE_BASE_URL}/${collectionName}/${encodeURIComponent(docId)}?key=${getFirebaseApiKey()}`;
+    const url = `${getFirestoreBaseUrl()}/${collectionName}/${encodeURIComponent(docId)}?key=${getFirebaseApiKey()}`;
     const headers: Record<string, string> = { Accept: "application/json" };
     const authToken = await resolveAuthToken(token);
     if (authToken) {
@@ -242,7 +246,7 @@ export async function patchFirestoreDoc(
         searchParams.append("updateMask.fieldPaths", k);
       }
     }
-    const url = `${FIRESTORE_BASE_URL}/${collectionName}/${encodeURIComponent(docId)}?${searchParams.toString()}`;
+    const url = `${getFirestoreBaseUrl()}/${collectionName}/${encodeURIComponent(docId)}?${searchParams.toString()}`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -283,7 +287,7 @@ export async function patchFirestoreDoc(
  */
 export async function deleteFirestoreDoc(collectionName: string, docId: string, token?: string): Promise<boolean> {
   try {
-    const url = `${FIRESTORE_BASE_URL}/${collectionName}/${encodeURIComponent(docId)}?key=${getFirebaseApiKey()}`;
+    const url = `${getFirestoreBaseUrl()}/${collectionName}/${encodeURIComponent(docId)}?key=${getFirebaseApiKey()}`;
     const headers: Record<string, string> = { Accept: "application/json" };
     const authToken = await resolveAuthToken(token);
     if (authToken) {
@@ -315,7 +319,7 @@ async function queryRegistrationDoc(
   token?: string,
 ): Promise<{ id: string; data: FirestoreRegistration } | null> {
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${getFirebaseApiKey()}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${getFirebaseProjectId()}/databases/(default)/documents:runQuery?key=${getFirebaseApiKey()}`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -370,7 +374,7 @@ export async function queryFirestoreDocs<T = Record<string, unknown>>(
   token?: string,
 ): Promise<T[]> {
   try {
-    const url = `${FIRESTORE_BASE_URL}:runQuery?key=${getFirebaseApiKey()}`;
+    const url = `${getFirestoreBaseUrl()}:runQuery?key=${getFirebaseApiKey()}`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -538,7 +542,7 @@ export async function getVouchersByRegistrationIdServer(
   token?: string,
 ): Promise<EventVoucher[]> {
   try {
-    const url = `${FIRESTORE_BASE_URL}:runQuery?key=${getFirebaseApiKey()}`;
+    const url = `${getFirestoreBaseUrl()}:runQuery?key=${getFirebaseApiKey()}`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -636,7 +640,7 @@ async function queryMerchandiseOrderDoc(
   token?: string,
 ): Promise<{ id: string; data: EventMerchandiseOrder } | null> {
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${getFirebaseApiKey()}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${getFirebaseProjectId()}/databases/(default)/documents:runQuery?key=${getFirebaseApiKey()}`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "application/json",

@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { useRouter } from "next/navigation";
 
-import { CalendarDays, Clock, Copy, Layers, MapPin, Monitor, Network, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, Clock, Copy, Layers, MapPin, Monitor, Network, Plus, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { TimePicker } from "@/components/time-picker";
@@ -36,6 +36,34 @@ interface BevyAgendaSectionProps {
   onDirtyChange?: (isDirty: boolean) => void;
   registerSyncHandler?: (handler: () => Promise<boolean>) => void;
   registerDiscardHandler?: (handler: () => void) => void;
+}
+
+// Helper to convert "hh:mm AM/PM" or "HH:mm" to minutes since midnight for sorting
+function parseTimeToMinutes(timeStr?: string): number {
+  if (!timeStr) return 9999;
+  // If time is a range like "07:45 AM - 08:30 AM" or "07:45 – 08:30", take the start time
+  const startPart = timeStr.split(/[-–]/)[0]?.trim() || timeStr.trim();
+  const match12 = startPart.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+  if (match12) {
+    let h = Number.parseInt(match12[1], 10);
+    const m = Number.parseInt(match12[2], 10) || 0;
+    const ampm = match12[3]?.toUpperCase();
+    if (ampm === "PM" && h < 12) h += 12;
+    if (ampm === "AM" && h === 12) h = 0;
+    return h * 60 + m;
+  }
+  const match24 = startPart.match(/^(\d{1,2}):(\d{2})$/);
+  if (match24) {
+    const h = Number.parseInt(match24[1], 10);
+    const m = Number.parseInt(match24[2], 10) || 0;
+    return h * 60 + m;
+  }
+  return 9999;
+}
+
+// Stable sort agenda items by their start time
+function sortAgendaItems<T extends { time?: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => parseTimeToMinutes(a.time) - parseTimeToMinutes(b.time));
 }
 
 // Helper to convert "HH:mm" (24h) to "hh:mm AM/PM" (12h)
@@ -92,23 +120,27 @@ function parseInitialAgendaDays(rawAgenda?: BevyAgenda): BevyAgendaDay[] {
     if (first && ("items" in first || "agenda" in first || "title" in first)) {
       return rawDays.map((day) => ({
         title: day.title ?? "",
-        agenda: (day.agenda ?? day.items ?? []).map((item) => ({
-          time: item.time || "",
-          activity: item.activity || "",
-          description: item.description || "",
-          audience_type: item.audience_type || "IN_PERSON",
-        })),
+        agenda: sortAgendaItems(
+          (day.agenda ?? day.items ?? []).map((item) => ({
+            time: item.time || "",
+            activity: item.activity || "",
+            description: item.description || "",
+            audience_type: item.audience_type || "IN_PERSON",
+          })),
+        ),
       }));
     }
     return [
       {
         title: "",
-        agenda: (rawDays as unknown as BevyAgendaItem[]).map((item) => ({
-          time: item.time || "",
-          activity: item.activity || "",
-          description: item.description || "",
-          audience_type: item.audience_type || "IN_PERSON",
-        })),
+        agenda: sortAgendaItems(
+          (rawDays as unknown as BevyAgendaItem[]).map((item) => ({
+            time: item.time || "",
+            activity: item.activity || "",
+            description: item.description || "",
+            audience_type: item.audience_type || "IN_PERSON",
+          })),
+        ),
       },
     ];
   }
@@ -158,6 +190,8 @@ export function BevyAgendaSection({
   const [activityDialogOpen, setActivityDialogOpen] = React.useState(false);
   const [activeDayIndex, setActiveDayIndex] = React.useState<number>(0);
   const [editingItemIndex, setEditingItemIndex] = React.useState<number | null>(null);
+  // Set of modified/moved activity titles or unique keys to highlight visually
+  const [changedActivityKeys, setChangedActivityKeys] = React.useState<Set<string>>(() => new Set());
 
   const [formStartTime, setFormStartTime] = React.useState("09:00");
   const [formEndTime, setFormEndTime] = React.useState("09:45");
@@ -267,6 +301,9 @@ export function BevyAgendaSection({
     const end12 = formEndTime ? format24to12(formEndTime) : "";
     const computedTime = start12 && end12 ? `${start12} - ${end12}` : start12 || end12;
 
+    const prevItem = editingItemIndex !== null ? days[activeDayIndex]?.agenda?.[editingItemIndex] : null;
+    const isTimeChanged = prevItem ? prevItem.time !== computedTime : false;
+
     const newItem: BevyAgendaItem = {
       time: computedTime,
       activity: formActivity.trim(),
@@ -283,9 +320,19 @@ export function BevyAgendaSection({
         } else {
           currentItems.push(newItem);
         }
-        return { ...day, agenda: currentItems };
+        // Always sort agenda items based on start time
+        return { ...day, agenda: sortAgendaItems(currentItems) };
       }),
     );
+
+    if (isTimeChanged) {
+      setChangedActivityKeys((prev) => {
+        const next = new Set(prev);
+        next.add(`${activeDayIndex}-${newItem.activity}`);
+        return next;
+      });
+      toast.info(`Updated "${newItem.activity}" time to ${computedTime} and re-sorted timeline.`);
+    }
 
     setActivityDialogOpen(false);
   };
@@ -294,6 +341,7 @@ export function BevyAgendaSection({
     try {
       const snap = JSON.parse(initialDaysSnapshotRef.current) as BevyAgendaDay[];
       setDays(snap);
+      setChangedActivityKeys(new Set());
       toast.info("Discarded unsaved Bevy agenda changes.");
     } catch {
       // ignore
@@ -321,6 +369,7 @@ export function BevyAgendaSection({
       }
 
       initialDaysSnapshotRef.current = JSON.stringify(days);
+      setChangedActivityKeys(new Set());
       onAgendaUpdated?.(payloadAgenda);
       toast.success("Agenda synchronized successfully to Bevy & Firestore!");
       router.refresh();
@@ -436,48 +485,71 @@ export function BevyAgendaSection({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {day.agenda.map((act, iIdx) => (
-                    <div
-                      key={iIdx}
-                      className="flex flex-col justify-between gap-2.5 rounded-lg border border-border/50 bg-background p-3 text-xs transition-colors hover:border-border sm:flex-row sm:items-center"
-                    >
-                      <div className="flex min-w-0 items-start gap-3">
-                        <div className="flex shrink-0 items-center gap-1 rounded bg-muted/50 px-2 py-1 font-medium text-muted-foreground">
-                          <Clock className="size-3 text-muted-foreground/80" />
-                          <span>{act.time || "--:--"}</span>
-                        </div>
-
-                        <div className="min-w-0 space-y-0.5">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="truncate font-semibold text-foreground">{act.activity}</span>
-                            {formatAudienceBadge(act.audience_type)}
+                  {day.agenda.map((act, iIdx) => {
+                    const isChanged = changedActivityKeys.has(`${dIdx}-${act.activity}`);
+                    return (
+                      <div
+                        key={`${act.activity}-${act.time}-${iIdx}`}
+                        className={`flex flex-col justify-between gap-2.5 rounded-lg border p-3 text-xs transition-colors sm:flex-row sm:items-center ${
+                          isChanged
+                            ? "border-amber-500/50 bg-amber-500/5 dark:border-amber-500/40 dark:bg-amber-500/10 shadow-xs"
+                            : "border-border/50 bg-background hover:border-border"
+                        }`}
+                      >
+                        <div className="flex min-w-0 items-start gap-3">
+                          <div
+                            className={`flex shrink-0 items-center gap-1 rounded px-2 py-1 font-medium ${
+                              isChanged
+                                ? "bg-amber-500/15 text-amber-700 dark:bg-amber-500/25 dark:text-amber-300 ring-1 ring-amber-500/30"
+                                : "bg-muted/50 text-muted-foreground"
+                            }`}
+                          >
+                            <Clock
+                              className={`size-3 ${
+                                isChanged ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/80"
+                              }`}
+                            />
+                            <span>{act.time || "--:--"}</span>
                           </div>
-                          {act.description && (
-                            <p className="line-clamp-1 text-[11px] text-muted-foreground">{act.description}</p>
-                          )}
+
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="truncate font-semibold text-foreground">{act.activity}</span>
+                              {formatAudienceBadge(act.audience_type)}
+                              {isChanged && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 font-medium text-[10px] text-amber-800 dark:border-amber-500/40 dark:text-amber-300">
+                                  <Sparkles className="size-2.5 text-amber-600 dark:text-amber-400" />
+                                  <span>Time Adjusted &amp; Re-sorted</span>
+                                </span>
+                              )}
+                            </div>
+                            {act.description && (
+                              <p className="line-clamp-1 text-[11px] text-muted-foreground">{act.description}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1 self-end sm:self-center">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => openEditActivity(dIdx, iIdx)}
+                            className="h-7 px-2 text-xs"
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteActivity(dIdx, iIdx)}
+                            className="h-7 px-2 text-destructive text-xs hover:text-destructive"
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
                         </div>
                       </div>
-
-                      <div className="flex shrink-0 items-center gap-1 self-end sm:self-center">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => openEditActivity(dIdx, iIdx)}
-                          className="h-7 px-2 text-xs"
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteActivity(dIdx, iIdx)}
-                          className="h-7 px-2 text-destructive text-xs hover:text-destructive"
-                        >
-                          <Trash2 className="size-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

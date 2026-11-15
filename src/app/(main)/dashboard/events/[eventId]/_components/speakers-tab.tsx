@@ -66,7 +66,8 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import type { BevyPersonSearchResult } from "@/lib/bevy/client";
+import { AdjustImageDialog } from "@/components/ui/adjust-image-dialog";
+import type { BevyImageUploadResponse, BevyPersonSearchResult } from "@/lib/bevy/client";
 import { SPEAKER_ROLES_CONFIG, type SpeakerRoleKey } from "@/lib/bevy/speakers";
 import {
   getDefaultTemplateByKey,
@@ -93,6 +94,7 @@ import { getBevySpeakerPersonAction, searchBevyPersonsAction } from "@/server/be
 import {
   addManualSpeakerConfirmationAction,
   deleteSpeakerConfirmationAction,
+  uploadSpeakerImageToBevyAction,
   getEventSpeakerConfirmationsAction,
   getExistingEventSlideTemplateOptionsAction,
   getOrInitEventSpeakerConfigAction,
@@ -106,6 +108,89 @@ import {
 
 const SPEAKER_DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Halal", "Gluten-free", "No-spicy", "None"] as const;
 const SPEAKER_CONTACT_CHANNELS = ["Whatsapp", "Telegram", "Email"] as const;
+
+interface DietaryRestrictionsSelectorProps {
+  selected: string[];
+  onChangeSelected: React.Dispatch<React.SetStateAction<string[]>>;
+  otherValue: string;
+  onChangeOtherValue: (val: string) => void;
+  label?: string;
+}
+
+function DietaryRestrictionsSelector({
+  selected,
+  onChangeSelected,
+  otherValue,
+  onChangeOtherValue,
+  label = "Dietary Restrictions",
+}: DietaryRestrictionsSelectorProps) {
+  return (
+    <div className="space-y-2 sm:col-span-2">
+      <Label>{label}</Label>
+      <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {SPEAKER_DIETARY_OPTIONS.map((opt) => {
+            const isChecked = selected.includes(opt);
+            return (
+              <label
+                key={opt}
+                className="flex cursor-pointer items-center gap-2 rounded p-1 hover:bg-muted/40 transition-colors"
+              >
+                <Checkbox
+                  checked={isChecked}
+                  onCheckedChange={(checked) => {
+                    if (opt === "None") {
+                      if (checked) {
+                        onChangeSelected(["None"]);
+                        onChangeOtherValue("");
+                      } else {
+                        onChangeSelected([]);
+                      }
+                    } else {
+                      if (checked) {
+                        onChangeSelected((prev) => [...prev.filter((d) => d !== "None"), opt]);
+                      } else {
+                        onChangeSelected((prev) => prev.filter((d) => d !== opt));
+                      }
+                    }
+                  }}
+                />
+                <span className="text-xs font-normal select-none">{opt}</span>
+              </label>
+            );
+          })}
+        </div>
+
+        {/* Other option with free text input */}
+        <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+          <label className="flex cursor-pointer items-center gap-2 shrink-0">
+            <Checkbox
+              checked={Boolean(otherValue.trim())}
+              onCheckedChange={(checked) => {
+                if (!checked) {
+                  onChangeOtherValue("");
+                }
+              }}
+            />
+            <span className="text-xs font-normal select-none">Other:</span>
+          </label>
+          <Input
+            value={otherValue}
+            onChange={(e) => {
+              const val = e.target.value;
+              onChangeOtherValue(val);
+              if (val.trim()) {
+                onChangeSelected((prev) => prev.filter((d) => d !== "None"));
+              }
+            }}
+            placeholder="e.g. Nut allergy, Halal only, Seafood allergy"
+            className="h-8 text-xs flex-1"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function LinkedInIcon({ className = "size-3.5" }: { className?: string }) {
   return (
@@ -290,6 +375,8 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
   const [editJobTitle, setEditJobTitle] = useState("");
   const [editCompany, setEditCompany] = useState("");
   const [editProfileUrl, setEditProfileUrl] = useState("");
+  const [editBevyPictureObj, setEditBevyPictureObj] = useState<BevyImageUploadResponse | undefined>(undefined);
+  const [isUploadingBevyImage, setIsUploadingBevyImage] = useState(false);
   const [editTalkTitle, setEditTalkTitle] = useState("");
   const [editTalkType, setEditTalkType] = useState("Technical Talk (45 mins)");
   const [editPresenterRole, setEditPresenterRole] = useState<SpeakerRoleKey>("speakers");
@@ -329,6 +416,46 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
   const [manualJobTitle, setManualJobTitle] = useState("");
   const [manualCompany, setManualCompany] = useState("");
   const [manualProfileUrl, setManualProfileUrl] = useState("");
+  const [manualBevyPictureObj, setManualBevyPictureObj] = useState<BevyImageUploadResponse | undefined>(undefined);
+
+  // Adjust / Crop Image Dialog state
+  const [adjustImageFile, setAdjustImageFile] = useState<File | null>(null);
+  const [isAdjustImageOpen, setIsAdjustImageOpen] = useState(false);
+  const [adjustTarget, setAdjustTarget] = useState<"manual" | "edit">("edit");
+
+  const handleSelectImageForAdjust = (file: File, target: "manual" | "edit") => {
+    setAdjustImageFile(file);
+    setAdjustTarget(target);
+    setIsAdjustImageOpen(true);
+  };
+
+  const handleConfirmAdjustedImage = async (croppedBlob: Blob) => {
+    setIsUploadingBevyImage(true);
+    try {
+      const fd = new FormData();
+      fd.append("image", croppedBlob, "speaker.jpg");
+      fd.append("eventId", String(eventId));
+      fd.append("container", "events");
+      const res = await uploadSpeakerImageToBevyAction(fd);
+      if (res.success && res.data) {
+        const url = res.url || "";
+        if (adjustTarget === "manual") {
+          setManualProfileUrl(url);
+          setManualBevyPictureObj(res.data);
+        } else {
+          setEditProfileUrl(url);
+          setEditBevyPictureObj(res.data);
+        }
+        toast.success("Image uploaded to Bevy.");
+      } else {
+        toast.error(res.error || "Failed to upload image to Bevy.");
+      }
+    } catch {
+      toast.error("Failed to upload image to Bevy.");
+    } finally {
+      setIsUploadingBevyImage(false);
+    }
+  };
   const [manualTalkTitle, setManualTalkTitle] = useState("");
   const [manualTalkType, setManualTalkType] = useState("Technical Talk (45 mins)");
   const [manualPresenterRole, setManualPresenterRole] = useState<SpeakerRoleKey>("speakers");
@@ -466,6 +593,7 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
         job_title: manualJobTitle.trim(),
         company_institution: manualCompany.trim(),
         speaker_profile_url: manualProfileUrl.trim(),
+        bevy_picture_obj: manualBevyPictureObj,
         talk_type: manualTalkType,
         presenter_role: manualPresenterRole,
         talk_title: manualTalkTitle.trim(),
@@ -764,8 +892,17 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
     setEditEcosystemDetails(enrichedConf.ecosystem_details || "");
     setEditPrimaryTechnology(enrichedConf.google_ecosystem_or_technology || "Google Cloud Platform (GCP)");
     setEditCanShareSlides(enrichedConf.can_share_slides || "Yes");
-    setEditTshirtSize(enrichedConf.tshirt_size || "L");
-    setEditSwagSelections(enrichedConf.swag_selections || (enrichedConf.tshirt_size ? { default_tshirt: enrichedConf.tshirt_size } : {}));
+    const initialTshirtSize = enrichedConf.tshirt_size || "L";
+    setEditTshirtSize(initialTshirtSize);
+    // Initialize swag selections from saved swag_selections or prefill all swag items with saved tshirt_size / default
+    const initialSwag: Record<string, string> = { ...(enrichedConf.swag_selections || {}) };
+    speakerSwagItems.forEach((item) => {
+      if (!initialSwag[item.id]) {
+        // If speaker had an old tshirt_size and this item is a tshirt or first item, prefill it
+        initialSwag[item.id] = initialTshirtSize || item.options[0] || "";
+      }
+    });
+    setEditSwagSelections(initialSwag);
 
     // Parse dietary restrictions into checkbox items + other
     const rawDietaryList = Array.isArray(enrichedConf.dietary_restrictions_list)
@@ -848,6 +985,7 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
         job_title: editJobTitle.trim(),
         company_institution: editCompany.trim(),
         speaker_profile_url: editProfileUrl.trim() || undefined,
+        bevy_picture_obj: editBevyPictureObj,
         talk_type: editTalkType,
         talk_title: editTalkTitle.trim(),
         talk_description: editTalkDescription.trim() || undefined,
@@ -1513,11 +1651,47 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                   </TableHeader>
                   <TableBody>
                     {loadingConfirmations ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
-                          Loading speaker confirmations...
-                        </TableCell>
-                      </TableRow>
+                      Array.from({ length: 4 }).map((_, idx) => (
+                        <TableRow key={`shimmer-conf-${idx}`}>
+                          <TableCell>
+                            <div className="flex items-start gap-3">
+                              <Skeleton className="size-10 shrink-0 rounded-full" />
+                              <div className="min-w-0 space-y-1.5">
+                                <Skeleton className="h-4 w-36" />
+                                <Skeleton className="h-3 w-48" />
+                                <Skeleton className="h-3 w-28" />
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1.5">
+                              <Skeleton className="h-4 w-52" />
+                              <Skeleton className="h-3 w-32" />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-40" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-28" />
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <Skeleton className="h-4 w-20" />
+                              <Skeleton className="h-3 w-16" />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-5 w-20 rounded-full" />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Skeleton className="size-7 rounded-md" />
+                              <Skeleton className="size-7 rounded-md" />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
                     ) : filteredConfirmations.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
@@ -3142,13 +3316,33 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                 </div>
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="manual_profile_url">Photo / Avatar URL</Label>
-                  <Input
-                    id="manual_profile_url"
-                    value={manualProfileUrl}
-                    onChange={(e) => setManualProfileUrl(e.target.value)}
-                    placeholder="https://res.cloudinary.com/... or public image URL"
-                    className="h-8 text-xs"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="manual_profile_url"
+                      value={manualProfileUrl}
+                      onChange={(e) => {
+                        setManualProfileUrl(e.target.value);
+                        setManualBevyPictureObj(undefined);
+                      }}
+                      placeholder="https://res.cloudinary.com/... or upload photo"
+                      className="h-8 flex-1 text-xs"
+                    />
+                    <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2.5 font-medium text-xs hover:bg-muted">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={isUploadingBevyImage}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleSelectImageForAdjust(file, "manual");
+                          e.target.value = "";
+                        }}
+                      />
+                      {isUploadingBevyImage ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                      Upload
+                    </label>
+                  </div>
                 </div>
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="manual_talk_title">
@@ -3346,6 +3540,7 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                       <SelectItem value="GDE">GDE (Google Developer Expert)</SelectItem>
                       <SelectItem value="WTM">WTM (Women Techmakers)</SelectItem>
                       <SelectItem value="Googler">Googler</SelectItem>
+                      <SelectItem value="GDGoC / GDSC">GDGoC / GDSC (Campus Chapter)</SelectItem>
                       <SelectItem value="None above">None above</SelectItem>
                     </SelectContent>
                   </Select>
@@ -3458,50 +3653,12 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                 </div>
 
                 {/* Dietary Restrictions */}
-                <div className="space-y-2 rounded-lg border bg-muted/20 p-3 sm:col-span-2">
-                  <Label className="font-semibold text-xs">Dietary Restrictions</Label>
-                  <div className="flex flex-wrap gap-3 pt-1">
-                    {SPEAKER_DIETARY_OPTIONS.map((opt) => {
-                      const isChecked = manualDietaryRestrictions.includes(opt);
-                      return (
-                        <label key={opt} className="flex cursor-pointer items-center gap-1.5 text-xs">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                if (opt === "None") {
-                                  setManualDietaryRestrictions(["None"]);
-                                  setManualDietaryOther("");
-                                } else {
-                                  setManualDietaryRestrictions((prev) => [
-                                    ...prev.filter((d) => d !== "None"),
-                                    opt,
-                                  ]);
-                                }
-                              } else {
-                                setManualDietaryRestrictions((prev) => prev.filter((d) => d !== opt));
-                              }
-                            }}
-                            className="size-3.5 rounded border-border accent-primary"
-                          />
-                          <span>{opt}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <Input
-                    value={manualDietaryOther}
-                    onChange={(e) => {
-                      setManualDietaryOther(e.target.value);
-                      if (e.target.value.trim()) {
-                        setManualDietaryRestrictions((prev) => prev.filter((d) => d !== "None"));
-                      }
-                    }}
-                    placeholder="Other dietary notes (comma separated, e.g. Nut allergy, Seafood)..."
-                    className="mt-1 h-8 bg-background text-xs"
-                  />
-                </div>
+                <DietaryRestrictionsSelector
+                  selected={manualDietaryRestrictions}
+                  onChangeSelected={setManualDietaryRestrictions}
+                  otherValue={manualDietaryOther}
+                  onChangeOtherValue={setManualDietaryOther}
+                />
 
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="manual_talk_description">Talk Description (Caption)</Label>
@@ -4220,13 +4377,33 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                 </div>
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="edit_profile_url">Photo / Avatar URL</Label>
-                  <Input
-                    id="edit_profile_url"
-                    value={editProfileUrl}
-                    onChange={(e) => setEditProfileUrl(e.target.value)}
-                    placeholder="https://res.cloudinary.com/... or image link"
-                    className="h-8 text-xs"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="edit_profile_url"
+                      value={editProfileUrl}
+                      onChange={(e) => {
+                        setEditProfileUrl(e.target.value);
+                        setEditBevyPictureObj(undefined);
+                      }}
+                      placeholder="https://res.cloudinary.com/... or upload photo"
+                      className="h-8 flex-1 text-xs"
+                    />
+                    <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2.5 font-medium text-xs hover:bg-muted">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={isUploadingBevyImage}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleSelectImageForAdjust(file, "edit");
+                          e.target.value = "";
+                        }}
+                      />
+                      {isUploadingBevyImage ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                      Upload
+                    </label>
+                  </div>
                 </div>
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="edit_talk_title">
@@ -4422,6 +4599,7 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                       <SelectItem value="GDE">GDE (Google Developer Expert)</SelectItem>
                       <SelectItem value="WTM">WTM (Women Techmakers Ambassador)</SelectItem>
                       <SelectItem value="Googler">Googler (Google Employee)</SelectItem>
+                      <SelectItem value="GDGoC / GDSC">GDGoC / GDSC (Campus Chapter)</SelectItem>
                       <SelectItem value="None above">None above</SelectItem>
                     </SelectContent>
                   </Select>
@@ -4497,9 +4675,7 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                               value={currentValue}
                               onValueChange={(val) => {
                                 setEditSwagSelections((prev) => ({ ...prev, [item.id]: val }));
-                                if (item.id === "default_tshirt" || !editTshirtSize) {
-                                  setEditTshirtSize(val);
-                                }
+                                setEditTshirtSize(val);
                               }}
                             >
                               <SelectTrigger className="h-8 text-xs w-full">
@@ -4536,73 +4712,12 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                   </div>
                 )}
 
-                <div className="space-y-2 sm:col-span-2">
-                  <Label>Dietary Restrictions</Label>
-                  <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {SPEAKER_DIETARY_OPTIONS.map((opt) => {
-                        const isChecked = editDietaryRestrictions.includes(opt);
-                        return (
-                          <label
-                            key={opt}
-                            className="flex cursor-pointer items-center gap-2 rounded p-1 hover:bg-muted/40 transition-colors"
-                          >
-                            <Checkbox
-                              checked={isChecked}
-                              onCheckedChange={(checked) => {
-                                if (opt === "None") {
-                                  if (checked) {
-                                    setEditDietaryRestrictions(["None"]);
-                                    setEditDietaryOther("");
-                                  } else {
-                                    setEditDietaryRestrictions([]);
-                                  }
-                                } else {
-                                  if (checked) {
-                                    setEditDietaryRestrictions((prev) => [
-                                      ...prev.filter((d) => d !== "None"),
-                                      opt,
-                                    ]);
-                                  } else {
-                                    setEditDietaryRestrictions((prev) => prev.filter((d) => d !== opt));
-                                  }
-                                }
-                              }}
-                            />
-                            <span className="text-xs font-normal select-none">{opt}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-
-                    {/* Other option with free text input */}
-                    <div className="flex items-center gap-2 pt-1 border-t border-border/50">
-                      <label className="flex cursor-pointer items-center gap-2 shrink-0">
-                        <Checkbox
-                          checked={Boolean(editDietaryOther.trim())}
-                          onCheckedChange={(checked) => {
-                            if (!checked) {
-                              setEditDietaryOther("");
-                            }
-                          }}
-                        />
-                        <span className="text-xs font-normal select-none">Other:</span>
-                      </label>
-                      <Input
-                        value={editDietaryOther}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setEditDietaryOther(val);
-                          if (val.trim()) {
-                            setEditDietaryRestrictions((prev) => prev.filter((d) => d !== "None"));
-                          }
-                        }}
-                        placeholder="e.g. Nut allergy, Halal only, Seafood allergy"
-                        className="h-8 text-xs flex-1"
-                      />
-                    </div>
-                  </div>
-                </div>
+                <DietaryRestrictionsSelector
+                  selected={editDietaryRestrictions}
+                  onChangeSelected={setEditDietaryRestrictions}
+                  otherValue={editDietaryOther}
+                  onChangeOtherValue={setEditDietaryOther}
+                />
 
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="edit_additional_inquiry">Additional Inquiry / Organizer Notes</Label>
@@ -4654,6 +4769,15 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Adjust / Crop Image Dialog */}
+      <AdjustImageDialog
+        open={isAdjustImageOpen}
+        onOpenChange={setIsAdjustImageOpen}
+        imageFile={adjustImageFile}
+        aspectRatio={1}
+        onConfirm={handleConfirmAdjustedImage}
+      />
     </div>
   );
 }

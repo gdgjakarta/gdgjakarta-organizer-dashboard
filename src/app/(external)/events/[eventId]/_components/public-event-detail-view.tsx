@@ -15,13 +15,19 @@ import { PublicEventHero } from "./public-event-hero";
 import { PublicEventInfoCards } from "./public-event-info-cards";
 import { PublicEventRsvpCard } from "./public-event-rsvp-card";
 import { PublicEventTabs } from "./public-event-tabs";
+import type { PublicSpeakerEcosystemItem } from "@/server/speaker-confirmation-actions";
 
 interface PublicEventDetailViewProps {
   event: BevyEvent;
   initialFirestoreEvent?: FirestoreEvent | null;
+  speakerEcosystemMap?: Record<string, PublicSpeakerEcosystemItem>;
 }
 
-export function PublicEventDetailView({ event, initialFirestoreEvent = null }: PublicEventDetailViewProps) {
+export function PublicEventDetailView({
+  event,
+  initialFirestoreEvent = null,
+  speakerEcosystemMap,
+}: PublicEventDetailViewProps) {
   const user = useAuthStore((s) => s.user);
   const isAuthLoading = useAuthStore((s) => s.isLoading);
   const [firestoreEvent, setFirestoreEvent] = useState<FirestoreEvent | null>(initialFirestoreEvent);
@@ -139,6 +145,7 @@ export function PublicEventDetailView({ event, initialFirestoreEvent = null }: P
                 event={event}
                 firestoreSessions={firestoreEvent?.sessions}
                 firestoreEvent={firestoreEvent}
+                speakerEcosystemMap={speakerEcosystemMap}
                 activeTab={activeTab}
                 onActiveTabChange={setActiveTab}
               />

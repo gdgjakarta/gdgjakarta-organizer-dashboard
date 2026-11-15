@@ -2,7 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createBevyPerson, getBevyPerson, updateBevyEvent, updateBevyPerson } from "@/lib/bevy/client";
+import {
+  type BevyImageUploadResponse,
+  createBevyPerson,
+  getBevyPerson,
+  updateBevyEvent,
+  updateBevyPerson,
+  uploadBevyImage,
+} from "@/lib/bevy/client";
 import type { BevySpeaker } from "@/lib/bevy/types";
 import {
   getCleanDefaultTemplateDataForType,
@@ -1324,8 +1331,9 @@ export async function submitSpeakerConfirmationAction(
       const currentList = Array.isArray(event[roleKey]) ? [...(event[roleKey] as BevySpeaker[])] : [];
       const { firstName, lastName } = splitFullName(record.full_name);
 
-      const newSpeakerObj: BevySpeaker = {
+      const newSpeakerObj = {
         id: record.bevy_person_id || undefined,
+        confirmation_id: confirmationId,
         first_name: firstName,
         last_name: lastName,
         full_name: record.full_name,
@@ -1336,7 +1344,7 @@ export async function submitSpeakerConfirmationAction(
         picture_url: record.speaker_profile_url,
         speaker_type: record.talk_type,
         event_person_id: record.bevy_person_id || undefined,
-      };
+      } as BevySpeaker;
 
       const existingIdx = currentList.findIndex(
         (s) =>
@@ -1655,6 +1663,7 @@ export interface AddManualSpeakerConfirmationInput {
   job_title: string;
   company_institution: string;
   speaker_profile_url?: string;
+  bevy_picture_obj?: BevyImageUploadResponse;
   talk_type: string;
   talk_title: string;
   talk_description?: string;
@@ -1834,8 +1843,9 @@ export async function addManualSpeakerConfirmationAction(
       const currentList = Array.isArray(eventDoc[roleKey]) ? [...(eventDoc[roleKey] as BevySpeaker[])] : [];
       const { firstName, lastName } = splitFullName(record.full_name);
 
-      const newSpeakerObj: BevySpeaker = {
+      const newSpeakerObj = {
         id: record.bevy_person_id || undefined,
+        confirmation_id: confirmationId,
         first_name: firstName,
         last_name: lastName,
         full_name: record.full_name,
@@ -1846,7 +1856,7 @@ export async function addManualSpeakerConfirmationAction(
         picture_url: record.speaker_profile_url,
         speaker_type: record.talk_type,
         event_person_id: record.bevy_person_id || undefined,
-      };
+      } as BevySpeaker;
 
       const existingIdx = currentList.findIndex(
         (s) =>
@@ -1905,6 +1915,7 @@ export interface UpdateSpeakerConfirmationInput {
   job_title: string;
   company_institution: string;
   speaker_profile_url?: string;
+  bevy_picture_obj?: BevyImageUploadResponse;
   talk_type: string;
   talk_title: string;
   talk_description?: string;
@@ -2094,6 +2105,7 @@ export async function updateSpeakerConfirmationAction(
             updatedConf.talk_description ||
             updatedConf.biography ||
             (updatedConf.talk_title ? `Speaker for: ${updatedConf.talk_title}` : ""),
+          ...(input.bevy_picture_obj ? { picture: input.bevy_picture_obj as unknown as string } : {}),
           personal_twitter: cleanTwitter || undefined,
           company_twitter: cleanCompanyTwitter || undefined,
           personal_linkedin_page: cleanLinkedIn || undefined,
@@ -2419,5 +2431,154 @@ export async function updateEventSpeakerEmailTemplateAction(
     return { success: true };
   } catch (err) {
     return { success: false, error: extractApiMessage(err, "Failed to update speaker invitation email template.") };
+  }
+}
+
+export async function uploadSpeakerImageToBevyAction(formData: FormData): Promise<{
+  success: boolean;
+  data?: BevyImageUploadResponse | null;
+  url?: string;
+  error?: string;
+}> {
+  try {
+    const file = formData.get("image");
+    const eventId = formData.get("eventId")?.toString() || "";
+    const container = formData.get("container")?.toString() || "events";
+
+    if (!(file instanceof Blob) || !eventId) {
+      return { success: false, error: "Image file and eventId are required." };
+    }
+
+    const res = await uploadBevyImage(file, eventId, container);
+    if (!res.success || !res.data) {
+      return { success: false, error: res.error || "Failed to upload image to Bevy." };
+    }
+
+    const url = res.data.url || res.data.path || res.data.thumbnail_url || "";
+    return { success: true, data: res.data, url };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to upload image to Bevy.") };
+  }
+}
+
+export interface PublicSpeakerEcosystemItem {
+  ecosystem: string;
+  details?: string;
+}
+
+/**
+ * Resolves ecosystem badges (GDE / GDG / WTM / Googler) with their specific expertise or chapter
+ * details for speakers of an event. Publicly callable without authentication so live event pages
+ * can render badges accurately.
+ */
+export async function getEventSpeakerEcosystemPublicAction(
+  eventId: string | number,
+): Promise<{
+  success: boolean;
+  speakers?: Record<string, PublicSpeakerEcosystemItem>;
+  error?: string;
+}> {
+  try {
+    const eventDoc = await getFirestoreEventByIdServer(String(eventId));
+    const result: Record<string, PublicSpeakerEcosystemItem> = {};
+
+    // 1. First, check presentation_slides roles as a fast base layer
+    if (eventDoc?.presentation_slides && Array.isArray(eventDoc.presentation_slides)) {
+      for (const slide of eventDoc.presentation_slides) {
+        if (!slide?.speakers || !Array.isArray(slide.speakers)) continue;
+        for (const spk of slide.speakers) {
+          const name = spk.name?.trim()?.toLowerCase();
+          const role = spk.role?.trim();
+          if (!name || !role) continue;
+
+          // Check GDE pattern e.g. "GDE Firebase & Google Workspace | Executive..."
+          const gdeMatch = role.match(/\b(GDE(?:\s+[^|@]+)?)/i);
+          if (gdeMatch) {
+            const raw = gdeMatch[1].trim();
+            const cleanDetails = raw.replace(/^GDE\s*/i, "").trim();
+            result[name] = {
+              ecosystem: "GDE",
+              details: cleanDetails ? `GDE ${cleanDetails}` : "GDE",
+            };
+            continue;
+          }
+
+          // Check GDGoC / GDSC pattern e.g. "GDGoC UI Lead | ..." or "GDSC ITB Lead | ..."
+          const gdscMatch = role.match(/\b(GDGoC|GDSC)(?:\s+[^|@]+)?/i);
+          if (gdscMatch) {
+            const raw = gdscMatch[0].trim();
+            result[name] = {
+              ecosystem: "GDGoC / GDSC",
+              details: raw,
+            };
+            continue;
+          }
+
+          // Check GDG pattern e.g. "GDG Jakarta Organizer | ..."
+          const gdgMatch = role.match(/\b(GDG(?:\s+[^|@]+)?)/i);
+          if (gdgMatch) {
+            const raw = gdgMatch[1].trim();
+            result[name] = {
+              ecosystem: "GDG",
+              details: raw,
+            };
+            continue;
+          }
+
+          // Check WTM pattern
+          const wtmMatch = role.match(/\b(WTM(?:\s+[^|@]+)?|Women\s+Techmakers(?:\s+[^|@]+)?)/i);
+          if (wtmMatch) {
+            const raw = wtmMatch[1].trim();
+            result[name] = {
+              ecosystem: "WTM",
+              details: raw,
+            };
+          }
+        }
+      }
+    }
+
+    // 2. Second, inspect event speakers, moderators, and panelists arrays for confirmation_ids and fetch individual docs
+    // (using allow get: if true on event_speaker_confirmations without scanning)
+    const allRoleArrays = [
+      ...(Array.isArray(eventDoc?.speakers) ? eventDoc.speakers : []),
+      ...(Array.isArray(eventDoc?.moderators) ? eventDoc.moderators : []),
+      ...(Array.isArray(eventDoc?.panelists) ? eventDoc.panelists : []),
+    ];
+
+    const confIds = Array.from(
+      new Set(
+        allRoleArrays
+          .map((s) => (s as { confirmation_id?: string }).confirmation_id)
+          .filter(Boolean) as string[],
+      ),
+    );
+
+    if (confIds.length > 0) {
+      await Promise.all(
+        confIds.map(async (cid) => {
+          const doc = (await getFirestoreDoc("event_speaker_confirmations", cid)) as unknown as EventSpeakerConfirmation | null;
+          if (doc?.is_from_google_ecosystem && doc.is_from_google_ecosystem !== "None above") {
+            const item: PublicSpeakerEcosystemItem = {
+              ecosystem: doc.is_from_google_ecosystem,
+              details: doc.ecosystem_details?.trim() || undefined,
+            };
+            if (doc.full_name) {
+              result[doc.full_name.trim().toLowerCase()] = item;
+            }
+            if (doc.display_name) {
+              result[doc.display_name.trim().toLowerCase()] = item;
+            }
+            if (doc.bevy_person_id) {
+              result[String(doc.bevy_person_id)] = item;
+            }
+          }
+        }),
+      );
+    }
+
+    return { success: true, speakers: result };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to resolve speaker ecosystems.") };
   }
 }
