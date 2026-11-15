@@ -106,6 +106,12 @@ export interface PrintJob {
   excluded_printers?: string[];
   /** Index in `attempts` where the current retry budget starts (set by a manual retry). */
   retry_from_attempt?: number;
+  /** Distinguishes attendee check-in badges from merchandise shipping labels. */
+  job_type?: "badge" | "shipping_label";
+  /** Optional target station & printer pinning for cross-laptop remote printing. */
+  target_station_id?: string;
+  target_station_name?: string;
+  target_printer?: string | null;
 }
 
 export interface PrintStationPrinter {

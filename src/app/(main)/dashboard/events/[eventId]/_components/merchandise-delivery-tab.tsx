@@ -17,6 +17,7 @@ import {
   Package,
   Pencil,
   Phone,
+  Printer,
   RefreshCw,
   RotateCcw,
   Search,
@@ -58,6 +59,7 @@ import { DeliveryApprovalDialog } from "./delivery-approval-dialog";
 import { DeliveryRejectDialog } from "./delivery-reject-dialog";
 import { MerchandiseDeliveryConfigDialog } from "./merchandise-delivery-config-dialog";
 import { parseMerchandiseVariations } from "./merchandise-helpers";
+import { ShippingLabelPrintDialog } from "./shipping-label-print-dialog";
 
 const DELIVERY_SKELETON_KEYS = ["del-skel-1", "del-skel-2", "del-skel-3", "del-skel-4", "del-skel-5"];
 
@@ -214,6 +216,7 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
   const [approvingReg, setApprovingReg] = useState<FirestoreRegistration | null>(null);
   const [rejectingReg, setRejectingReg] = useState<FirestoreRegistration | null>(null);
   const [viewingDetailReg, setViewingDetailReg] = useState<FirestoreRegistration | null>(null);
+  const [printingQueueRegs, setPrintingQueueRegs] = useState<FirestoreRegistration[]>([]);
   const [markingDeliveredId, setMarkingDeliveredId] = useState<string | null>(null);
   const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
@@ -537,6 +540,18 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isLoading || filteredRegistrations.length === 0}
+                onClick={() => setPrintingQueueRegs(filteredRegistrations)}
+                className="h-9 gap-1.5 text-xs"
+                title="Preview & print thermal shipping labels for filtered requests"
+              >
+                <Printer className="size-3.5" />
+                Print Labels ({filteredRegistrations.length})
+              </Button>
+
               <Button
                 variant="outline"
                 size="sm"
@@ -991,6 +1006,20 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                               </Button>
                             )}
 
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={() => setPrintingQueueRegs([reg])}
+                              title={
+                                req.maps_url
+                                  ? "Preview & print shipping label (with Maps QR)"
+                                  : "Preview & print shipping label"
+                              }
+                              className="size-7 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                            >
+                              <Printer className="size-3.5" />
+                            </Button>
+
                             <DropdownMenu modal={false}>
                               <DropdownMenuTrigger asChild>
                                 <Button
@@ -1006,6 +1035,10 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                                 <DropdownMenuItem onClick={() => setViewingDetailReg(reg)}>
                                   <Eye className="size-3.5 text-primary" />
                                   View details & audit logs
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setPrintingQueueRegs([reg])}>
+                                  <Printer className="size-3.5 text-primary" />
+                                  Print shipping label
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 {req.status === "pending_review" && (
@@ -1082,6 +1115,7 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
           onOpenChange={(open) => !open && setApprovingReg(null)}
           registration={approvingReg}
           eventId={eventId}
+          onPrintLabel={() => setPrintingQueueRegs([approvingReg])}
           onSuccess={(updated) => {
             handleRegistrationUpdated(updated);
             setApprovingReg(null);
@@ -1108,8 +1142,16 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
           onOpenChange={(open) => !open && setViewingDetailReg(null)}
           registration={viewingDetailReg}
           event={event}
+          onPrintLabel={() => setPrintingQueueRegs([viewingDetailReg])}
         />
       )}
+
+      <ShippingLabelPrintDialog
+        isOpen={printingQueueRegs.length > 0}
+        onOpenChange={(open) => !open && setPrintingQueueRegs([])}
+        registrations={printingQueueRegs}
+        event={event}
+      />
 
       <PackageTrackingDialog
         open={isTrackingModalOpen}

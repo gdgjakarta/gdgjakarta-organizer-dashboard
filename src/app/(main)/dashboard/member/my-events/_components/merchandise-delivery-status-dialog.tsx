@@ -11,6 +11,7 @@ import {
   ExternalLink,
   FileImage,
   MapPin,
+  Printer,
   ShieldCheck,
   ShoppingBag,
   Truck,
@@ -43,6 +44,7 @@ interface MerchandiseDeliveryStatusDialogProps {
   registration: FirestoreRegistration;
   event?: FirestoreEvent;
   onOpenPayment?: () => void;
+  onPrintLabel?: () => void;
 }
 
 const DELIVERY_STATUS_CONFIG: Record<
@@ -82,6 +84,7 @@ export function MerchandiseDeliveryStatusDialog({
   registration,
   event,
   onOpenPayment,
+  onPrintLabel,
 }: MerchandiseDeliveryStatusDialogProps) {
   const req = registration.delivery_request;
   const [copiedResi, setCopiedResi] = useState(false);
@@ -419,6 +422,18 @@ export function MerchandiseDeliveryStatusDialog({
                   Requested: {formattedRequestedDate}
                 </span>
               )}
+              {onPrintLabel && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={onPrintLabel}
+                  className="h-6 gap-1 px-2 text-[10px]"
+                >
+                  <Printer className="size-3" />
+                  Print Label
+                </Button>
+              )}
             </div>
             <div className="mt-1 text-muted-foreground leading-relaxed">
               <span className="font-medium text-foreground">{req.recipient_name}</span> ({req.recipient_phone})<br />
@@ -557,7 +572,13 @@ export function MerchandiseDeliveryStatusDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2">
+          {onPrintLabel && (
+            <Button type="button" variant="outline" size="sm" onClick={onPrintLabel} className="h-8 gap-1.5 text-xs">
+              <Printer className="size-3.5" />
+              Print Label
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="h-8 text-xs">
             Close
           </Button>

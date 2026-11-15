@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.33] - 2026-11-15
+
+### Added
+- **Thermal Shipping Label Printing for Merchandise Delivery**: Added 1-click and batch thermal shipping label printing to `MerchandiseDeliveryTab`, `DeliveryApprovalDialog`, and `MerchandiseDeliveryStatusDialog`.
+- **Conditional Google Maps QR Code**: Automatically renders high-contrast offline SVG QR codes (`SCAN MAPS`) when `maps_url` is provided, expanding recipient & destination details to 100% width when omitted.
+- **Cross-Laptop Thermal Printer Selection**: Added `ShippingLabelPrintDialog` with 1:1 paper preview, live printer status, and targeted station/printer pinning so an organizer on one laptop can trigger thermal printing on another laptop's connected printer.
+- **Auto-Fit Recipient & Destination Typography**: Formatted recipient names with up to 2-line auto-wrapping and auto-shrinking typography down to `5.5pt`, with email placed cleanly below WhatsApp numbers and dynamic scroll zoom adjustments to guarantee fit without edge clipping.
+
+### Fixed
+- **Thermal Printer Connection Guard**: Disabled silent browser dialog fallbacks when no thermal printer is connected, alerting organizers with `toast.error("Please connect printer thermal first")`.
+
+---
+
 ## [1.0.32] - 2026-11-15
 
 ### Added

@@ -16,10 +16,37 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.33",
+    releaseDate: "2026-11-15",
+    title: "Thermal Shipping Label Printing & Cross-Laptop Printer Selection",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Thermal shipping label printing for merchandise delivery with 1:1 preview dialog and batch printing support.",
+      },
+      {
+        category: "Added",
+        text: "Conditional Google Maps QR code on shipping labels (SCAN MAPS) when pinpoint links are present, expanding full-width when absent.",
+      },
+      {
+        category: "Added",
+        text: "Cross-laptop remote thermal printing with live printer state, device name, and organizer ownership selection.",
+      },
+      {
+        category: "Improved",
+        text: "Auto-fitting multi-line recipient names and address details with dynamic zoom fitting to prevent paper edge clipping.",
+      },
+      {
+        category: "Fixed",
+        text: "Enforced strict thermal connection guard alerting organizers when no thermal printer is available instead of falling back to browser print dialogs.",
+      },
+    ],
+  },
+  {
     version: "1.0.32",
     releaseDate: "2026-11-15",
     title: "Native macOS Print Station Menu Bar App, Notch Dynamic Island HUD & USB Auto-Print",
-    badge: "Latest",
     items: [
       {
         category: "Added",

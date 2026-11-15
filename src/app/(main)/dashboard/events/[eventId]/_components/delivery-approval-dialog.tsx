@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 
-import { CheckCircle2, ExternalLink, Loader2, Search, Truck } from "lucide-react";
+import { CheckCircle2, ExternalLink, Loader2, Printer, Search, Truck } from "lucide-react";
 import { toast } from "sonner";
 
 import { DatePicker } from "@/components/date-picker";
@@ -33,6 +33,7 @@ interface DeliveryApprovalDialogProps {
   registration: FirestoreRegistration;
   eventId: string;
   onSuccess: (updated: FirestoreRegistration) => void;
+  onPrintLabel?: () => void;
 }
 
 const COURIER_OPTIONS: { value: CourierType; label: string }[] = [
@@ -54,6 +55,7 @@ export function DeliveryApprovalDialog({
   registration,
   eventId,
   onSuccess,
+  onPrintLabel,
 }: DeliveryApprovalDialogProps) {
   const user = useAuthStore((s) => s.user);
   const req = registration.delivery_request;
@@ -166,6 +168,18 @@ export function DeliveryApprovalDialog({
                   <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400">
                     Fee Paid (Rp {(req.fee_amount || 50000).toLocaleString("id-ID")})
                   </Badge>
+                  {onPrintLabel && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      onClick={onPrintLabel}
+                      className="h-6 gap-1 px-2 text-[10px]"
+                    >
+                      <Printer className="size-3" />
+                      Print Label
+                    </Button>
+                  )}
                 </div>
               </div>
               <div className="mt-1 text-muted-foreground leading-relaxed">

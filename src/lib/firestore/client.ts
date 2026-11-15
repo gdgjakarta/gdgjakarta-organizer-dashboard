@@ -6027,6 +6027,8 @@ export async function claimPrintJob(jobId: string, claimant: PrintJobClaimant): 
     if (!snap.exists()) return null;
     const job = snap.data() as PrintJob;
     if (job.status !== "pending") return null;
+    if (job.target_station_id && job.target_station_id !== claimant.stationId) return null;
+    if (job.target_printer && job.target_printer !== claimant.printer) return null;
     if (job.excluded_printers?.includes(printerKey(claimant.stationId, claimant.printer))) return null;
 
     const now = new Date().toISOString();
