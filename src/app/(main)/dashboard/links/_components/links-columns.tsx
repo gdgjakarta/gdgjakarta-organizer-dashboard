@@ -3,7 +3,18 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { Subscribe } from "@tanstack/react-table";
 import { format, parseISO } from "date-fns";
-import { Copy, ExternalLink, FolderSymlink, Globe, MoreHorizontal, Pencil, QrCode, Trash2 } from "lucide-react";
+import {
+  Archive,
+  BarChart3,
+  Copy,
+  ExternalLink,
+  FolderSymlink,
+  Globe,
+  MoreHorizontal,
+  Pencil,
+  QrCode,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -27,10 +38,12 @@ interface ColumnCallbacks {
   onMoveFolder: (link: ShortLinkItem) => void;
   onDelete: (link: ShortLinkItem) => void;
   onQrCode: (link: ShortLinkItem) => void;
+  onAnalytics: (link: ShortLinkItem) => void;
+  onArchive: (link: ShortLinkItem) => void;
 }
 
 export function createLinksColumns(callbacks: ColumnCallbacks): ColumnDef<DataTableFeatures, ShortLinkItem>[] {
-  const { folders, onEdit, onMoveFolder, onDelete, onQrCode } = callbacks;
+  const { folders, onEdit, onMoveFolder, onDelete, onQrCode, onAnalytics, onArchive } = callbacks;
 
   return [
     {
@@ -247,6 +260,10 @@ export function createLinksColumns(callbacks: ColumnCallbacks): ColumnDef<DataTa
                     Open in New Tab
                   </a>
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onAnalytics(link)}>
+                  <BarChart3 className="mr-2 size-3.5" />
+                  View Analytics
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onQrCode(link)}>
                   <QrCode className="mr-2 size-3.5" />
                   View QR Code
@@ -259,6 +276,10 @@ export function createLinksColumns(callbacks: ColumnCallbacks): ColumnDef<DataTa
                 <DropdownMenuItem onClick={() => onEdit(link)}>
                   <Pencil className="mr-2 size-3.5" />
                   Edit Link
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onArchive(link)}>
+                  <Archive className="mr-2 size-3.5" />
+                  Archive Link
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onDelete(link)} className="text-destructive focus:text-destructive">

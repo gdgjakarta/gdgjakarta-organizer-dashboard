@@ -31,6 +31,23 @@ function ensureClientAuth() {
   }
 }
 
+const ADVANCED_KEYS = [
+  "password",
+  "cloaking",
+  "redirectType",
+  "expiresAt",
+  "expiredURL",
+  "androidURL",
+  "iphoneURL",
+] as const;
+
+/** Copies only explicitly-set advanced options so unset fields never overwrite existing values. */
+function pickAdvanced(input: Partial<Record<(typeof ADVANCED_KEYS)[number], unknown>>) {
+  const out: Record<string, unknown> = {};
+  for (const k of ADVANCED_KEYS) if (input[k] !== undefined) out[k] = input[k];
+  return out;
+}
+
 /**
  * List all shortened links for the configured domain
  */
@@ -134,7 +151,8 @@ export async function createShortLink(input: CreateShortLinkInput): Promise<Shor
         title: input.title?.trim() || undefined,
         folderId: input.folderId ?? undefined,
         tags: input.tags && input.tags.length > 0 ? input.tags : undefined,
-      },
+        ...pickAdvanced(input),
+      } as NonNullable<NonNullable<Parameters<typeof createLink>[0]>["body"]>,
     });
 
     if (res.error || !res.data) {
@@ -164,6 +182,7 @@ export async function updateShortLink(linkId: string, input: UpdateShortLinkInpu
     if (input.title !== undefined) body.title = input.title;
     if (input.tags !== undefined) body.tags = input.tags;
     if (input.folderId !== undefined) body.folderId = input.folderId;
+    Object.assign(body, pickAdvanced(input));
 
     const res = await updateLink({
       path: {

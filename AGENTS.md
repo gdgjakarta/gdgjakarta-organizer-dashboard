@@ -159,6 +159,8 @@ Keep a component inside its route until it is reused by another feature. Do not 
 14. Use the shared [`FloatingSaveBar`](file:///Users/fachridantm/IdeaProjects/gdgjakarta-organizer-dashboard/src/app/(main)/dashboard/_components/floating-save-bar.tsx) (`src/app/(main)/dashboard/_components/floating-save-bar.tsx`) for screens or tabs with editable settings/configurations so dirty-state tracking, discard, and floating save actions remain consistent across the dashboard.
 15. **Document every new feature**: Whenever you add or extend a feature, add concise feature notes to `AGENTS.md` (under `## Feature Notes
 
+- **Short Links Dashboard (`/dashboard/links`)**: Organizer-only Short.io UI with Links/Analytics/Domains tabs, advanced link options (cloaking, password, expiry, device URLs, UTM), archive, CSV bulk import, and click analytics. See `ai-guidelines/feature/links.md`.
+
 - **Transactions & QRIS Payments Dashboard with Email Status Tracking (`/dashboard/payments`)**:
   - **Routes & Actions**: `src/app/(main)/dashboard/payments/page.tsx`, `src/app/(main)/dashboard/payments/_components/payment-transactions-dashboard.tsx`, `src/app/(main)/dashboard/payments/_components/transaction-detail-dialog.tsx`, `src/app/api/webhooks/payment/route.ts`, and `src/server/payment-actions.ts`.
   - **Payment & Email Tracking Invariant**: Captures incoming DOKU QRIS webhook updates, persists transaction records into Firestore collection `payment_transactions`, and updates matching `event_registrations` / `event_merchandise_orders` with `payment_email_status` (`"sent" | "not_sent" | "failed" | "pending"`), `payment_email_sent_at`, and `payment_email_recipient`.
@@ -313,3 +315,5 @@ Keep a component inside its route until it is reused by another feature. Do not 
 - Include screenshots for new screens and material visual changes. Include mobile and dark-theme states when relevant.
 - Explain new reusable patterns or dependencies in the pull request.
 - Follow `CONTRIBUTING.md` for the contribution workflow.
+
+- **Short.io Folder Management (`/dashboard/links`)**: Short.io's public API/SDK only supports list/get/create folders (no update/delete). Selecting a folder chip shows a **Manage folder in Short.io** deep link (`app.short.io/users/dashboard/{domainId}/folders/{folderId}/settings/general`) for rename/recolor/icon/delete.

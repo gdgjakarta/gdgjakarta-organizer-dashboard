@@ -21,6 +21,7 @@ import { SHORTIO_CONFIG } from "@/config/shortio-config";
 import type { ShortFolder, ShortLinkItem } from "@/lib/shortio/types";
 import { createShortLinkAction } from "@/server/shortio-actions";
 
+import { AdvancedOptions, advancedToInput, applyUtm, EMPTY_ADVANCED } from "./advanced-options";
 import { getFolderColor } from "./data";
 
 interface CreateLinkDialogProps {
@@ -43,6 +44,7 @@ export function CreateLinkDialog({
   const [title, setTitle] = React.useState("");
   const [folderId, setFolderId] = React.useState<string>(defaultFolderId ?? "none");
   const [tagsInput, setTagsInput] = React.useState("");
+  const [advanced, setAdvanced] = React.useState(EMPTY_ADVANCED);
   const [isPending, startTransition] = React.useTransition();
 
   React.useEffect(() => {
@@ -73,7 +75,8 @@ export function CreateLinkDialog({
     startTransition(async () => {
       try {
         const res = await createShortLinkAction({
-          originalURL: trimmedUrl,
+          originalURL: applyUtm(trimmedUrl, advanced),
+          ...advancedToInput(advanced, false),
           path: path.trim() || undefined,
           title: title.trim() || undefined,
           folderId: folderId === "none" ? undefined : folderId,
@@ -89,6 +92,7 @@ export function CreateLinkDialog({
           setPath("");
           setTitle("");
           setTagsInput("");
+          setAdvanced(EMPTY_ADVANCED);
           onOpenChange(false);
         } else {
           toast.error(res.error ?? "Failed to create short link");
@@ -103,7 +107,7 @@ export function CreateLinkDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">
@@ -199,6 +203,7 @@ export function CreateLinkDialog({
               disabled={isPending}
             />
           </div>
+          <AdvancedOptions value={advanced} onChange={setAdvanced} disabled={isPending} />
         </div>
 
         <DialogFooter>

@@ -9,24 +9,30 @@ import {
   type SortingState,
   useTable,
 } from "@tanstack/react-table";
-import { Folder, FolderPlus, Globe, Link2, Plus, Search } from "lucide-react";
+import { ExternalLink, Folder, FolderPlus, Globe, Link2, Plus, Search, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SHORTIO_CONFIG } from "@/config/shortio-config";
 import { dataTableFeatures } from "@/lib/data-table-features";
 import type { ShortFolder, ShortLinkItem } from "@/lib/shortio/types";
+import { archiveShortLinksAction } from "@/server/shortio-advanced-actions";
 
+import { AnalyticsTab } from "./analytics-tab";
 import { BulkDeleteLinksDialog } from "./bulk-delete-links-dialog";
+import { BulkImportDialog } from "./bulk-import-dialog";
 import { BulkMoveFolderDialog } from "./bulk-move-folder-dialog";
 import { CreateFolderDialog } from "./create-folder-dialog";
 import { CreateLinkDialog } from "./create-link-dialog";
 import { getFolderColor, getLinkCountByFolder } from "./data";
 import { DeleteLinkDialog } from "./delete-link-dialog";
+import { DomainsTab } from "./domains-tab";
 import { EditLinkDialog } from "./edit-link-dialog";
+import { LinkAnalyticsSheet } from "./link-analytics-sheet";
 import { LinksBulkActions } from "./links-bulk-actions";
 import { createLinksColumns } from "./links-columns";
 import { LinksTable } from "./links-table";
@@ -41,6 +47,9 @@ interface LinksProps {
 export function Links({ initialLinks, initialFolders }: LinksProps) {
   const [links, setLinks] = React.useState<ShortLinkItem[]>(initialLinks);
   const [folders, setFolders] = React.useState<ShortFolder[]>(initialFolders);
+  const [tab, setTab] = React.useState("links");
+  const [isImportOpen, setIsImportOpen] = React.useState(false);
+  const [analyticsLink, setAnalyticsLink] = React.useState<ShortLinkItem | null>(null);
   const [activeFolderFilter, setActiveFolderFilter] = React.useState<string>("all");
 
   // Modals state
@@ -100,6 +109,13 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
         onMoveFolder: (link) => setMovingLink(link),
         onDelete: (link) => setDeletingLink(link),
         onQrCode: (link) => setQrCodeLink(link),
+        onAnalytics: (link) => setAnalyticsLink(link),
+        onArchive: async (link) => {
+          const res = await archiveShortLinksAction([link.id]);
+          if (!res.success) return void toast.error(res.error ?? "Failed to archive link");
+          setLinks((prev) => prev.filter((l) => l.id !== link.id));
+          toast.success("Link archived. Restore it from the Short.io dashboard.");
+        },
       }),
     [folders],
   );
@@ -201,9 +217,19 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" asChild className="gap-1.5">
+            <a href="https://app.short.io/users/dashboard/" target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="size-4" />
+              Short.io Dashboard
+            </a>
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setIsCreateFolderOpen(true)} className="gap-1.5">
             <FolderPlus className="size-4" />
             New Folder
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)} className="gap-1.5">
+            <Upload className="size-4" />
+            Import CSV
           </Button>
           <Button size="sm" onClick={() => setIsCreateLinkOpen(true)} className="gap-1.5">
             <Plus className="size-4" />
@@ -212,163 +238,201 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="p-4">
-          <CardHeader className="p-0 pb-2">
-            <CardDescription className="flex items-center justify-between text-xs">
-              <span>Total Links</span>
-              <Link2 className="size-4 text-muted-foreground" />
-            </CardDescription>
-            <CardTitle className="font-bold text-2xl tracking-tight">{totalLinksCount}</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 text-muted-foreground text-xs">
-            Live redirects active on {SHORTIO_CONFIG.domain}
-          </CardContent>
-        </Card>
+      <Tabs value={tab} onValueChange={setTab} className="flex flex-col gap-6">
+        <TabsList>
+          <TabsTrigger value="links">Links</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="domains">Domains</TabsTrigger>
+        </TabsList>
+        <TabsContent value="links" className="flex flex-col gap-6">
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Card className="p-4">
+              <CardHeader className="p-0 pb-2">
+                <CardDescription className="flex items-center justify-between text-xs">
+                  <span>Total Links</span>
+                  <Link2 className="size-4 text-muted-foreground" />
+                </CardDescription>
+                <CardTitle className="font-bold text-2xl tracking-tight">{totalLinksCount}</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 text-muted-foreground text-xs">
+                Live redirects active on {SHORTIO_CONFIG.domain}
+              </CardContent>
+            </Card>
 
-        <Card className="p-4">
-          <CardHeader className="p-0 pb-2">
-            <CardDescription className="flex items-center justify-between text-xs">
-              <span>Category Folders</span>
-              <Folder className="size-4 text-muted-foreground" />
-            </CardDescription>
-            <CardTitle className="font-bold text-2xl tracking-tight">{totalFoldersCount}</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 text-muted-foreground text-xs">
-            {uncategorizedCount} link{uncategorizedCount === 1 ? "" : "s"} uncategorized
-          </CardContent>
-        </Card>
+            <Card className="p-4">
+              <CardHeader className="p-0 pb-2">
+                <CardDescription className="flex items-center justify-between text-xs">
+                  <span>Category Folders</span>
+                  <Folder className="size-4 text-muted-foreground" />
+                </CardDescription>
+                <CardTitle className="font-bold text-2xl tracking-tight">{totalFoldersCount}</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 text-muted-foreground text-xs">
+                {uncategorizedCount} link{uncategorizedCount === 1 ? "" : "s"} uncategorized
+              </CardContent>
+            </Card>
 
-        <Card className="p-4">
-          <CardHeader className="p-0 pb-2">
-            <CardDescription className="flex items-center justify-between text-xs">
-              <span>Primary Domain</span>
-              <Globe className="size-4 text-emerald-500" />
-            </CardDescription>
-            <CardTitle className="font-bold font-mono text-lg tracking-tight sm:text-xl">
-              {SHORTIO_CONFIG.domain}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 text-muted-foreground text-xs">
-            Configured in Short.io (ID: {SHORTIO_CONFIG.domainId})
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Main Container Card: Folder Bar, Search, and Table */}
-      <Card className="flex flex-col gap-4 p-4 sm:p-6">
-        {/* Folder Organization Chips / Tabs */}
-        <div className="flex flex-col gap-2 border-b pb-4">
-          <div className="flex items-center justify-between">
-            <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
-              Filter by Category Folder
-            </span>
+            <Card className="p-4">
+              <CardHeader className="p-0 pb-2">
+                <CardDescription className="flex items-center justify-between text-xs">
+                  <span>Primary Domain</span>
+                  <Globe className="size-4 text-emerald-500" />
+                </CardDescription>
+                <CardTitle className="font-bold font-mono text-lg tracking-tight sm:text-xl">
+                  {SHORTIO_CONFIG.domain}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 text-muted-foreground text-xs">
+                Configured in Short.io (ID: {SHORTIO_CONFIG.domainId})
+              </CardContent>
+            </Card>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 pt-1">
-            <Button
-              variant={activeFolderFilter === "all" ? "default" : "outline"}
-              size="sm"
-              onClick={() => handleSelectFolder("all")}
-              className="h-8 gap-1.5 rounded-full text-xs"
-            >
-              All Links
-              <span
-                className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] ${
-                  activeFolderFilter === "all"
-                    ? "bg-primary-foreground/20 text-primary-foreground"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {totalLinksCount}
-              </span>
-            </Button>
+          {/* Main Container Card: Folder Bar, Search, and Table */}
+          <Card className="flex flex-col gap-4 p-4 sm:p-6">
+            {/* Folder Organization Chips / Tabs */}
+            <div className="flex flex-col gap-2 border-b pb-4">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
+                  Filter by Category Folder
+                </span>
+                {activeFolderFilter !== "all" && activeFolderFilter !== "uncategorized" && (
+                  // Short.io's public API has no rename/recolor/delete folder endpoint, so deep-link to its settings.
+                  <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" asChild>
+                    <a
+                      href={`https://app.short.io/users/dashboard/${SHORTIO_CONFIG.domainId}/folders/${activeFolderFilter}/settings/general`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink className="size-3" />
+                      Manage folder in Short.io
+                    </a>
+                  </Button>
+                )}
+              </div>
 
-            <Button
-              variant={activeFolderFilter === "uncategorized" ? "default" : "outline"}
-              size="sm"
-              onClick={() => handleSelectFolder("uncategorized")}
-              className="h-8 gap-1.5 rounded-full text-xs"
-            >
-              Uncategorized
-              <span
-                className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] ${
-                  activeFolderFilter === "uncategorized"
-                    ? "bg-primary-foreground/20 text-primary-foreground"
-                    : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {uncategorizedCount}
-              </span>
-            </Button>
-
-            {folders.map((folder) => {
-              const count = getLinkCountByFolder(links, folder.id);
-              const color = getFolderColor(folder);
-              const isActive = activeFolderFilter === folder.id;
-
-              return (
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
                 <Button
-                  key={folder.id}
-                  variant={isActive ? "default" : "outline"}
+                  variant={activeFolderFilter === "all" ? "default" : "outline"}
                   size="sm"
-                  onClick={() => handleSelectFolder(folder.id)}
+                  onClick={() => handleSelectFolder("all")}
                   className="h-8 gap-1.5 rounded-full text-xs"
                 >
-                  <span
-                    className="size-2 rounded-full"
-                    style={{ backgroundColor: isActive ? "currentColor" : color }}
-                  />
-                  {folder.name}
+                  All Links
                   <span
                     className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] ${
-                      isActive ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+                      activeFolderFilter === "all"
+                        ? "bg-primary-foreground/20 text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
                     }`}
                   >
-                    {count}
+                    {totalLinksCount}
                   </span>
                 </Button>
-              );
-            })}
-          </div>
-        </div>
 
-        {/* Search Bar */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <InputGroup className="w-full sm:max-w-md">
-            <InputGroupAddon>
-              <Search className="size-4 text-muted-foreground" />
-            </InputGroupAddon>
-            <InputGroupInput
-              ref={searchInputRef}
-              placeholder="Search by title, slug, or destination..."
-              value={searchQuery}
-              onChange={(event) => table.getColumn("search")?.setFilterValue(event.target.value)}
+                <Button
+                  variant={activeFolderFilter === "uncategorized" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleSelectFolder("uncategorized")}
+                  className="h-8 gap-1.5 rounded-full text-xs"
+                >
+                  Uncategorized
+                  <span
+                    className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] ${
+                      activeFolderFilter === "uncategorized"
+                        ? "bg-primary-foreground/20 text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {uncategorizedCount}
+                  </span>
+                </Button>
+
+                {folders.map((folder) => {
+                  const count = getLinkCountByFolder(links, folder.id);
+                  const color = getFolderColor(folder);
+                  const isActive = activeFolderFilter === folder.id;
+
+                  return (
+                    <Button
+                      key={folder.id}
+                      variant={isActive ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleSelectFolder(folder.id)}
+                      className="h-8 gap-1.5 rounded-full text-xs"
+                    >
+                      <span
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: isActive ? "currentColor" : color }}
+                      />
+                      {folder.name}
+                      <span
+                        className={`ml-1 rounded-full px-1.5 py-0.2 text-[10px] ${
+                          isActive
+                            ? "bg-primary-foreground/20 text-primary-foreground"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Search Bar */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <InputGroup className="w-full sm:max-w-md">
+                <InputGroupAddon>
+                  <Search className="size-4 text-muted-foreground" />
+                </InputGroupAddon>
+                <InputGroupInput
+                  ref={searchInputRef}
+                  placeholder="Search by title, slug, or destination..."
+                  value={searchQuery}
+                  onChange={(event) => table.getColumn("search")?.setFilterValue(event.target.value)}
+                />
+                <InputGroupAddon>
+                  <Kbd>⌘K</Kbd>
+                </InputGroupAddon>
+              </InputGroup>
+            </div>
+
+            {/* Bulk Actions Bar */}
+            <LinksBulkActions
+              selectedCount={selectedCount}
+              totalFilteredCount={filteredRows.length}
+              selectedLinks={selectedLinks}
+              onClearSelection={handleClearSelection}
+              onSelectAll={handleSelectAll}
+              onMoveFolder={() => setIsBulkMoveOpen(true)}
+              onDelete={() => setIsBulkDeleteOpen(true)}
+              onCopyLinks={handleCopySelectedLinks}
             />
-            <InputGroupAddon>
-              <Kbd>⌘K</Kbd>
-            </InputGroupAddon>
-          </InputGroup>
-        </div>
 
-        {/* Bulk Actions Bar */}
-        <LinksBulkActions
-          selectedCount={selectedCount}
-          totalFilteredCount={filteredRows.length}
-          selectedLinks={selectedLinks}
-          onClearSelection={handleClearSelection}
-          onSelectAll={handleSelectAll}
-          onMoveFolder={() => setIsBulkMoveOpen(true)}
-          onDelete={() => setIsBulkDeleteOpen(true)}
-          onCopyLinks={handleCopySelectedLinks}
-        />
+            {/* Links Data Table */}
+            <LinksTable table={table} />
+          </Card>
 
-        {/* Links Data Table */}
-        <LinksTable table={table} />
-      </Card>
+          {/* Modals & Dialogs */}
+        </TabsContent>
+        <TabsContent value="analytics">
+          <AnalyticsTab />
+        </TabsContent>
+        <TabsContent value="domains">
+          <DomainsTab />
+        </TabsContent>
+      </Tabs>
 
-      {/* Modals & Dialogs */}
+      <BulkImportDialog
+        open={isImportOpen}
+        onOpenChange={setIsImportOpen}
+        onImported={() => window.location.reload()}
+      />
+      <LinkAnalyticsSheet link={analyticsLink} onOpenChange={(o) => !o && setAnalyticsLink(null)} />
+
       <CreateLinkDialog
         open={isCreateLinkOpen}
         onOpenChange={setIsCreateLinkOpen}
