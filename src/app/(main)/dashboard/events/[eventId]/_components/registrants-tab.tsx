@@ -700,6 +700,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [memberDetailStatsMap, setMemberDetailStatsMap] = useState<
     Map<string, { registered: number; checkedIn: number; rate: number }>
   >(new Map());
+  const [loadingMemberStatsKeys, setLoadingMemberStatsKeys] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -2381,39 +2382,82 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
 
     if (pendingToFetch.length === 0) return;
 
-    void (async () => {
+    // Mark pending keys as loading
+    setLoadingMemberStatsKeys((prev) => {
+      const next = new Set(prev);
       for (const reg of pendingToFetch) {
-        if (cancelled) break;
         const email = (reg.member_email || "").trim().toLowerCase();
         const fsMem =
           (email ? firestoreMembersMap.get(email) : undefined) ??
           (reg.member_id ? firestoreMembersMap.get(reg.member_id) : undefined);
         const memberId = fsMem?.bevy_member_id || fsMem?.id || reg.member_id;
-        if (!memberId) continue;
+        if (memberId) next.add(String(memberId));
+        if (email) next.add(email);
+        if (fsMem?.bevy_user_id) next.add(String(fsMem.bevy_user_id));
+      }
+      return next;
+    });
 
-        try {
-          const res = await getBevyChapterMemberDetailAction(memberId);
+    void (async () => {
+      try {
+        for (const reg of pendingToFetch) {
           if (cancelled) break;
-          if (res.success && res.data) {
-            const agg = res.data.event_attendance_stats?.aggregate;
-            const registered =
-              agg?.total_events_registered ?? res.data.events_registered_count ?? fsMem?.events_registered_count ?? 0;
-            const checkedIn = agg?.total_checked_in ?? 0;
-            const rate = registered > 0 ? Math.round((checkedIn / registered) * 100) : 0;
-            const stats = { registered, checkedIn, rate };
+          const email = (reg.member_email || "").trim().toLowerCase();
+          const fsMem =
+            (email ? firestoreMembersMap.get(email) : undefined) ??
+            (reg.member_id ? firestoreMembersMap.get(reg.member_id) : undefined);
+          const memberId = fsMem?.bevy_member_id || fsMem?.id || reg.member_id;
+          if (!memberId) continue;
 
-            setMemberDetailStatsMap((prev) => {
-              const next = new Map(prev);
-              next.set(String(memberId), stats);
-              if (res.data.id) next.set(String(res.data.id), stats);
-              if (res.data.user?.id) next.set(String(res.data.user.id), stats);
-              if (email) next.set(email, stats);
-              if (res.data.user?.email) next.set(res.data.user.email.toLowerCase().trim(), stats);
+          try {
+            const res = await getBevyChapterMemberDetailAction(memberId);
+            if (cancelled) break;
+            if (res.success && res.data) {
+              const agg = res.data.event_attendance_stats?.aggregate;
+              const registered =
+                agg?.total_events_registered ?? res.data.events_registered_count ?? fsMem?.events_registered_count ?? 0;
+              const checkedIn = agg?.total_checked_in ?? 0;
+              const rate = registered > 0 ? Math.round((checkedIn / registered) * 100) : 0;
+              const stats = { registered, checkedIn, rate };
+
+              setMemberDetailStatsMap((prev) => {
+                const next = new Map(prev);
+                next.set(String(memberId), stats);
+                if (res.data.id) next.set(String(res.data.id), stats);
+                if (res.data.user?.id) next.set(String(res.data.user.id), stats);
+                if (email) next.set(email, stats);
+                if (res.data.user?.email) next.set(res.data.user.email.toLowerCase().trim(), stats);
+                return next;
+              });
+            }
+          } catch {
+            // Non-blocking
+          } finally {
+            setLoadingMemberStatsKeys((prev) => {
+              const next = new Set(prev);
+              if (memberId) next.delete(String(memberId));
+              if (email) next.delete(email);
+              if (fsMem?.bevy_user_id) next.delete(String(fsMem.bevy_user_id));
               return next;
             });
           }
-        } catch {
-          // Non-blocking
+        }
+      } finally {
+        if (cancelled) {
+          setLoadingMemberStatsKeys((prev) => {
+            const next = new Set(prev);
+            for (const reg of pendingToFetch) {
+              const email = (reg.member_email || "").trim().toLowerCase();
+              const fsMem =
+                (email ? firestoreMembersMap.get(email) : undefined) ??
+                (reg.member_id ? firestoreMembersMap.get(reg.member_id) : undefined);
+              const memberId = fsMem?.bevy_member_id || fsMem?.id || reg.member_id;
+              if (memberId) next.delete(String(memberId));
+              if (email) next.delete(email);
+              if (fsMem?.bevy_user_id) next.delete(String(fsMem.bevy_user_id));
+            }
+            return next;
+          });
         }
       }
     })();
@@ -5623,6 +5667,25 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                     (fsMember?.bevy_user_id
                                       ? memberDetailStatsMap.get(String(fsMember.bevy_user_id))
                                       : undefined);
+
+                                  const isLoadingStat =
+                                    !detailStat &&
+                                    ((cleanEmail && loadingMemberStatsKeys.has(cleanEmail)) ||
+                                      (reg.member_id && loadingMemberStatsKeys.has(String(reg.member_id))) ||
+                                      (fsMember?.bevy_member_id &&
+                                        loadingMemberStatsKeys.has(String(fsMember.bevy_member_id))) ||
+                                      (fsMember?.bevy_user_id &&
+                                        loadingMemberStatsKeys.has(String(fsMember.bevy_user_id))));
+
+                                  if (isLoadingStat) {
+                                    return (
+                                      <div className="mt-1 flex items-center">
+                                        <div className="relative h-4 w-28 overflow-hidden rounded-full border border-muted-foreground/20 bg-muted/60">
+                                          <div className="shimmer-wave" aria-hidden="true" />
+                                        </div>
+                                      </div>
+                                    );
+                                  }
 
                                   const regCount = detailStat?.registered ?? fsMember?.events_registered_count ?? 0;
                                   const attCount = detailStat?.checkedIn ?? fsMember?.events_attended_count ?? 0;
