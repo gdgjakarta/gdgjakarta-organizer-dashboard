@@ -179,6 +179,21 @@ export async function getFirestoreMembers(maxResults?: number): Promise<Firestor
   }
 }
 
+export async function getFirestoreMemberByEmail(email: string): Promise<FirestoreMember | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+  try {
+    const q = query(collection(db, "members"), where("email", "==", normalized), limit(1));
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    const d = snapshot.docs[0];
+    return { id: d.id, ...d.data() } as FirestoreMember;
+  } catch (error) {
+    console.error(`[Firestore] getFirestoreMemberByEmail error for ${normalized}:`, error);
+    return null;
+  }
+}
+
 export async function getFirestoreMemberById(memberId: string): Promise<FirestoreMember | null> {
   if (typeof window === "undefined") return null;
   try {
@@ -387,11 +402,7 @@ export async function mergeFirestoreMemberDocuments(
     }
 
     // Determine resolved Bevy User ID
-    const resolvedBevyUserId =
-      forcedBevyUserId ??
-      targetData.bevy_user_id ??
-      duplicateData.bevy_user_id ??
-      null;
+    const resolvedBevyUserId = forcedBevyUserId ?? targetData.bevy_user_id ?? duplicateData.bevy_user_id ?? null;
 
     const now = new Date().toISOString();
 
@@ -1962,9 +1973,7 @@ export async function registerMemberForEvent(
     }
 
     // 3. Ticket sales window and capacity check
-    const isUsingBundleVoucher = Boolean(
-      registration.voucher_code && registration.voucher_code.trim().toUpperCase().startsWith("BNDL-"),
-    );
+    const isUsingBundleVoucher = Boolean(registration.voucher_code?.trim().toUpperCase().startsWith("BNDL-"));
 
     if (!isWaitlisted && registration.ticket_id && eventData.tickets) {
       const matchingTicket = eventData.tickets.find((t) => t.id === registration.ticket_id);
@@ -3077,7 +3086,7 @@ export async function updateRegistrationStatus(
   const updatedLogs = hasSameDuplicateLog ? dedupedLogs : [...dedupedLogs, logEntry];
 
   const isNowConfirmed = status === "approved" || status === "paid_and_registered" || status === "registered";
-  const wasConfirmed =
+  const _wasConfirmed =
     previousStatus === "approved" || previousStatus === "paid_and_registered" || previousStatus === "registered";
 
   let issuedBundleVouchers: BundleIssuedVoucher[] | undefined;
@@ -3521,11 +3530,10 @@ export async function updateRegistrationMerchandiseCollection(
       event_title: existingData?.event_title ? existingData.event_title.slice(0, 300) : undefined,
       member_id: existingData?.member_id,
       member_name: existingData?.member_name,
-      member_email:
-        existingData?.member_email && existingData.member_email.includes("@") ? existingData.member_email : undefined,
+      member_email: existingData?.member_email?.includes("@") ? existingData.member_email : undefined,
       actor_id: actorId,
       actor_name: actorName,
-      actor_email: actorEmail && actorEmail.includes("@") ? actorEmail : undefined,
+      actor_email: actorEmail?.includes("@") ? actorEmail : undefined,
       previous_value: existingData?.is_merchandise_collected ? "merchandise_collected" : "merchandise_uncollected",
       new_value: actionStatus,
       notes: reviewer?.notes || defaultNote,
@@ -4117,7 +4125,8 @@ export async function updateEventVouchers(
 
       const reportBatch = writeBatch(db);
       for (const v of enabledShareVouchers) {
-        const token = v.partner_share_token!.trim();
+        const token = v.partner_share_token?.trim();
+        if (!token) continue;
         const normCode = v.code.trim().toUpperCase();
         const matchedRegs = registrations.filter((reg) => {
           const regCode = (reg.voucher_code || "").trim().toUpperCase();
@@ -4416,7 +4425,7 @@ export async function resetEventVoucherRedemptions(
   if (actor.email) {
     resetPayload.last_reset_by_email = actor.email;
   }
-  if (reason && reason.trim()) {
+  if (reason?.trim()) {
     resetPayload.last_reset_reason = reason.trim();
   }
 
@@ -4541,7 +4550,7 @@ function cleanPresentationSlides(slides?: EventPresentationSlide[]): EventPresen
 
     if (Array.isArray(s.speakers) && s.speakers.length > 0) {
       const validSpeakers = s.speakers
-        .filter((sp) => Boolean(sp && sp.name?.trim()))
+        .filter((sp) => Boolean(sp?.name?.trim()))
         .map((sp) => ({
           name: sp.name.trim(),
           ...(sp.role?.trim() ? { role: sp.role.trim() } : {}),
@@ -4986,10 +4995,10 @@ export async function updateBreakoutSessionCheckIn(
       event_title: data.event_title ? data.event_title.slice(0, 300) : undefined,
       member_id: data.member_id,
       member_name: data.member_name,
-      member_email: data.member_email && data.member_email.includes("@") ? data.member_email : undefined,
+      member_email: data.member_email?.includes("@") ? data.member_email : undefined,
       actor_id: reviewer?.id ?? "organizer",
       actor_name: reviewer?.name ?? "Organizer",
-      actor_email: reviewer?.email && reviewer.email.includes("@") ? reviewer.email : undefined,
+      actor_email: reviewer?.email?.includes("@") ? reviewer.email : undefined,
       previous_value: data.session_check_ins?.[sessionId]?.is_checked_in
         ? "session_checked_in"
         : "session_not_checked_in",
@@ -5966,9 +5975,10 @@ export async function enqueuePrintJob(
   await waitForAuthReady();
   const now = new Date().toISOString();
   const useDeterministic = Boolean(options?.deterministicId && !options?.forceNewJob && !options?.printedBy);
-  const jobId = useDeterministic
-    ? (options?.deterministicId as string).replace(/[^a-zA-Z0-9_-]/g, "_")
-    : `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const jobId =
+    useDeterministic && options?.deterministicId
+      ? options.deterministicId.replace(/[^a-zA-Z0-9_-]/g, "_")
+      : `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
   // A job that was already printed directly (test print) is logged as completed so no station picks it up.
   const printedBy = options?.printedBy;

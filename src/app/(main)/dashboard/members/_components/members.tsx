@@ -48,6 +48,7 @@ import { splitFullName } from "@/lib/utils";
 import { BulkMergeDialog } from "./bulk-merge-dialog";
 import { ChapterTeamTab } from "./chapter-team-tab";
 import type { MemberRow } from "./data";
+import { MemberDetailDialog } from "./member-detail-dialog";
 import { MembersBulkActions } from "./members-bulk-actions";
 import { getMembersColumns } from "./members-columns";
 import { MembersTable } from "./members-table";
@@ -122,6 +123,7 @@ export function Members({
   const [isSearchingRemote, setIsSearchingRemote] = React.useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = React.useState(false);
   const [bulkMergeDialogOpen, setBulkMergeDialogOpen] = React.useState(false);
+  const [memberToView, setMemberToView] = React.useState<MemberRow | null>(null);
   const [memberToMerge, setMemberToMerge] = React.useState<MemberRow | null>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -281,7 +283,7 @@ export function Members({
   }, [memberToMerge]);
 
   const columns = React.useMemo(
-    () => getMembersColumns(handleSyncSingleMember, handleOpenMergeDialog),
+    () => getMembersColumns(handleSyncSingleMember, handleOpenMergeDialog, setMemberToView),
     [handleSyncSingleMember, handleOpenMergeDialog],
   );
 
@@ -888,6 +890,7 @@ export function Members({
 
               <MembersTable
                 table={table}
+                onRowClick={setMemberToView}
                 isLoading={
                   isSearchingRemote ||
                   (!isSearchActive && isFetchingPage) ||
@@ -918,6 +921,8 @@ export function Members({
           )}
         </TabsContent>
       </Tabs>
+
+      <MemberDetailDialog member={memberToView} onOpenChange={(o) => !o && setMemberToView(null)} />
 
       <MergeMemberDialog
         open={mergeDialogOpen}

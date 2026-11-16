@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.35] - 2026-11-16
+
+### Added
+- **Member Detail Dialog & Social Links View**: Added an inspectable member modal on `/dashboard/members` featuring full Bevy + Firestore profiles, direct WhatsApp button (`wa.me`), brand-colored SVG icons for LinkedIn, GitHub, Instagram, X, Threads, and Personal Website, and attendance stats.
+- **Personal Information Social Links & Auto-Complete**: Expanded `/dashboard/account` with social fields (LinkedIn, GitHub, Instagram, X with username normalization, Threads, Personal Website) and wired auto-fill into `EventRegistrationModal` when custom questions match.
+- **Check-in Rate Badge & Indication in Curation Mode**: Displayed check-in rate badge directly under email on `/dashboard/events/[eventId]` (Registrants Tab) with color indicator dots (Emerald $\ge 75\%$, Amber $50\%-74\%$, Rose $< 50\%$, Muted for new attendees).
+- **Check-in Rate Sorting**: Added interactive column header sort and a dedicated "Check-in Rate:" filter dropdown (Highest First / Lowest First) with active filter pill indicator and tie-breaking on attended counts.
+
+---
+
+## [1.0.34] - 2026-11-16
+
+### Added
+- **Short.io Dashboard Advanced Features**: Full-featured Short Links dashboard with Links, Analytics, and Domains tabs, click telemetry charts, QR generation, password protection, expiration, and bulk CSV import.
+
+---
+
 ## [1.0.33] - 2026-11-15
 
 ### Added

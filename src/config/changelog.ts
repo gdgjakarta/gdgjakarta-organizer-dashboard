@@ -16,10 +16,44 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.35",
+    releaseDate: "2026-11-16",
+    title: "Member Profiles, Personal Info Social Autocomplete & Curation Check-in Rate Sorting",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Member detail inspection modal on /dashboard/members with direct WhatsApp messaging, brand-colored social profile pills, and attendance history.",
+      },
+      {
+        category: "Added",
+        text: "Social link profiles on account settings with auto-completion into matching event registration questions.",
+      },
+      {
+        category: "Added",
+        text: "Check-in rate badge with color indications (Emerald/Amber/Rose) for applicants during event curation mode.",
+      },
+      {
+        category: "Added",
+        text: "Interactive column header and filter dropdown sorting by check-in rate (Highest vs Lowest first).",
+      },
+    ],
+  },
+  {
+    version: "1.0.34",
+    releaseDate: "2026-11-16",
+    title: "Short.io Dashboard Analytics, Advanced Link Options & Domains",
+    items: [
+      {
+        category: "Added",
+        text: "Full Short.io dashboard integration with click stats charts, password protection, link expiration, device targeting, and bulk CSV import.",
+      },
+    ],
+  },
+  {
     version: "1.0.33",
     releaseDate: "2026-11-15",
     title: "Thermal Shipping Label Printing & Cross-Laptop Printer Selection",
-    badge: "Latest",
     items: [
       {
         category: "Added",

@@ -15,6 +15,7 @@ import {
   getAllBevyChapterEvents,
   getAllBevyEventAttendees,
   getBevyChapterEvents,
+  getBevyChapterMemberById,
   getBevyChapterMembers,
   getBevyChapterTeams,
   getBevyEventAttendees,
@@ -778,4 +779,16 @@ export async function fetchBevyChapterLiveMetricsAction() {
       formattedTeam: `${visibleTeamCount}+`,
     },
   };
+}
+
+/**
+ * Fetch a Bevy chapter member's detail. Protected: organizer session required.
+ */
+export async function getBevyChapterMemberDetailAction(memberId: string | number) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false as const, error: "Unauthorized" };
+  }
+  const data = await getBevyChapterMemberById(memberId);
+  if (!data) return { success: false as const, error: "Member not found in Bevy or session expired." };
+  return { success: true as const, data };
 }

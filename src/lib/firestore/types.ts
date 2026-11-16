@@ -797,6 +797,12 @@ export interface FirestoreMember {
   is_email_verified?: boolean;
   company_or_institution?: string;
   phone?: string;
+  linkedin_url?: string;
+  github_url?: string;
+  instagram_url?: string;
+  x_url?: string;
+  threads_url?: string;
+  website_url?: string;
   events_attended_count?: number; // Tracked through on-site scanner/check-ins
   last_active?: string | null;
   notes?: string;

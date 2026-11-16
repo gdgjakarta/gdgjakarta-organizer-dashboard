@@ -382,25 +382,56 @@ export function EventRegistrationModal({
     if (open && user) {
       const currentUser = user;
       async function prefillMemberData() {
-        let memberPhone = "";
+        let memberDoc: import("@/lib/firestore/types").FirestoreMember | null = null;
         try {
           const { getFirestoreMemberById } = await import("@/lib/firestore/client");
-          const memberDoc = await getFirestoreMemberById(currentUser.id);
-          if (memberDoc?.phone) {
-            memberPhone = memberDoc.phone;
-          }
+          memberDoc = await getFirestoreMemberById(currentUser.id);
         } catch (err) {
           console.warn("[EventRegistrationModal] Failed to load member profile:", err);
         }
 
-        setAnswers((prev) => ({
-          ...prev,
-          full_name: (prev.full_name as string) || (prev.name as string) || currentUser.name || "",
-          name: (prev.name as string) || (prev.full_name as string) || currentUser.name || "",
-          email: (prev.email as string) || currentUser.email || "",
-          ...(memberPhone && !prev.whatsapp ? { whatsapp: memberPhone } : {}),
-          // Keep work_email untouched by personal user.email
-        }));
+        const memberPhone = memberDoc?.phone ?? "";
+        const memberTitle = memberDoc?.title ?? "";
+        const memberCompany = memberDoc?.company ?? memberDoc?.company_or_institution ?? "";
+
+        setAnswers((prev) => {
+          const next: Record<string, string | string[] | boolean> = {
+            ...prev,
+            full_name: (prev.full_name as string) || (prev.name as string) || currentUser.name || "",
+            name: (prev.name as string) || (prev.full_name as string) || currentUser.name || "",
+            email: (prev.email as string) || currentUser.email || "",
+            ...(memberPhone && !prev.whatsapp ? { whatsapp: memberPhone } : {}),
+            // Keep work_email untouched by personal user.email
+          };
+
+          if (memberDoc && Array.isArray(eventConfig.custom_questions)) {
+            for (const q of eventConfig.custom_questions) {
+              if (next[q.id]) continue;
+              const key = `${q.id} ${q.label}`.toLowerCase();
+              if (memberDoc.linkedin_url && key.includes("linkedin")) next[q.id] = memberDoc.linkedin_url;
+              else if (memberDoc.github_url && key.includes("github")) next[q.id] = memberDoc.github_url;
+              else if (memberDoc.instagram_url && key.includes("instagram")) next[q.id] = memberDoc.instagram_url;
+              else if (memberDoc.threads_url && key.includes("threads")) next[q.id] = memberDoc.threads_url;
+              else if (memberDoc.x_url && (/\bx\b/.test(key) || key.includes("twitter"))) next[q.id] = memberDoc.x_url;
+              else if (
+                memberDoc.website_url &&
+                (key.includes("website") || key.includes("portfolio") || key.includes("personal site"))
+              )
+                next[q.id] = memberDoc.website_url;
+              else if (
+                memberCompany &&
+                (key.includes("company") || key.includes("institution") || key.includes("organization") || key.includes("university"))
+              )
+                next[q.id] = memberCompany;
+              else if (memberTitle && (key.includes("job_title") || key.includes("job title") || key.includes("profession") || key.includes("role_or_title")))
+                next[q.id] = memberTitle;
+              else if (memberPhone && (key.includes("phone") || key.includes("whatsapp")))
+                next[q.id] = memberPhone;
+            }
+          }
+
+          return next;
+        });
       }
       void prefillMemberData();
     }

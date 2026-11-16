@@ -2,7 +2,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { Subscribe } from "@tanstack/react-table";
 import { parse } from "date-fns";
-import { Copy, ExternalLink, GitMerge, MoreHorizontal, RefreshCw } from "lucide-react";
+import { Copy, ExternalLink, Eye, GitMerge, MoreHorizontal, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -48,6 +48,7 @@ function AvatarCell({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
 export function getMembersColumns(
   onSyncMember?: (member: MemberRow) => Promise<void>,
   onMergeMember?: (member: MemberRow) => void,
+  onViewDetails?: (member: MemberRow) => void,
 ): ColumnDef<DataTableFeatures, MemberRow>[] {
   return [
     {
@@ -193,6 +194,12 @@ export function getMembersColumns(
                   {row.original.syncStatus === "synced" || row.original.bevyUserId != null
                     ? "Check Bevy sync"
                     : "Sync to Bevy"}
+                </DropdownMenuItem>
+              ) : null}
+              {onViewDetails ? (
+                <DropdownMenuItem className="flex items-center gap-2" onClick={() => onViewDetails(row.original)}>
+                  <Eye className="size-3.5" />
+                  View details
                 </DropdownMenuItem>
               ) : null}
               {row.original.profileUrl ? (

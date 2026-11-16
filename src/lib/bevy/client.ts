@@ -28,6 +28,7 @@ import {
   type BevyAttendeeCheckInResponse,
   type BevyAttendeesResponse,
   type BevyChapterMember,
+  type BevyChapterMemberDetail,
   type BevyChapterSlim,
   type BevyChapterTeamMember,
   type BevyChapterTeamRole,
@@ -1067,6 +1068,28 @@ export async function getBevyChapterMembers(
     chapterId,
   );
   return result;
+}
+
+/**
+ * Fetch a single chapter member's detail (uses the chapter member id, not the user id).
+ */
+export async function getBevyChapterMemberById(
+  memberId: string | number,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<BevyChapterMemberDetail | null> {
+  const chapterSlug = BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+  const { ok, data } = await bevyFetchWithResponse<BevyChapterMemberDetail>(
+    `/chapter/${chapterId}/member/${encodeURIComponent(String(memberId))}/`,
+    {
+      requireAuth: true,
+      headers: {
+        Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/members/${memberId}`,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    },
+    chapterId,
+  );
+  return ok ? data : null;
 }
 
 /**

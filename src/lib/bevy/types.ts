@@ -568,3 +568,35 @@ export interface BevyAiContentModificationResponse {
   description?: string;
   [key: string]: unknown;
 }
+
+export interface BevyChapterMemberDetail {
+  id: number;
+  user: {
+    id: number;
+    first_name?: string;
+    last_name?: string;
+    full_name?: string;
+    email: string;
+    avatar?: { url?: string; thumbnail_url?: string };
+    title?: string;
+    company?: string;
+    role?: { id: number; name: string };
+    city?: string;
+    country?: string;
+    bio?: string | null;
+    website?: string;
+    twitter?: string | null;
+    linkedin?: string;
+    facebook?: string;
+    profile_url?: string;
+  };
+  created_date: string;
+  event_attendance_stats?: {
+    aggregate: { total_chapter_events: number; total_events_registered: number; total_checked_in: number };
+  };
+  events_registered_count: number;
+  tags?: string[];
+  user_preferences_memberships?: Array<{
+    chapter: { id: number; title: string; chapter_location?: string; url?: string; logo?: { url?: string } };
+  }>;
+}

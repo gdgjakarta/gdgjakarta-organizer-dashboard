@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { DataTableFeatures } from "@/lib/data-table-features";
+import { cn } from "@/lib/utils";
 
 import type { MemberRow } from "./data";
 
@@ -113,9 +114,11 @@ function getPageNumbers(currentPage: number, pageCount: number): number[] {
 export function MembersTable({
   table,
   isLoading = false,
+  onRowClick,
 }: {
   table: ReactTable<DataTableFeatures, MemberRow>;
   isLoading?: boolean;
+  onRowClick?: (member: MemberRow) => void;
 }) {
   const pageCount = Math.max(table.getPageCount(), 1);
   const currentPage = Math.min(table.state.pagination.pageIndex + 1, pageCount);
@@ -177,8 +180,14 @@ export function MembersTable({
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  className="border-border/60 hover:bg-white/2.5"
+                  className={cn("border-border/60 hover:bg-white/2.5", onRowClick && "cursor-pointer")}
                   data-state={table.state.rowSelection[row.id] && "selected"}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    // Ignore portaled menu clicks (React bubbles them) and interactive controls.
+                    if (!e.currentTarget.contains(target) || target.closest("button,a,input,[role=checkbox]")) return;
+                    onRowClick?.(row.original);
+                  }}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="px-3 py-4 align-middle">

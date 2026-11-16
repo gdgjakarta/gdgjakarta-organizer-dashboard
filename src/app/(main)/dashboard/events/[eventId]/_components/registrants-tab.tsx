@@ -4,6 +4,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useT
 
 import { format } from "date-fns";
 import {
+  ArrowUpDown,
   BookOpen,
   Check,
   ChevronDown,
@@ -111,6 +112,7 @@ import type {
   CustomQuestion,
   EventSession,
   FirestoreEvent,
+  FirestoreMember,
   FirestoreRegistration,
   RegistrationStatus,
   RegistrationStatusLog,
@@ -546,7 +548,7 @@ function FilterSelect({
         <button
           type="button"
           className={cn(
-            "flex h-8 w-fit items-center justify-between gap-1.5 rounded-[min(var(--radius-md),10px)] border border-input bg-transparent py-2 pr-2 pl-2.5 text-xs whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
+            "flex h-8 w-fit select-none items-center justify-between gap-1.5 whitespace-nowrap rounded-[min(var(--radius-md),10px)] border border-input bg-transparent py-2 pr-2 pl-2.5 text-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
             className,
           )}
         >
@@ -609,6 +611,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [merchandiseVariantFilter, setMerchandiseVariantFilter] = useState<string>("all");
   const [reviewerFilter, setReviewerFilter] = useState<string>("all");
   const [venueTicketFilter, setVenueTicketFilter] = useState<string>("all");
+  const [checkInRateSort, setCheckInRateSort] = useState<"none" | "desc" | "asc">("none");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [isStatusGuideOpen, setIsStatusGuideOpen] = useState(false);
@@ -689,6 +692,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [sendingVenueTicketRegId, setSendingVenueTicketRegId] = useState<string | null>(null);
   const [isBatchCheckingPayment, setIsBatchCheckingPayment] = useState(false);
   const [isBatchResendPaymentOpen, setIsBatchResendPaymentOpen] = useState(false);
+  const [firestoreMembersMap, setFirestoreMembersMap] = useState<Map<string, FirestoreMember>>(new Map());
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -1412,6 +1416,38 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     return isEventCurationMode(currentEvent);
   }, [currentEvent]);
 
+  // Load Firestore members when in curation mode to calculate historical check-in rates
+  useEffect(() => {
+    if (!isCurationMode) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const { getFirestoreMembers } = await import("@/lib/firestore/client");
+        const members = await getFirestoreMembers();
+        if (cancelled || !members || members.length === 0) return;
+
+        const map = new Map<string, FirestoreMember>();
+        for (const m of members) {
+          const email = (m.email || "").trim().toLowerCase();
+          if (email) {
+            map.set(email, m);
+          }
+          if (m.id) {
+            map.set(m.id, m);
+          }
+        }
+        setFirestoreMembersMap(map);
+      } catch (err) {
+        console.warn("[RegistrantsTab] Failed to load Firestore members for curation stats:", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isCurationMode]);
+
   // If curation mode is disabled, reset any active curation-only filters to 'all'
   useEffect(() => {
     if (!isCurationMode) {
@@ -1940,6 +1976,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     setMerchandiseVariantFilter("all");
     setReviewerFilter("all");
     setVenueTicketFilter("all");
+    setCheckInRateSort("none");
     setSearch("");
     setQuestionFilters({});
     setCurrentPage(1);
@@ -2205,67 +2242,96 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
 
   const filtered = useMemo(() => {
     const filterStatus = (statusFilter ?? "all").toLowerCase().trim();
-    if (filterStatus === "all") return preStatusFiltered;
+    const result =
+      filterStatus === "all"
+        ? [...preStatusFiltered]
+        : preStatusFiltered.filter((reg) => {
+            const effectiveStatus = getEffectiveRegistrationStatus(reg, currentEvent);
+            const regStatus = (effectiveStatus ?? "").toLowerCase().trim();
 
-    return preStatusFiltered.filter((reg) => {
-      const effectiveStatus = getEffectiveRegistrationStatus(reg, currentEvent);
-      const regStatus = (effectiveStatus ?? "").toLowerCase().trim();
+            if (filterStatus === "not_checked_in") {
+              const isApproved =
+                regStatus === "approved" ||
+                regStatus === "paid_and_registered" ||
+                regStatus === "attended" ||
+                regStatus === "confirmed" ||
+                regStatus === "registered";
+              const isCheckedIn = Boolean(reg.is_checked_in) || regStatus === "attended";
+              return isApproved && !isCheckedIn;
+            }
+            if (filterStatus === "checked_in") {
+              return Boolean(reg.is_checked_in) || regStatus === "attended";
+            }
+            if (filterStatus === "registered_attendees") {
+              return (
+                regStatus === "approved" ||
+                regStatus === "paid_and_registered" ||
+                regStatus === "attended" ||
+                regStatus === "confirmed" ||
+                regStatus === "registered"
+              );
+            }
+            if (filterStatus === "approved") {
+              return (
+                regStatus === "approved" ||
+                regStatus === "attended" ||
+                regStatus === "confirmed" ||
+                regStatus === "registered"
+              );
+            }
+            if (filterStatus === "paid_and_registered") {
+              return (
+                regStatus === "paid_and_registered" ||
+                ((regStatus === "approved" || regStatus === "registered" || regStatus === "attended") &&
+                  (isPaidRegistration(reg) || reg.payment_status === "paid"))
+              );
+            }
+            if (filterStatus === "waiting_for_payment") {
+              return regStatus === "waiting_for_payment";
+            }
+            if (filterStatus === "expired") {
+              return regStatus === "expired";
+            }
+            if (filterStatus === "failed") {
+              return regStatus === "failed" || reg.payment_status === "failed";
+            }
+            if (filterStatus === "canceled") {
+              return regStatus === "canceled" || regStatus === "cancelled";
+            }
+            if (filterStatus === "pending") {
+              return regStatus === "pending" || regStatus === "applied" || regStatus === "review";
+            }
+            return regStatus === filterStatus;
+          });
 
-      if (filterStatus === "not_checked_in") {
-        const isApproved =
-          regStatus === "approved" ||
-          regStatus === "paid_and_registered" ||
-          regStatus === "attended" ||
-          regStatus === "confirmed" ||
-          regStatus === "registered";
-        const isCheckedIn = Boolean(reg.is_checked_in) || regStatus === "attended";
-        return isApproved && !isCheckedIn;
-      }
-      if (filterStatus === "checked_in") {
-        return Boolean(reg.is_checked_in) || regStatus === "attended";
-      }
-      if (filterStatus === "registered_attendees") {
-        return (
-          regStatus === "approved" ||
-          regStatus === "paid_and_registered" ||
-          regStatus === "attended" ||
-          regStatus === "confirmed" ||
-          regStatus === "registered"
-        );
-      }
-      if (filterStatus === "approved") {
-        return (
-          regStatus === "approved" ||
-          regStatus === "attended" ||
-          regStatus === "confirmed" ||
-          regStatus === "registered"
-        );
-      }
-      if (filterStatus === "paid_and_registered") {
-        return (
-          regStatus === "paid_and_registered" ||
-          ((regStatus === "approved" || regStatus === "registered" || regStatus === "attended") &&
-            (isPaidRegistration(reg) || reg.payment_status === "paid"))
-        );
-      }
-      if (filterStatus === "waiting_for_payment") {
-        return regStatus === "waiting_for_payment";
-      }
-      if (filterStatus === "expired") {
-        return regStatus === "expired";
-      }
-      if (filterStatus === "failed") {
-        return regStatus === "failed" || reg.payment_status === "failed";
-      }
-      if (filterStatus === "canceled") {
-        return regStatus === "canceled" || regStatus === "cancelled";
-      }
-      if (filterStatus === "pending") {
-        return regStatus === "pending" || regStatus === "applied" || regStatus === "review";
-      }
-      return regStatus === filterStatus;
-    });
-  }, [preStatusFiltered, statusFilter, currentEvent]);
+    if (checkInRateSort !== "none") {
+      result.sort((a, b) => {
+        const getRateAndRegCount = (reg: FirestoreRegistration) => {
+          const email = (reg.member_email || "").trim().toLowerCase();
+          const mem = firestoreMembersMap.get(email) || firestoreMembersMap.get(reg.member_id);
+          const regCount = mem?.events_registered_count ?? 0;
+          const attCount = mem?.events_attended_count ?? 0;
+          const rate = regCount > 0 ? (attCount / regCount) * 100 : -1; // -1 for no prior events
+          return { rate, regCount, attCount };
+        };
+
+        const statsA = getRateAndRegCount(a);
+        const statsB = getRateAndRegCount(b);
+
+        if (checkInRateSort === "desc") {
+          // Sort highest rate first. If rates equal, sort higher attended count first
+          if (statsB.rate !== statsA.rate) return statsB.rate - statsA.rate;
+          return statsB.attCount - statsA.attCount;
+        }
+
+        // Sort lowest rate first (putting no prior history at the very end or beginning based on rate)
+        if (statsA.rate !== statsB.rate) return statsA.rate - statsB.rate;
+        return statsA.attCount - statsB.attCount;
+      });
+    }
+
+    return result;
+  }, [preStatusFiltered, statusFilter, currentEvent, checkInRateSort, firestoreMembersMap]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safeCurrentPage = Math.min(currentPage, pageCount);
@@ -4120,6 +4186,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       merchandiseFilter !== "all" ||
       merchandiseVariantFilter !== "all" ||
       reviewerFilter !== "all" ||
+      checkInRateSort !== "none" ||
       activeQuestionFilterCount > 0,
   );
 
@@ -4699,6 +4766,23 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   ]}
                 />
 
+                {isCurationMode && (
+                  <FilterSelect
+                    value={checkInRateSort}
+                    onValueChange={(val) => {
+                      setCheckInRateSort(val as "none" | "desc" | "asc");
+                      setCurrentPage(1);
+                    }}
+                    icon={<ArrowUpDown className="size-3 shrink-0 text-muted-foreground" />}
+                    prefix="Check-in Rate:"
+                    options={[
+                      { value: "none", label: "Default Order" },
+                      { value: "desc", label: "Highest First (Desc)" },
+                      { value: "asc", label: "Lowest First (Asc)" },
+                    ]}
+                  />
+                )}
+
                 {/* Dynamic Question Field Filters */}
                 {selectedQuestionColumns.map((qKey) => {
                   const meta = questionFilterOptionsByKey.get(qKey);
@@ -4758,7 +4842,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   {venueTicketConfig && venueTicketConfig.files.length > 0 && (
                     <Badge
                       variant="secondary"
-                      className="px-1.5 py-0 font-mono text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                      className="bg-emerald-500/15 px-1.5 py-0 font-mono text-[10px] text-emerald-700 dark:text-emerald-300"
                     >
                       {venueTicketConfig.files.length}
                     </Badge>
@@ -5164,6 +5248,20 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   </button>
                 </Badge>
               )}
+              {isCurationMode && checkInRateSort !== "none" && (
+                <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                  <ArrowUpDown className="size-3 text-primary" />
+                  <span>Check-in Rate: {checkInRateSort === "desc" ? "Highest First" : "Lowest First"}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCheckInRateSort("none")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Clear check-in rate sort"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
               {selectedQuestionColumns.map((qKey) => {
                 const val = questionFilters[qKey];
                 if (!val || val === "all") return null;
@@ -5208,7 +5306,46 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                       aria-label="Select all"
                     />
                   </TableHead>
-                  <TableHead>Applicant</TableHead>
+                  <TableHead>
+                    {isCurationMode ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCheckInRateSort((prev) => {
+                            if (prev === "none") return "desc";
+                            if (prev === "desc") return "asc";
+                            return "none";
+                          });
+                          setCurrentPage(1);
+                        }}
+                        className="group -ml-1 inline-flex items-center gap-1.5 rounded px-1 py-0.5 font-medium transition-colors hover:bg-muted/80 hover:text-foreground"
+                        title={
+                          checkInRateSort === "none"
+                            ? "Click to sort by Check-in Rate (Highest first)"
+                            : checkInRateSort === "desc"
+                              ? "Sorted by Check-in Rate (Highest first). Click for lowest first."
+                              : "Sorted by Check-in Rate (Lowest first). Click to reset."
+                        }
+                      >
+                        <span>Applicant</span>
+                        <ArrowUpDown
+                          className={cn(
+                            "size-3.5 transition-colors",
+                            checkInRateSort !== "none"
+                              ? "font-semibold text-primary"
+                              : "text-muted-foreground/60 group-hover:text-muted-foreground",
+                          )}
+                        />
+                        {checkInRateSort !== "none" && (
+                          <span className="font-normal text-[10px] text-primary">
+                            ({checkInRateSort === "desc" ? "High" : "Low"})
+                          </span>
+                        )}
+                      </button>
+                    ) : (
+                      "Applicant"
+                    )}
+                  </TableHead>
                   {visibleStandardColumns.status !== false && <TableHead>Status</TableHead>}
                   {isCurationMode && visibleStandardColumns.reviewed_by !== false && <TableHead>Reviewed By</TableHead>}
                   {(hasTickets || hasBundles) && visibleStandardColumns.ticket !== false && (
@@ -5389,6 +5526,55 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                   </Badge>
                                 )}
                               </div>
+                              {isCurationMode &&
+                                (() => {
+                                  const cleanEmail = (reg.member_email || "").trim().toLowerCase();
+                                  const fsMember =
+                                    firestoreMembersMap.get(cleanEmail) || firestoreMembersMap.get(reg.member_id);
+                                  const regCount = fsMember?.events_registered_count ?? 0;
+                                  const attCount = fsMember?.events_attended_count ?? 0;
+                                  const hasHistory = regCount > 0;
+                                  const rate = hasHistory ? Math.round((attCount / regCount) * 100) : 0;
+
+                                  let badgeStyle = "border-muted-foreground/30 bg-muted/60 text-muted-foreground";
+                                  let dotStyle = "bg-muted-foreground/50";
+                                  let label = "No prior events";
+
+                                  if (hasHistory) {
+                                    label = `${rate}% Check-in (${attCount}/${regCount})`;
+                                    if (rate >= 75) {
+                                      badgeStyle =
+                                        "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+                                      dotStyle = "bg-emerald-500";
+                                    } else if (rate >= 50) {
+                                      badgeStyle =
+                                        "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400";
+                                      dotStyle = "bg-amber-500";
+                                    } else {
+                                      badgeStyle = "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-400";
+                                      dotStyle = "bg-rose-500";
+                                    }
+                                  }
+
+                                  return (
+                                    <div className="mt-1 flex items-center">
+                                      <span
+                                        className={cn(
+                                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium text-[10px]",
+                                          badgeStyle,
+                                        )}
+                                        title={
+                                          hasHistory
+                                            ? `Check-in rate: ${rate}% (${attCount} checked in out of ${regCount} registered events)`
+                                            : "First-time registrant or no previous attendance record in chapter"
+                                        }
+                                      >
+                                        <span className={cn("size-1.5 shrink-0 rounded-full", dotStyle)} />
+                                        {label}
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
                             </div>
                           </div>
                         </TableCell>
@@ -5826,7 +6012,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                         ? "cursor-default bg-emerald-600 text-white opacity-90 shadow-xs hover:bg-emerald-600"
                                         : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700",
                                       (rawStatus === "waiting_for_payment" || isCanceled) &&
-                                        "disabled:pointer-events-auto disabled:cursor-not-allowed opacity-40",
+                                        "opacity-40 disabled:pointer-events-auto disabled:cursor-not-allowed",
                                     )}
                                     title={approveTitle}
                                     onClick={() => handleApproveAttendee(reg)}
@@ -5856,7 +6042,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                         ? "bg-amber-600 text-white shadow-xs hover:bg-amber-700"
                                         : "text-amber-600 hover:bg-amber-500/10 hover:text-amber-700",
                                       isCanceled &&
-                                        "disabled:pointer-events-auto disabled:cursor-not-allowed opacity-40",
+                                        "opacity-40 disabled:pointer-events-auto disabled:cursor-not-allowed",
                                     )}
                                     title={pendingTitle}
                                     onClick={() => handleStatusChange(reg.id, "pending")}
@@ -5881,7 +6067,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                         ? "bg-destructive text-white shadow-xs hover:bg-destructive/90"
                                         : "text-destructive hover:bg-destructive/10 hover:text-destructive",
                                       isCanceled &&
-                                        "disabled:pointer-events-auto disabled:cursor-not-allowed opacity-40",
+                                        "opacity-40 disabled:pointer-events-auto disabled:cursor-not-allowed",
                                     )}
                                     title={rejectTitle}
                                     onClick={() => handleStatusChange(reg.id, "rejected")}
@@ -6396,12 +6582,12 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                 <div className="space-y-1.5 pt-1">
                   <Label
                     htmlFor="cancel-reason-input"
-                    className="text-xs font-medium text-foreground flex items-center justify-between"
+                    className="flex items-center justify-between font-medium text-foreground text-xs"
                   >
                     <span>
                       Reason for Cancellation <strong className="text-destructive">*</strong>
                     </span>
-                    <span className="text-[10px] text-muted-foreground font-normal">
+                    <span className="font-normal text-[10px] text-muted-foreground">
                       Appended to cancellation email
                     </span>
                   </Label>
@@ -6412,7 +6598,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                     placeholder="e.g. Duplicate registration, profile incomplete, or requested by attendee..."
                     disabled={isCancelling}
                     rows={3}
-                    className="text-xs resize-none"
+                    className="resize-none text-xs"
                     required
                   />
                   {!cancelReason.trim() && (
@@ -6481,12 +6667,12 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                 <div className="space-y-1.5 pt-1">
                   <Label
                     htmlFor="batch-cancel-reason-input"
-                    className="text-xs font-medium text-foreground flex items-center justify-between"
+                    className="flex items-center justify-between font-medium text-foreground text-xs"
                   >
                     <span>
                       Reason for Cancellation <strong className="text-destructive">*</strong>
                     </span>
-                    <span className="text-[10px] text-muted-foreground font-normal">
+                    <span className="font-normal text-[10px] text-muted-foreground">
                       Appended to cancellation emails
                     </span>
                   </Label>
@@ -6497,7 +6683,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                     placeholder="e.g. Quota adjustments or duplicate applications across batch selection..."
                     disabled={isCancelling}
                     rows={3}
-                    className="text-xs resize-none"
+                    className="resize-none text-xs"
                     required
                   />
                   {!cancelReason.trim() && (
