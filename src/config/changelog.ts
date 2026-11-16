@@ -16,10 +16,21 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.36",
+    releaseDate: "2026-11-16",
+    title: "Live Member Detail Check-in Rate on Registrants Tab",
+    badge: "Latest",
+    items: [
+      {
+        category: "Improved",
+        text: "Resolve live attendance stats from member details on the Registrants Tab during curation mode without touching member sync or Firestore member storage.",
+      },
+    ],
+  },
+  {
     version: "1.0.35",
     releaseDate: "2026-11-16",
     title: "Member Profiles, Personal Info Social Autocomplete & Curation Check-in Rate Sorting",
-    badge: "Latest",
     items: [
       {
         category: "Added",

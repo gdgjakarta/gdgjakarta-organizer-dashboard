@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.36] - 2026-11-16
+
+### Improved
+- **Direct Check-in Rate Resolution from Member Detail in Curation Mode**: Updated `/dashboard/events/[eventId]` (Registrants Tab) to read live check-in rates directly using member detail stats (`getBevyChapterMemberDetailAction`) without modifying Firestore `members` records or Bevy member sync services.
+
+---
+
 ## [1.0.35] - 2026-11-16
 
 ### Added

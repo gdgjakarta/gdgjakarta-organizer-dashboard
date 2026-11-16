@@ -133,7 +133,11 @@ import {
 } from "@/lib/google-drive/venue-tickets";
 import { enqueueCheckInBadgeIfEnabled } from "@/lib/printers/checkin-auto-print";
 import { cn, getInitials } from "@/lib/utils";
-import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
+import {
+  checkInBevyAttendeeAction,
+  fetchAllBevyEventAttendeesAction,
+  getBevyChapterMemberDetailAction,
+} from "@/server/bevy-actions";
 import {
   rejectAttendeeAction,
   resendInterestEmailAction,
@@ -693,6 +697,9 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [isBatchCheckingPayment, setIsBatchCheckingPayment] = useState(false);
   const [isBatchResendPaymentOpen, setIsBatchResendPaymentOpen] = useState(false);
   const [firestoreMembersMap, setFirestoreMembersMap] = useState<Map<string, FirestoreMember>>(new Map());
+  const [memberDetailStatsMap, setMemberDetailStatsMap] = useState<
+    Map<string, { registered: number; checkedIn: number; rate: number }>
+  >(new Map());
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -1435,6 +1442,12 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           }
           if (m.id) {
             map.set(m.id, m);
+          }
+          if (m.bevy_member_id) {
+            map.set(String(m.bevy_member_id), m);
+          }
+          if (m.bevy_user_id) {
+            map.set(String(m.bevy_user_id), m);
           }
         }
         setFirestoreMembersMap(map);
@@ -2308,9 +2321,17 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       result.sort((a, b) => {
         const getRateAndRegCount = (reg: FirestoreRegistration) => {
           const email = (reg.member_email || "").trim().toLowerCase();
-          const mem = firestoreMembersMap.get(email) || firestoreMembersMap.get(reg.member_id);
-          const regCount = mem?.events_registered_count ?? 0;
-          const attCount = mem?.events_attended_count ?? 0;
+          const mem =
+            (email ? firestoreMembersMap.get(email) : undefined) ??
+            (reg.member_id ? firestoreMembersMap.get(reg.member_id) : undefined);
+          const detailStat =
+            (email ? memberDetailStatsMap.get(email) : undefined) ??
+            (reg.member_id ? memberDetailStatsMap.get(reg.member_id) : undefined) ??
+            (mem?.bevy_member_id ? memberDetailStatsMap.get(String(mem.bevy_member_id)) : undefined) ??
+            (mem?.bevy_user_id ? memberDetailStatsMap.get(String(mem.bevy_user_id)) : undefined);
+
+          const regCount = detailStat?.registered ?? mem?.events_registered_count ?? 0;
+          const attCount = detailStat?.checkedIn ?? mem?.events_attended_count ?? 0;
           const rate = regCount > 0 ? (attCount / regCount) * 100 : -1; // -1 for no prior events
           return { rate, regCount, attCount };
         };
@@ -2331,7 +2352,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     }
 
     return result;
-  }, [preStatusFiltered, statusFilter, currentEvent, checkInRateSort, firestoreMembersMap]);
+  }, [preStatusFiltered, statusFilter, currentEvent, checkInRateSort, firestoreMembersMap, memberDetailStatsMap]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safeCurrentPage = Math.min(currentPage, pageCount);
@@ -2340,6 +2361,67 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     const start = (safeCurrentPage - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
   }, [filtered, safeCurrentPage, pageSize]);
+
+  // When in curation mode, fetch member detail for applicants on current page that are linked to a member
+  useEffect(() => {
+    if (!isCurationMode || paginatedFiltered.length === 0) return;
+    let cancelled = false;
+
+    // Find visible applicants whose Bevy member details haven't been loaded yet
+    const pendingToFetch = paginatedFiltered.filter((reg) => {
+      const email = (reg.member_email || "").trim().toLowerCase();
+      const fsMem =
+        (email ? firestoreMembersMap.get(email) : undefined) ??
+        (reg.member_id ? firestoreMembersMap.get(reg.member_id) : undefined);
+      const memberId = fsMem?.bevy_member_id || fsMem?.id || reg.member_id;
+      if (!memberId) return false;
+      const memKey = String(memberId);
+      return !memberDetailStatsMap.has(memKey) && (!email || !memberDetailStatsMap.has(email));
+    });
+
+    if (pendingToFetch.length === 0) return;
+
+    void (async () => {
+      for (const reg of pendingToFetch) {
+        if (cancelled) break;
+        const email = (reg.member_email || "").trim().toLowerCase();
+        const fsMem =
+          (email ? firestoreMembersMap.get(email) : undefined) ??
+          (reg.member_id ? firestoreMembersMap.get(reg.member_id) : undefined);
+        const memberId = fsMem?.bevy_member_id || fsMem?.id || reg.member_id;
+        if (!memberId) continue;
+
+        try {
+          const res = await getBevyChapterMemberDetailAction(memberId);
+          if (cancelled) break;
+          if (res.success && res.data) {
+            const agg = res.data.event_attendance_stats?.aggregate;
+            const registered =
+              agg?.total_events_registered ?? res.data.events_registered_count ?? fsMem?.events_registered_count ?? 0;
+            const checkedIn = agg?.total_checked_in ?? 0;
+            const rate = registered > 0 ? Math.round((checkedIn / registered) * 100) : 0;
+            const stats = { registered, checkedIn, rate };
+
+            setMemberDetailStatsMap((prev) => {
+              const next = new Map(prev);
+              next.set(String(memberId), stats);
+              if (res.data.id) next.set(String(res.data.id), stats);
+              if (res.data.user?.id) next.set(String(res.data.user.id), stats);
+              if (email) next.set(email, stats);
+              if (res.data.user?.email) next.set(res.data.user.email.toLowerCase().trim(), stats);
+              return next;
+            });
+          }
+        } catch {
+          // Non-blocking
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isCurationMode, paginatedFiltered, firestoreMembersMap, memberDetailStatsMap]);
 
   const handleStatusChange = (
     registrationId: string,
@@ -5530,9 +5612,20 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                 (() => {
                                   const cleanEmail = (reg.member_email || "").trim().toLowerCase();
                                   const fsMember =
-                                    firestoreMembersMap.get(cleanEmail) || firestoreMembersMap.get(reg.member_id);
-                                  const regCount = fsMember?.events_registered_count ?? 0;
-                                  const attCount = fsMember?.events_attended_count ?? 0;
+                                    (cleanEmail ? firestoreMembersMap.get(cleanEmail) : undefined) ??
+                                    (reg.member_id ? firestoreMembersMap.get(reg.member_id) : undefined);
+                                  const detailStat =
+                                    (cleanEmail ? memberDetailStatsMap.get(cleanEmail) : undefined) ??
+                                    (reg.member_id ? memberDetailStatsMap.get(reg.member_id) : undefined) ??
+                                    (fsMember?.bevy_member_id
+                                      ? memberDetailStatsMap.get(String(fsMember.bevy_member_id))
+                                      : undefined) ??
+                                    (fsMember?.bevy_user_id
+                                      ? memberDetailStatsMap.get(String(fsMember.bevy_user_id))
+                                      : undefined);
+
+                                  const regCount = detailStat?.registered ?? fsMember?.events_registered_count ?? 0;
+                                  const attCount = detailStat?.checkedIn ?? fsMember?.events_attended_count ?? 0;
                                   const hasHistory = regCount > 0;
                                   const rate = hasHistory ? Math.round((attCount / regCount) * 100) : 0;
 
