@@ -1,4 +1,5 @@
 import {
+  convertTemplateToCleanTokens,
   DEFAULT_ACCEPTED_EMAIL_HTML,
   DEFAULT_CANCELLED_ATTENDEE_EMAIL_HTML,
   DEFAULT_CANCELLED_EMAIL_HTML,
@@ -10,7 +11,6 @@ import {
   DEFAULT_REJECTED_VIRTUAL_EMAIL_HTML,
   DEFAULT_REJECTED_WAITLISTED_EMAIL_HTML,
   DEFAULT_WAITLISTED_EMAIL_HTML,
-  convertTemplateToCleanTokens,
 } from "@/lib/events/email-templates";
 
 export { convertTemplateToCleanTokens };
@@ -33,8 +33,6 @@ export interface EmailFeatureTemplateItem {
   description: string;
   getRawHtml: () => string;
 }
-
-
 
 export function resolveFeatureTemplateContent(tpl: EmailFeatureTemplateItem): {
   subject: string;

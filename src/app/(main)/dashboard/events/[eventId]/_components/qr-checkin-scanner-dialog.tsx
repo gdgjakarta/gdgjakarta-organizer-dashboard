@@ -378,11 +378,7 @@ export function QrCheckInScannerDialog({
     [printStations],
   );
   const totalOnlinePrinters = React.useMemo(
-    () =>
-      onlineTakingStations.reduce(
-        (sum, s) => sum + s.printers.filter((p) => p.available).length,
-        0,
-      ),
+    () => onlineTakingStations.reduce((sum, s) => sum + s.printers.filter((p) => p.available).length, 0),
     [onlineTakingStations],
   );
 

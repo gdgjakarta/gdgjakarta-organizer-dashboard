@@ -2,6 +2,7 @@ import Image from "next/image";
 
 import { ExternalLink, Handshake } from "lucide-react";
 
+import { sanitizeBevyLogoUrl } from "@/lib/bevy/partners";
 import type { BevySponsor } from "@/lib/bevy/types";
 
 interface PartnershipSponsorsProps {
@@ -56,11 +57,14 @@ export function PartnershipSponsors({ sponsors }: PartnershipSponsorsProps) {
           <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {validSponsors.map((sponsor) => {
               const href = resolveSponsorUrl(sponsor.url);
+              const logoUrl = sanitizeBevyLogoUrl(typeof sponsor.logo === "string" ? sponsor.logo : undefined);
+              if (!logoUrl) return null;
+
               const cardContent = (
                 <>
                   <div className="relative h-12 w-full sm:h-14">
                     <Image
-                      src={sponsor.logo as string}
+                      src={logoUrl}
                       alt={sponsor.company}
                       fill
                       sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 16vw"

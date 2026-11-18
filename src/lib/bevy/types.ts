@@ -318,12 +318,49 @@ export interface BevyChapter {
 }
 
 export interface BevySponsor {
+  id?: number;
   company: string;
   description?: string | null;
   url?: string | null;
   logo?: string | null;
   sponsor_type?: string;
   description_translated?: string | null;
+  contact_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  isActive?: boolean;
+}
+
+export interface BevyCreateSponsorPayload {
+  chapters: Array<{ id: number }>;
+  company: string;
+  url?: string;
+  description?: string;
+  contact_name?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  logo?: string | null;
+  invoice: {
+    chapter: number;
+    created_date: string;
+    net_amount: number;
+    payment_terms: string;
+    status: string;
+    tax_amount: number;
+    total_events: number;
+    user: number;
+  };
+}
+
+export interface BevyEventSponsorMappingPayload {
+  "sponsors_platinum-4"?: number[];
+  "sponsors_gold-5"?: number[];
+  "sponsors_silver-4"?: number[];
+  "sponsors_bronze-4"?: number[];
+  "sponsors_community-4"?: number[];
+  partners_list?: number[];
+  media_partners?: number[];
+  [key: string]: unknown;
 }
 
 export const ChapterRole = {

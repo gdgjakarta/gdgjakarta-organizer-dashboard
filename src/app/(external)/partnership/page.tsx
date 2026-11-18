@@ -3,13 +3,8 @@ import type { Metadata } from "next";
 import { APP_CONFIG } from "@/config/app-config";
 import { BEVY_CONFIG } from "@/config/bevy-config";
 import { getGoogleThemeByKey, getRandomGoogleTheme } from "@/config/homepage-themes";
-import {
-  getBevyChapterEvents,
-  getBevyChapterSlim,
-  getBevyChapterSponsors,
-  getBevyChapterTeams,
-  getBevyEventById,
-} from "@/lib/bevy/client";
+import { getBevyChapterEvents, getBevyChapterSlim, getBevyChapterTeams, getBevyEventById } from "@/lib/bevy/client";
+import { getLivePublicChapterSponsorsAction } from "@/server/sponsor-actions";
 
 import { HomepageThemeContainer } from "../_components/homepage-theme-container";
 import { PartnershipBenefits } from "./_components/partnership-benefits";
@@ -59,7 +54,7 @@ export default async function PartnershipPage(props: PartnershipPageProps) {
 
   // Fetch chapter sponsors, live members count, and total events in parallel
   const [sponsors, chapterSlim, eventsData, teams] = await Promise.all([
-    getBevyChapterSponsors(BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId),
+    getLivePublicChapterSponsorsAction(),
     getBevyChapterSlim(BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId).catch(() => null),
     getBevyChapterEvents(BEVY_CONFIG.chapterId, 1, 1, false, "Published").catch(() => null),
     getBevyChapterTeams(BEVY_CONFIG.chapterId).catch(() => []),

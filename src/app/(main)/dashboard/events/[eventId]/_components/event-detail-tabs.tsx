@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  Building2,
   Calendar,
   CreditCard,
   FileSpreadsheet,
@@ -49,6 +50,7 @@ import { PaymentGatewayTab } from "./payment-gateway-tab";
 import { RefundsTab } from "./refunds-tab";
 import { RegistrantsTab } from "./registrants-tab";
 import { SpeakersTab } from "./speakers-tab";
+import { SponsorsTab } from "./sponsors-tab";
 import { TicketsTab } from "./tickets-tab";
 import { VouchersTab } from "./vouchers-tab";
 
@@ -403,6 +405,15 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
                 Speakers
               </TabsTrigger>
               <TabsTrigger
+                id="tab-trigger-sponsors"
+                data-value="sponsors"
+                value="sponsors"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
+                <Building2 className="size-4" />
+                Sponsors
+              </TabsTrigger>
+              <TabsTrigger
                 id="tab-trigger-merch"
                 data-value="merch"
                 value="merch"
@@ -549,6 +560,10 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
 
           <TabsContent value="speakers" className="space-y-4">
             <SpeakersTab eventId={eventId} event={activeEvent} />
+          </TabsContent>
+
+          <TabsContent value="sponsors" className="space-y-4">
+            <SponsorsTab event={activeEvent} />
           </TabsContent>
 
           <TabsContent value="merch" className="space-y-4">

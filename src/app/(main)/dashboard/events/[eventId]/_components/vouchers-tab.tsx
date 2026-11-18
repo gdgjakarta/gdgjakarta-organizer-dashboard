@@ -444,9 +444,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     const validRegIds = new Set(registrations.map((r) => r.id));
     const orphanedVouchers = vouchers.filter(
       (v) =>
-        v.source_registration_id &&
-        !validRegIds.has(v.source_registration_id) &&
-        (!v.times_used || v.times_used === 0),
+        v.source_registration_id && !validRegIds.has(v.source_registration_id) && (!v.times_used || v.times_used === 0),
     );
 
     if (orphanedVouchers.length === 0) return;

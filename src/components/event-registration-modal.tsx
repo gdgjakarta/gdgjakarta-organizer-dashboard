@@ -420,13 +420,21 @@ export function EventRegistrationModal({
                 next[q.id] = memberDoc.website_url;
               else if (
                 memberCompany &&
-                (key.includes("company") || key.includes("institution") || key.includes("organization") || key.includes("university"))
+                (key.includes("company") ||
+                  key.includes("institution") ||
+                  key.includes("organization") ||
+                  key.includes("university"))
               )
                 next[q.id] = memberCompany;
-              else if (memberTitle && (key.includes("job_title") || key.includes("job title") || key.includes("profession") || key.includes("role_or_title")))
+              else if (
+                memberTitle &&
+                (key.includes("job_title") ||
+                  key.includes("job title") ||
+                  key.includes("profession") ||
+                  key.includes("role_or_title"))
+              )
                 next[q.id] = memberTitle;
-              else if (memberPhone && (key.includes("phone") || key.includes("whatsapp")))
-                next[q.id] = memberPhone;
+              else if (memberPhone && (key.includes("phone") || key.includes("whatsapp"))) next[q.id] = memberPhone;
             }
           }
 

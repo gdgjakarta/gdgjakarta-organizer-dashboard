@@ -136,9 +136,13 @@ export function PublicEventRsvpCard({
     event.cropped_banner_url ??
     event.banner?.url;
 
-  const thumbnailImageUrl = rawThumbnailUrl && rawThumbnailUrl.includes("res.cloudinary.com")
-    ? rawThumbnailUrl.replace(/\/image\/upload\/(?:.+?\/)?v1\//, "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/")
-    : rawThumbnailUrl;
+  const thumbnailImageUrl =
+    rawThumbnailUrl && rawThumbnailUrl.includes("res.cloudinary.com")
+      ? rawThumbnailUrl.replace(
+          /\/image\/upload\/(?:.+?\/)?v1\//,
+          "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/",
+        )
+      : rawThumbnailUrl;
 
   // Map to FirestoreEvent compatible structure for EventRegistrationModal
   const registrationEvent: FirestoreEvent = useMemo(

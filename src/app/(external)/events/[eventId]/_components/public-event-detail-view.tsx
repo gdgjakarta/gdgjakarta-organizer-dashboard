@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import type { BevyEvent } from "@/lib/bevy/types";
 import { checkEventRegistrationAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import type { PublicSpeakerEcosystemItem } from "@/server/speaker-confirmation-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { PublicEventHeader } from "./public-event-header";
@@ -15,7 +16,6 @@ import { PublicEventHero } from "./public-event-hero";
 import { PublicEventInfoCards } from "./public-event-info-cards";
 import { PublicEventRsvpCard } from "./public-event-rsvp-card";
 import { PublicEventTabs } from "./public-event-tabs";
-import type { PublicSpeakerEcosystemItem } from "@/server/speaker-confirmation-actions";
 
 interface PublicEventDetailViewProps {
   event: BevyEvent;
@@ -38,7 +38,8 @@ export function PublicEventDetailView({
   const handleSelectTab = (tab: string) => {
     setActiveTab(tab);
     setTimeout(() => {
-      const triggerEl = document.getElementById("tab-trigger-public-" + tab) ?? document.getElementById("public-event-tabs-container");
+      const triggerEl =
+        document.getElementById("tab-trigger-public-" + tab) ?? document.getElementById("public-event-tabs-container");
       triggerEl?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
   };

@@ -2,7 +2,19 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 
-import { CheckCircle2, Clock, CreditCard, Loader2, Mail, Send, User, UserX, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  Handshake,
+  Loader2,
+  Mail,
+  Mic,
+  Send,
+  User,
+  UserX,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -250,6 +262,11 @@ export function SendTemplateEmailDialog({
                       {cfg.key === "paid_waitlisted" && <CreditCard className="size-3.5 text-indigo-500 shrink-0" />}
                       {cfg.key.startsWith("cancelled") && <UserX className="size-3.5 text-amber-500 shrink-0" />}
                       {cfg.key.startsWith("rejected") && <XCircle className="size-3.5 text-red-500 shrink-0" />}
+                      {cfg.key === "speaker_invitation" && <Mic className="size-3.5 text-purple-500 shrink-0" />}
+                      {cfg.key === "event_proposal" && <Handshake className="size-3.5 text-teal-500 shrink-0" />}
+                      {cfg.key === "partner_confirmation" && (
+                        <Handshake className="size-3.5 text-emerald-500 shrink-0" />
+                      )}
                       <span>{cfg.name}</span>
                     </div>
                   </SelectItem>

@@ -309,12 +309,14 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
         description: m.description,
         options,
         imageUrl: m.image_url || (Array.isArray(m.images) ? m.images[0] : undefined),
-        images: Array.isArray(m.images) && m.images.length > 0 ? m.images : (m.image_url ? [m.image_url] : undefined),
-        guideline: m.guideline ? {
-          title: m.guideline.title || "Size & Product Guideline",
-          text: m.guideline.text,
-          image_url: m.guideline.image_url,
-        } : undefined,
+        images: Array.isArray(m.images) && m.images.length > 0 ? m.images : m.image_url ? [m.image_url] : undefined,
+        guideline: m.guideline
+          ? {
+              title: m.guideline.title || "Size & Product Guideline",
+              text: m.guideline.text,
+              image_url: m.guideline.image_url,
+            }
+          : undefined,
       });
     });
 
@@ -1634,10 +1636,14 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
               </div>
             )}
 
-            {(isFromGoogleEcosystem === "GDG" || isFromGoogleEcosystem === "WTM" || isFromGoogleEcosystem === "GDGoC / GDSC") && (
+            {(isFromGoogleEcosystem === "GDG" ||
+              isFromGoogleEcosystem === "WTM" ||
+              isFromGoogleEcosystem === "GDGoC / GDSC") && (
               <div className="mt-4 space-y-2 border-t pt-3">
                 <Label htmlFor="chapter_details" className="font-semibold text-xs">
-                  {isFromGoogleEcosystem === "GDGoC / GDSC" ? "From which GDGoC / GDSC Campus chapter?" : "From which chapter?"}{" "}
+                  {isFromGoogleEcosystem === "GDGoC / GDSC"
+                    ? "From which GDGoC / GDSC Campus chapter?"
+                    : "From which chapter?"}{" "}
                   <span className="font-normal text-muted-foreground text-xs">(Optional, Displayed on Poster)</span>
                 </Label>
                 <Input
@@ -1757,7 +1763,9 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
               <div className="space-y-4">
                 {speakerSwagItems.map((item) => {
                   const currentValue = swagSelections[item.id] || item.options[0] || "";
-                  const hasGuideline = Boolean(item.guideline && (item.guideline.title || item.guideline.text || item.guideline.image_url));
+                  const hasGuideline = Boolean(
+                    item.guideline && (item.guideline.title || item.guideline.text || item.guideline.image_url),
+                  );
                   const hasImages = Boolean(item.images && item.images.length > 0) || Boolean(item.imageUrl);
                   const displayImage = item.imageUrl || (item.images && item.images[0]);
 
@@ -1780,11 +1788,7 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             {/* biome-ignore lint/performance/noImgElement: product thumbnail */}
-                            <img
-                              src={displayImage}
-                              alt={item.label}
-                              className="size-full object-cover"
-                            />
+                            <img src={displayImage} alt={item.label} className="size-full object-cover" />
                             {item.images && item.images.length > 1 && (
                               <span className="absolute bottom-1 right-1 rounded-sm bg-black/75 px-1 py-0.5 font-mono text-[9px] text-white">
                                 +{item.images.length}
@@ -1798,7 +1802,9 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
                             <div>
                               <Label className="font-semibold text-sm text-foreground">{item.label}</Label>
                               {item.description && (
-                                <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">{item.description}</p>
+                                <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+                                  {item.description}
+                                </p>
                               )}
                             </div>
 
@@ -1807,7 +1813,9 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
                               {hasImages && item.images && item.images.length > 0 && (
                                 <button
                                   type="button"
-                                  onClick={() => setViewingImageGallery({ label: item.label, images: item.images || [] })}
+                                  onClick={() =>
+                                    setViewingImageGallery({ label: item.label, images: item.images || [] })
+                                  }
                                   className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-[11px] font-medium text-foreground shadow-2xs hover:bg-muted transition-colors"
                                 >
                                   <ImageIcon className="size-3 text-muted-foreground" />
@@ -1829,7 +1837,9 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
                           </div>
 
                           <div className="pt-1">
-                            <Label className="text-[11px] font-medium text-muted-foreground">Select Size / Variation:</Label>
+                            <Label className="text-[11px] font-medium text-muted-foreground">
+                              Select Size / Variation:
+                            </Label>
                             <Select
                               value={currentValue}
                               onValueChange={(val) => {
@@ -1948,9 +1958,7 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
               <Ruler className="size-5 text-primary" />
               {viewingGuidelineItem?.guideline?.title || "Sizing & Product Guideline"}
             </DialogTitle>
-            <DialogDescription>
-              Size chart and specifications for {viewingGuidelineItem?.label}
-            </DialogDescription>
+            <DialogDescription>Size chart and specifications for {viewingGuidelineItem?.label}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 pt-2">
@@ -1998,9 +2006,7 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
               <Shirt className="size-5 text-primary" />
               {viewingImageGallery?.label || "Merchandise Product Preview"}
             </DialogTitle>
-            <DialogDescription>
-              Official commemorative speaker merchandise preview
-            </DialogDescription>
+            <DialogDescription>Official commemorative speaker merchandise preview</DialogDescription>
           </DialogHeader>
 
           {viewingImageGallery && viewingImageGallery.images.length > 0 && (
@@ -2063,11 +2069,7 @@ export function SpeakerConfirmationForm({ event, token }: SpeakerConfirmationFor
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         {/* biome-ignore lint/performance/noImgElement: thumbnail item */}
-                        <img
-                          src={imgUrl}
-                          alt={`Thumbnail ${idx + 1}`}
-                          className="size-full object-cover"
-                        />
+                        <img src={imgUrl} alt={`Thumbnail ${idx + 1}`} className="size-full object-cover" />
                       </button>
                     );
                   })}

@@ -14,9 +14,10 @@ export {
   formatTierName,
   getTierPriority,
   groupPartnersByTier,
+  sanitizeBevyLogoUrl,
 } from "./partners";
 
-import { extractEventPartners } from "./partners";
+import { extractEventPartners, sanitizeBevyLogoUrl } from "./partners";
 import {
   type BevyAgendaDay,
   type BevyAgendaItem,
@@ -33,7 +34,9 @@ import {
   type BevyChapterTeamMember,
   type BevyChapterTeamRole,
   type BevyCreateEventInput,
+  type BevyCreateSponsorPayload,
   type BevyEvent,
+  type BevyEventSponsorMappingPayload,
   type BevyEventsResponse,
   type BevyMembersResponse,
   type BevySponsor,
@@ -89,6 +92,7 @@ export async function bevyFetchWithResponse<T>(
     endpoint.includes("/attendee") ||
     endpoint.includes("/member") ||
     endpoint.includes("/event/") ||
+    endpoint.includes("/sponsor/") ||
     endpoint.includes("/team/") ||
     endpoint.includes("/teammember") ||
     endpoint.includes("/config/algolia") ||
@@ -1550,6 +1554,144 @@ export async function getBevyChapterSponsors(
   return [];
 }
 
+export interface BevySponsorListResponse {
+  count?: number;
+  results?: Array<{
+    id: number;
+    company: string;
+    description?: string | null;
+    url?: string | null;
+    logo?:
+      | {
+          url?: string;
+          thumbnail_url?: string;
+        }
+      | string
+      | null;
+    contact_name?: string | null;
+    contact_email?: string | null;
+    contact_phone?: string | null;
+    visible?: boolean;
+    is_global?: boolean;
+    [key: string]: unknown;
+  }>;
+}
+
+/**
+ * Fetch all sponsors directly from Bevy authenticated API:
+ * GET /api/sponsor/?chapter=642&global=false&page_size=500&sponsor_type=media_partner
+ */
+export async function getBevySponsorsList(options?: {
+  chapterId?: number | string;
+  global?: boolean;
+  pageSize?: number;
+  sponsorType?: string;
+}): Promise<BevySponsorListResponse["results"]> {
+  const chapterId = options?.chapterId || BEVY_CONFIG.chapterId || 642;
+  const isGlobal = options?.global ?? false;
+  const pageSize = options?.pageSize || 500;
+  const sponsorType = options?.sponsorType || "media_partner";
+
+  const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+  const endpoint = `/sponsor/?chapter=${chapterId}&global=${isGlobal}&page_size=${pageSize}${sponsorType ? `&sponsor_type=${sponsorType}` : ""}`;
+
+  const res = await bevyFetchWithResponse<BevySponsorListResponse>(
+    endpoint,
+    {
+      method: "GET",
+      headers: {
+        Origin: "https://gdg.community.dev",
+        Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/sponsors/partners/`,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      requireAuth: true,
+    },
+    chapterId,
+  );
+
+  if (res.ok && res.data?.results) {
+    return res.data.results;
+  }
+
+  return [];
+}
+
+/**
+ * Fetch chapter details including media_partners and media_partners_inactive lists
+ */
+export async function getBevyChapterDetails(chapterId: string | number = BEVY_CONFIG.chapterId): Promise<{
+  media_partners: number[];
+  media_partners_inactive: number[];
+} | null> {
+  const chapterSlug = BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+  const res = await bevyFetchWithResponse<{
+    media_partners?: number[];
+    media_partners_inactive?: number[];
+  }>(
+    `/chapter/${chapterId}/`,
+    {
+      method: "GET",
+      headers: {
+        Origin: "https://gdg.community.dev",
+        Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/sponsors/partners/`,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      requireAuth: true,
+    },
+    chapterId,
+  );
+
+  if (res.ok && res.data) {
+    return {
+      media_partners: Array.isArray(res.data.media_partners) ? res.data.media_partners : [],
+      media_partners_inactive: Array.isArray(res.data.media_partners_inactive) ? res.data.media_partners_inactive : [],
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Update chapter media partners ordering and active/inactive lists in Bevy.
+ * Endpoint: PATCH /chapter/{chapterId}/
+ */
+export async function updateBevyChapterMediaPartners(
+  activeIds: number[],
+  inactiveIds: number[],
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const chapterSlug = BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const res = await bevyFetchWithResponse(
+      `/chapter/${chapterId}/`,
+      {
+        method: "PATCH",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/sponsors/partners/`,
+          "X-Requested-With": "XMLHttpRequest",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          media_partners: activeIds,
+          media_partners_inactive: inactiveIds,
+        }),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!res.ok) {
+      const errorMsg = extractApiMessage(res.data, `Failed to update chapter partners (HTTP ${res.status})`);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
+  }
+}
+
 /**
  * Fetch chapter summary including real-time members_count from Bevy
  */
@@ -1569,6 +1711,118 @@ export async function getBevyChapterSlim(
   }
 
   return null;
+}
+
+/**
+ * Fetch raw event sponsor and partner assignments directly from Bevy API.
+ * Endpoint: GET /event/{eventId}/
+ */
+export async function getBevyEventSponsorsMapping(
+  eventId: string | number,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{
+  partners_list: Array<{
+    id: number;
+    company: string;
+    description?: string;
+    url?: string;
+    logo?: { url?: string; thumbnail_url?: string } | string | null;
+    visible?: boolean;
+    event_sponsor_id?: number;
+  }>;
+  media_partners: number[];
+  sponsors_platinum: Array<{ id: number; company: string; logo?: any }>;
+  sponsors_gold: Array<{ id: number; company: string; logo?: any }>;
+  sponsors_silver: Array<{ id: number; company: string; logo?: any }>;
+  sponsors_bronze: Array<{ id: number; company: string; logo?: any }>;
+  sponsors_community: Array<{ id: number; company: string; logo?: any }>;
+  all_event_partners: Array<{
+    id: number;
+    company: string;
+    description?: string;
+    url?: string;
+    logo?: { url?: string; thumbnail_url?: string } | string | null;
+    tier: string;
+    visible?: boolean;
+  }>;
+} | null> {
+  try {
+    const chapterSlug = BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const res = await bevyFetchWithResponse<Record<string, unknown>>(
+      `/event/${eventId}/`,
+      {
+        method: "GET",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/${eventId}/sponsors`,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!res.ok || !res.data) return null;
+    const data = res.data;
+
+    const partnersList = Array.isArray(data.partners_list) ? (data.partners_list as any[]) : [];
+    const mediaPartners = Array.isArray(data.media_partners) ? (data.media_partners as number[]) : [];
+    const platinum = Array.isArray(data["sponsors_platinum-4"]) ? (data["sponsors_platinum-4"] as any[]) : [];
+    const gold = Array.isArray(data["sponsors_gold-5"]) ? (data["sponsors_gold-5"] as any[]) : [];
+    const silver = Array.isArray(data["sponsors_silver-4"]) ? (data["sponsors_silver-4"] as any[]) : [];
+    const bronze = Array.isArray(data["sponsors_bronze-4"]) ? (data["sponsors_bronze-4"] as any[]) : [];
+    const community = Array.isArray(data["sponsors_community-4"]) ? (data["sponsors_community-4"] as any[]) : [];
+
+    // Synthesize combined list with tier mapping
+    const combined: Array<{
+      id: number;
+      company: string;
+      description?: string;
+      url?: string;
+      logo?: any;
+      tier: string;
+      visible?: boolean;
+    }> = [];
+
+    const seenIds = new Set<number>();
+
+    const addList = (arr: any[], tier: string) => {
+      for (const item of arr) {
+        if (!item || !item.id || seenIds.has(Number(item.id))) continue;
+        seenIds.add(Number(item.id));
+        combined.push({
+          id: Number(item.id),
+          company: item.company || item.name || `Sponsor #${item.id}`,
+          description: item.description || "",
+          url: item.url || item.website || "",
+          logo: item.logo,
+          tier,
+          visible: item.visible ?? true,
+        });
+      }
+    };
+
+    addList(platinum, "platinum");
+    addList(gold, "gold");
+    addList(silver, "silver");
+    addList(bronze, "bronze");
+    addList(community, "community");
+    addList(partnersList, "partner");
+
+    return {
+      partners_list: partnersList,
+      media_partners: mediaPartners,
+      sponsors_platinum: platinum,
+      sponsors_gold: gold,
+      sponsors_silver: silver,
+      sponsors_bronze: bronze,
+      sponsors_community: community,
+      all_event_partners: combined,
+    };
+  } catch (err) {
+    console.warn(`[getBevyEventSponsorsMapping] Failed for event ${eventId}:`, err);
+    return null;
+  }
 }
 
 /**
@@ -2255,7 +2509,6 @@ export async function createBevyPerson(
   }
 }
 
-
 /**
  * Updates a speaker/person in Bevy.
  * PATCH /api/person/{personId}/
@@ -2269,8 +2522,7 @@ export async function updateBevyPerson(
   try {
     const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
     // Bevy PATCH /person/{id}/ returns 500 when picture is sent as a raw URL string; allow Bevy image objects
-    const safePerson =
-      typeof person.picture === "string" ? (({ picture: _, ...rest }) => rest)(person) : person;
+    const safePerson = typeof person.picture === "string" ? (({ picture: _, ...rest }) => rest)(person) : person;
     const response = await bevyFetchWithResponse<BevyPersonResponse>(
       `/person/${personId}/`,
       {
@@ -2297,7 +2549,6 @@ export async function updateBevyPerson(
     return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
   }
 }
-
 
 /**
  * Gets a speaker/person from Bevy.
@@ -2347,7 +2598,7 @@ export interface BevyImageUploadResponse {
 
 export async function uploadBevyImage(
   file: Blob,
-  eventId: string | number,
+  eventId?: string | number,
   container = "events",
   chapterId: string | number = BEVY_CONFIG.chapterId,
 ): Promise<{ success: boolean; data?: BevyImageUploadResponse | null; error?: string }> {
@@ -2357,13 +2608,18 @@ export async function uploadBevyImage(
     formData.append("image", file, "blob");
     formData.append("container", container);
 
+    const referer =
+      container === "sponsors"
+        ? `https://gdg.community.dev/dashboard/${chapterSlug}/sponsors/sponsors`
+        : `https://gdg.community.dev/dashboard/${chapterSlug}/events/${eventId || ""}/people/`;
+
     const response = await bevyFetchWithResponse<BevyImageUploadResponse>(
       `/image/`,
       {
         method: "POST",
         headers: {
           Origin: "https://gdg.community.dev",
-          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/${eventId}/people/`,
+          Referer: referer,
           "X-Requested-With": "XMLHttpRequest",
         },
         body: formData,
@@ -2380,6 +2636,236 @@ export async function uploadBevyImage(
     return { success: true, data: response.data };
   } catch (err) {
     return { success: false, error: extractApiMessage(err, "Failed to upload image to Bevy.") };
+  }
+}
+
+/**
+ * Create a new sponsor on Bevy with draft invoice payload and chapter reference
+ */
+export async function createBevySponsor(
+  input: {
+    company: string;
+    url?: string;
+    description?: string;
+    contact_name?: string;
+    contact_email?: string;
+    contact_phone?: string;
+    logo?: string | null;
+  },
+  chapterId: number = Number(BEVY_CONFIG.chapterId) || 642,
+): Promise<{ success: boolean; data?: BevySponsor | null; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const cleanedLogo = input.logo ? sanitizeBevyLogoUrl(input.logo) : null;
+    const payload: BevyCreateSponsorPayload = {
+      chapters: [{ id: chapterId }],
+      company: input.company,
+      url: input.url || "",
+      description: input.description || "",
+      contact_name: input.contact_name || "",
+      contact_email: input.contact_email || "",
+      contact_phone: input.contact_phone || "",
+      logo: cleanedLogo ?? null,
+      invoice: {
+        chapter: chapterId,
+        created_date: new Date().toISOString(),
+        net_amount: 0,
+        payment_terms: "net_30",
+        status: "draft",
+        tax_amount: 0,
+        total_events: 0,
+        user: 331870,
+      },
+    };
+
+    const response = await bevyFetchWithResponse<BevySponsor>(
+      `/sponsor/`,
+      {
+        method: "POST",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/sponsors/sponsors`,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(payload),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!response.ok || !response.data) {
+      const errorMsg = extractApiMessage(response.data, `Failed to create sponsor in Bevy (HTTP ${response.status})`);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: response.data };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to create sponsor in Bevy.") };
+  }
+}
+
+/**
+ * Update an existing sponsor in Bevy
+ * Endpoint: PATCH /sponsor/{sponsorId}/
+ */
+export async function updateBevySponsor(
+  sponsorId: number,
+  input: {
+    company?: string;
+    url?: string;
+    description?: string;
+    contact_name?: string;
+    contact_email?: string;
+    contact_phone?: string;
+    logo?: string | null;
+  },
+  chapterId: number = Number(BEVY_CONFIG.chapterId) || 642,
+): Promise<{ success: boolean; data?: BevySponsor | null; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const payload: Record<string, unknown> = {};
+    if (input.company !== undefined) payload.company = input.company;
+    if (input.url !== undefined) payload.url = input.url;
+    if (input.description !== undefined) payload.description = input.description;
+    if (input.contact_name !== undefined) payload.contact_name = input.contact_name;
+    if (input.contact_email !== undefined) payload.contact_email = input.contact_email;
+    if (input.contact_phone !== undefined) payload.contact_phone = input.contact_phone;
+    if (input.logo !== undefined) {
+      payload.logo = input.logo ? (sanitizeBevyLogoUrl(input.logo) ?? null) : null;
+    }
+
+    const response = await bevyFetchWithResponse<BevySponsor>(
+      `/sponsor/${sponsorId}/`,
+      {
+        method: "PATCH",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/sponsors/sponsors`,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(payload),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!response.ok || !response.data) {
+      const errorMsg = extractApiMessage(response.data, `Failed to update sponsor in Bevy (HTTP ${response.status})`);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: response.data };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to update sponsor in Bevy.") };
+  }
+}
+
+/**
+ * Patch event sponsor category mapping in Bevy (e.g. sponsors_platinum-4, partners_list, etc.)
+ */
+export async function patchBevyEventSponsors(
+  eventId: string | number,
+  mapping: BevyEventSponsorMappingPayload,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const response = await bevyFetchWithResponse<unknown>(
+      `/event/${eventId}/`,
+      {
+        method: "PATCH",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/${eventId}/sponsors`,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(mapping),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!response.ok) {
+      const errorMsg = extractApiMessage(
+        response.data,
+        `Failed to update event sponsors in Bevy (HTTP ${response.status})`,
+      );
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: response.data };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to patch event sponsors in Bevy.") };
+  }
+}
+
+/**
+ * Deactivate / delete a sponsor in Bevy
+ * Step 1: PUT /api/sponsor/{sponsorId}/ with isActive: false
+ * Step 2: GET /api/chapter/{chapterId}/ and PATCH /api/chapter/{chapterId}/ to disassociate
+ */
+export async function deleteBevySponsor(
+  sponsorId: number,
+  chapterId: number = Number(BEVY_CONFIG.chapterId) || 642,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    // 1. Deactivate sponsor
+    const deactRes = await bevyFetchWithResponse<unknown>(
+      `/sponsor/${sponsorId}/`,
+      {
+        method: "PUT",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/sponsors/sponsors`,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({ isActive: false }),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!deactRes.ok) {
+      console.warn(`[Bevy API] Warning deactivating sponsor ${sponsorId}: HTTP ${deactRes.status}`);
+    }
+
+    // 2. Refresh chapter sponsors list
+    const chapterRes = await bevyFetchWithResponse<{ sponsors?: Array<{ id: number }> }>(
+      `/chapter/${chapterId}/`,
+      {
+        method: "GET",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/sponsors/sponsors`,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (chapterRes.ok && chapterRes.data && Array.isArray(chapterRes.data.sponsors)) {
+      const updatedSponsors = chapterRes.data.sponsors.filter((s) => s.id !== sponsorId).map((s) => s.id);
+      await bevyFetchWithResponse<unknown>(
+        `/chapter/${chapterId}/`,
+        {
+          method: "PATCH",
+          headers: {
+            Origin: "https://gdg.community.dev",
+            Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/sponsors/sponsors`,
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify({ sponsors: updatedSponsors }),
+          requireAuth: true,
+        },
+        chapterId,
+      );
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to delete sponsor from Bevy.") };
   }
 }
 

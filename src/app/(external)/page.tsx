@@ -3,7 +3,8 @@ import type { Metadata } from "next";
 import { APP_CONFIG } from "@/config/app-config";
 import { BEVY_CONFIG } from "@/config/bevy-config";
 import { getGoogleThemeByKey, getRandomGoogleTheme } from "@/config/homepage-themes";
-import { getBevyChapterEvents, getBevyChapterSlim, getBevyChapterSponsors } from "@/lib/bevy/client";
+import { getBevyChapterEvents, getBevyChapterSlim } from "@/lib/bevy/client";
+import { getLivePublicChapterSponsorsAction } from "@/server/sponsor-actions";
 
 import { CommunityAccessSpotlight } from "./_components/community-access-spotlight";
 import { CommunityCtaBanner } from "./_components/community-cta-banner";
@@ -55,7 +56,7 @@ export default async function Home(props: HomeProps) {
   // Fetch upcoming events, chapter sponsors, and live chapter metrics in parallel
   const [eventsData, sponsors, chapterSlim] = await Promise.all([
     getBevyChapterEvents(BEVY_CONFIG.chapterId, 24, 1, false, "Published"),
-    getBevyChapterSponsors(BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId),
+    getLivePublicChapterSponsorsAction(),
     getBevyChapterSlim(BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId).catch(() => null),
   ]);
 

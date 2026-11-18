@@ -230,8 +230,8 @@ export async function getBevyAuthCredentials(chapterId: string | number = DEFAUL
   try {
     const rawCookie = await getRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_COOKIE);
     const rawCsrf = await getRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_X_CSRFTOKEN);
-    const cookie = (parseMappedConfigValue(rawCookie, chapterId).trim() || envCookie);
-    const csrfToken = (parseMappedConfigValue(rawCsrf, chapterId).trim() || envCsrf);
+    const cookie = parseMappedConfigValue(rawCookie, chapterId).trim() || envCookie;
+    const csrfToken = parseMappedConfigValue(rawCsrf, chapterId).trim() || envCsrf;
     return { cookie, csrfToken };
   } catch {
     return { cookie: envCookie, csrfToken: envCsrf };

@@ -46,10 +46,7 @@ import type {
 import { generateOpaqueShareToken, generatePartnerAccessCode } from "@/lib/security/pii-mask";
 import { cn } from "@/lib/utils";
 
-const TICKET_TYPE_CONFIG: Record<
-  string,
-  { label: string; badgeClass: string }
-> = {
+const TICKET_TYPE_CONFIG: Record<string, { label: string; badgeClass: string }> = {
   free: {
     label: "Free RSVP",
     badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",

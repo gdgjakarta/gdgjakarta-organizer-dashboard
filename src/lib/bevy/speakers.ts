@@ -101,8 +101,12 @@ export function extractEventSpeakerGroups(
   for (const role of SPEAKER_ROLES_CONFIG) {
     if (role.key === "speakers") continue;
     const list = [
-      ...(Array.isArray(event?.[role.key as keyof BevyEvent]) ? (event![role.key as keyof BevyEvent] as BevySpeaker[]) : []),
-      ...(Array.isArray(firestoreEvent?.[role.key as keyof BevyEvent]) ? (firestoreEvent![role.key as keyof BevyEvent] as BevySpeaker[]) : []),
+      ...(Array.isArray(event?.[role.key as keyof BevyEvent])
+        ? (event![role.key as keyof BevyEvent] as BevySpeaker[])
+        : []),
+      ...(Array.isArray(firestoreEvent?.[role.key as keyof BevyEvent])
+        ? (firestoreEvent![role.key as keyof BevyEvent] as BevySpeaker[])
+        : []),
     ];
     for (const sp of list) {
       const name = (sp.full_name || sp.first_name || "").trim().toLowerCase();
@@ -122,9 +126,7 @@ export function extractEventSpeakerGroups(
     const seenNames = new Set(
       bevyList.map((s) => (s.full_name || s.first_name || "").trim().toLowerCase()).filter(Boolean),
     );
-    const seenIds = new Set(
-      bevyList.map((s) => (s.id ? String(s.id) : "")).filter(Boolean),
-    );
+    const seenIds = new Set(bevyList.map((s) => (s.id ? String(s.id) : "")).filter(Boolean));
 
     for (const sp of fsList) {
       const name = (sp.full_name || sp.first_name || "").trim().toLowerCase();

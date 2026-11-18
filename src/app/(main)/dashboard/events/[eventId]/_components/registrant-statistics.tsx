@@ -1426,7 +1426,6 @@ export function RegistrantStatistics({
 
             {/* Scope & Field Controls */}
             <div className="flex flex-wrap items-center gap-2">
-
               {/* Field dropdown selector */}
               <div className="w-[220px]">
                 <DropdownMenu modal={false}>

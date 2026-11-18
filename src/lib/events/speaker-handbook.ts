@@ -288,8 +288,14 @@ export function simpleMarkdownToHtml(markdown: string): string {
         .replace(/\*\*\*(.*?)\*\*\*/g, '<strong style="font-weight: 600; color: #202124;"><em>$1</em></strong>')
         .replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 600; color: #202124;">$1</strong>')
         .replace(/\*(.*?)\*/g, "<em>$1</em>")
-        .replace(/`([^`]+)`/g, '<code style="padding: 2px 4px; border-radius: 4px; background: rgba(0,0,0,0.06); font-family: monospace; font-size: 12px;">$1</code>')
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline; font-weight: 600;">$1</a>')
+        .replace(
+          /`([^`]+)`/g,
+          '<code style="padding: 2px 4px; border-radius: 4px; background: rgba(0,0,0,0.06); font-family: monospace; font-size: 12px;">$1</code>',
+        )
+        .replace(
+          /\[([^\]]+)\]\(([^)]+)\)/g,
+          '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline; font-weight: 600;">$1</a>',
+        )
         .replace(/\n{2,}/g, '</p><p style="margin-top: 4px;">')
         .replace(/\n/g, "<br>");
       const upper = type.toUpperCase();
@@ -436,4 +442,3 @@ export const DEFAULT_SPEAKER_CUSTOM_SWAGS = [
     hidden: false,
   },
 ];
-

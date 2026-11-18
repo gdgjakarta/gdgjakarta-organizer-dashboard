@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { getPublicEventById } from "@/lib/bevy/client";
-import { getEventSpeakerEcosystemPublicAction } from "@/server/speaker-confirmation-actions";
 import { getFirestoreEventByIdServer } from "@/server/firestore-admin";
+import { getEventSpeakerEcosystemPublicAction } from "@/server/speaker-confirmation-actions";
 
 import { PublicEventDetailView } from "./_components/public-event-detail-view";
 

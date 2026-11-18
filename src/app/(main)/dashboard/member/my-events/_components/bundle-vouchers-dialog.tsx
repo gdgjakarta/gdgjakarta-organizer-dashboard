@@ -102,7 +102,9 @@ export function BundleVouchersDialog({ open, onOpenChange, registration, event }
     const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
     if (typeof window !== "undefined") {
       window.open(waUrl, "_blank", "noopener,noreferrer");
-      toast.success("Invitation copied to clipboard & opening WhatsApp! (If WhatsApp Desktop only shows the link, press Cmd+V to paste the full message)");
+      toast.success(
+        "Invitation copied to clipboard & opening WhatsApp! (If WhatsApp Desktop only shows the link, press Cmd+V to paste the full message)",
+      );
     }
   };
 

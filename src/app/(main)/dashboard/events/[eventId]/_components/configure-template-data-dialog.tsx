@@ -11,10 +11,12 @@ import {
   CopyIcon,
   CreditCardIcon,
   ExternalLinkIcon,
+  HandshakeIcon,
   ImageIcon,
   ListChecksIcon,
   MailIcon,
   MapPinIcon,
+  MicIcon,
   PlusIcon,
   RotateCcwIcon,
   SparklesIcon,
@@ -357,6 +359,11 @@ export function ConfigureTemplateDataDialog({
                         )}
                         {cfg.key.startsWith("cancelled") && <UserXIcon className="size-3.5 text-amber-500 shrink-0" />}
                         {cfg.key.startsWith("rejected") && <XCircleIcon className="size-3.5 text-red-500 shrink-0" />}
+                        {cfg.key === "speaker_invitation" && <MicIcon className="size-3.5 text-purple-500 shrink-0" />}
+                        {cfg.key === "event_proposal" && <HandshakeIcon className="size-3.5 text-teal-500 shrink-0" />}
+                        {cfg.key === "partner_confirmation" && (
+                          <HandshakeIcon className="size-3.5 text-emerald-500 shrink-0" />
+                        )}
                         <span className="font-medium">{cfg.name}</span>
                       </div>
                     </SelectItem>
@@ -552,6 +559,47 @@ export function ConfigureTemplateDataDialog({
                   className="h-8 text-xs"
                 />
               </div>
+
+              {/* Specific Partner Confirmation Parameters */}
+              {currentKey === "partner_confirmation" && (
+                <div className="mt-4 pt-3 border-t space-y-3">
+                  <span className="text-xs font-semibold text-primary block">
+                    Partner Confirmation &amp; Brand Guideline Parameters:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Partner Company Name ({"{{ companyName }}"})</Label>
+                      <Input
+                        value={currentData.companyName ?? ""}
+                        onChange={(e) =>
+                          handleUpdate((prev) => ({
+                            ...prev,
+                            companyName: e.target.value,
+                          }))
+                        }
+                        placeholder="e.g. Google Cloud"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">
+                        Logo &amp; Brand Guideline URL ({"{{ brandGuideUrl }}"})
+                      </Label>
+                      <Input
+                        value={currentData.brandGuideUrl ?? "https://gdgjakarta.org/brand-guide"}
+                        onChange={(e) =>
+                          handleUpdate((prev) => ({
+                            ...prev,
+                            brandGuideUrl: e.target.value,
+                          }))
+                        }
+                        placeholder="https://gdgjakarta.org/brand-guide"
+                        className="h-8 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Specific Cancellation Reason Parameter */}
               {currentKey === "cancelled" && (

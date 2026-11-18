@@ -41,7 +41,9 @@ import type { PartnershipFaq, PartnershipFormat, PartnershipTier } from "@/lib/c
 import { cn } from "@/lib/utils";
 import { fetchBevyChapterLiveMetricsAction, fetchBevyEventDetailForSpotlightAction } from "@/server/bevy-actions";
 
+import { DocumentTemplatesTab } from "./document-templates-tab";
 import { FormatDialog } from "./format-dialog";
+import { PartnersTab } from "./partners-tab";
 import { TierDialog } from "./tier-dialog";
 
 interface PartnershipDashboardProps {
@@ -70,7 +72,7 @@ export function PartnershipDashboard({ initialEvents = [] }: PartnershipDashboar
     onDiscard: discardChanges,
   });
 
-  const [activeTab, setActiveTab] = useState("hero");
+  const [activeTab, setActiveTab] = useState("sponsors");
   const heroDescRef = useRef<HTMLTextAreaElement>(null);
 
   const insertTokenIntoHeroDesc = (tokenStr: string) => {
@@ -345,6 +347,12 @@ export function PartnershipDashboard({ initialEvents = [] }: PartnershipDashboar
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <div className="-mx-1 w-full overflow-x-auto px-1 pb-1 sm:mx-0 sm:px-0">
           <TabsList className="inline-flex h-9 w-max items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground">
+            <TabsTrigger value="sponsors" className="whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Partners & Sponsors
+            </TabsTrigger>
+            <TabsTrigger value="documents" className="whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Document Templates
+            </TabsTrigger>
             <TabsTrigger value="hero" className="whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
               Hero & Metrics
             </TabsTrigger>
@@ -362,6 +370,16 @@ export function PartnershipDashboard({ initialEvents = [] }: PartnershipDashboar
             </TabsTrigger>
           </TabsList>
         </div>
+
+        {/* ── 0. Partners & Sponsors Directory Tab ── */}
+        <TabsContent value="sponsors" className="space-y-6">
+          <PartnersTab />
+        </TabsContent>
+
+        {/* ── 0b. Document Templates Tab (Quotation V1, LOA V2, Invoice V2) ── */}
+        <TabsContent value="documents" className="space-y-6">
+          <DocumentTemplatesTab />
+        </TabsContent>
 
         {/* ── 1. Hero & Metrics Tab ── */}
         <TabsContent value="hero" className="space-y-6">

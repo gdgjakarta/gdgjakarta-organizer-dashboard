@@ -21,9 +21,13 @@ export function PublicEventHero({ event }: PublicEventHeroProps) {
     event.event_type_logo?.url ??
     event.event_type_logo?.thumbnail_url;
 
-  const thumbnailImageUrl = rawThumbnailUrl && rawThumbnailUrl.includes("res.cloudinary.com")
-    ? rawThumbnailUrl.replace(/\/image\/upload\/(?:.+?\/)?v1\//, "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/")
-    : rawThumbnailUrl;
+  const thumbnailImageUrl =
+    rawThumbnailUrl && rawThumbnailUrl.includes("res.cloudinary.com")
+      ? rawThumbnailUrl.replace(
+          /\/image\/upload\/(?:.+?\/)?v1\//,
+          "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/",
+        )
+      : rawThumbnailUrl;
 
   let heroContent = (
     <div className="relative aspect-[2560/650] w-full">

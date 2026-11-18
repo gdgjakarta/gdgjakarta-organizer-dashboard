@@ -345,7 +345,9 @@ export type EmailTemplateKey =
   | "cancelled_attendee"
   | "waitlisted"
   | "paid_waitlisted"
-  | "speaker_invitation";
+  | "speaker_invitation"
+  | "event_proposal"
+  | "partner_confirmation";
 
 export interface EventEmailTemplateData {
   headerEmailUrl?: string;
@@ -363,6 +365,12 @@ export interface EventEmailTemplateData {
   venueLocationUrl?: string;
   attendeeCode?: string;
   attendeeId?: string;
+  proposalUrl?: string;
+  deckUrl?: string;
+  confirmationUrl?: string;
+  brandGuideUrl?: string;
+  sponsorTier?: string;
+  companyName?: string;
   qrCode?: string;
   cancellationReason?: string;
   talkType?: string;
@@ -587,6 +595,8 @@ export interface EventEmailTemplates {
   waitlisted?: string;
   paid_waitlisted?: string;
   speaker_invitation?: string;
+  event_proposal?: string;
+  partner_confirmation?: string;
 
   // Custom subject lines
   interest_subject?: string;
@@ -601,6 +611,8 @@ export interface EventEmailTemplates {
   waitlisted_subject?: string;
   paid_waitlisted_subject?: string;
   speaker_invitation_subject?: string;
+  event_proposal_subject?: string;
+  partner_confirmation_subject?: string;
 
   // Saved event template data configuration (legacy fallback)
   template_data?: EventEmailTemplateData;
@@ -755,6 +767,9 @@ export interface FirestoreEvent {
 
   // Speaker Confirmation & Handbook Configuration
   speaker_config?: EventSpeakerConfig;
+
+  // Sponsor Confirmation & Pitch Configuration
+  sponsor_config?: import("@/types/sponsor").EventSponsorConfig;
 
   // Event Thermal Printer & Label Template Configuration
   printer_config?: Partial<import("@/lib/printers/types").PrinterConfig>;

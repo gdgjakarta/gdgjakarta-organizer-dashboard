@@ -209,8 +209,11 @@ export function buildApprovedAttendeePayload(
     simulatedData.event.eventName = eventName;
     simulatedData.event.headerEmailUrl = eventHeaderEmailUrl;
     // For bundle friend pass claim links, prefer direct internal site event URL if available
-    const appBaseUrl =
-      (process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "") || "https://gdgjakarta.org").replace(/\/+$/, "");
+    const appBaseUrl = (
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (typeof window !== "undefined" ? window.location.origin : "") ||
+      "https://gdgjakarta.org"
+    ).replace(/\/+$/, "");
     const directEventClaimUrl = bevyEventId ? `${appBaseUrl}/events/${bevyEventId}` : actionButtonUrl;
     simulatedData.event.eventCtaUrl = directEventClaimUrl || actionButtonUrl;
     simulatedData.venueLocation = bevyEventLocation;

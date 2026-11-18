@@ -32,6 +32,44 @@ export function formatTierName(slug: string): string {
 }
 
 /**
+ * Sanitize Bevy sponsor/partner logo URLs.
+ * When Bevy API uploads or proxies an image, it often nests an existing Cloudinary/GCS URL inside
+ * Cloudinary transform prefixes, yielding invalid/400 URLs such as:
+ * https://res.cloudinary.com/.../v1/gcs/platform-data-goog/https%3A/res.cloudinary.com/.../blob_xxx
+ * This function unwraps and extracts the true innermost HTTPS image source URL.
+ */
+export function sanitizeBevyLogoUrl(url?: string | null): string | undefined {
+  if (!url || typeof url !== "string") return undefined;
+  let curr = url.trim();
+  if (!curr || curr.startsWith("data:")) return curr;
+
+  // Unescape up to 3 passes for nested URL encoding (%253A, %3A, %2F)
+  for (let i = 0; i < 3; i++) {
+    try {
+      const unquoted = decodeURIComponent(curr);
+      if (unquoted === curr) break;
+      curr = unquoted;
+    } catch {
+      break;
+    }
+  }
+
+  // Look for nested http:// or https:// after the primary protocol prefix (index > 7)
+  const nestedMatch = curr.slice(7).match(/https?:\/\/?(?:res\.cloudinary\.com|[a-zA-Z0-9.-]+\.[a-z]{2,})[^\s"'<>]*/);
+  if (nestedMatch && nestedMatch.index !== undefined) {
+    let extracted = curr.slice(7 + nestedMatch.index);
+    if (extracted.startsWith("https:/") && !extracted.startsWith("https://")) {
+      extracted = `https://${extracted.slice(7)}`;
+    } else if (extracted.startsWith("http:/") && !extracted.startsWith("http://")) {
+      extracted = `http://${extracted.slice(6)}`;
+    }
+    return extracted;
+  }
+
+  return curr;
+}
+
+/**
  * Determine hierarchy order for sponsor tiers so prominent tiers (Headline, Platinum, Gold)
  * display first, followed by Silver, Bronze, Community, Media, etc.
  */
@@ -103,7 +141,7 @@ export function extractEventPartners(event?: (Record<string, unknown> & Partial<
     const tierName = raw.tier ?? (defaultTier ? formatTierName(defaultTier) : "Sponsor");
     const tierPriority = raw.tier_order ?? getTierPriority(tierName);
 
-    const logoUrl =
+    const rawLogoUrl =
       raw.logo_url ??
       raw.logo?.url ??
       raw.logo?.thumbnail_url ??
@@ -111,6 +149,8 @@ export function extractEventPartners(event?: (Record<string, unknown> & Partial<
       raw.picture?.url ??
       raw.picture_url ??
       undefined;
+
+    const logoUrl = sanitizeBevyLogoUrl(rawLogoUrl);
 
     const partner: BevyPartner = {
       id: raw.id ?? raw.event_sponsor_id ?? company,

@@ -30,7 +30,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { extractEventPartners, groupPartnersByTier } from "@/lib/bevy/partners";
+import { extractEventPartners, groupPartnersByTier, sanitizeBevyLogoUrl } from "@/lib/bevy/partners";
 import {
   extractEventSpeakerGroups,
   getAllEventSpeakers,
@@ -751,7 +751,15 @@ function SpeakerCard({
       };
     }
     return null;
-  }, [fullName, speaker.id, speaker.event_person_id, speaker.title, speaker.company, cleanBioText, speakerEcosystemMap]);
+  }, [
+    fullName,
+    speaker.id,
+    speaker.event_person_id,
+    speaker.title,
+    speaker.company,
+    cleanBioText,
+    speakerEcosystemMap,
+  ]);
 
   return (
     <Card className="flex flex-col items-center justify-between rounded-2xl border-border/60 bg-card p-5 text-center shadow-2xs transition-all hover:bg-muted/10">
@@ -852,7 +860,9 @@ function SpeakerCard({
                         </Badge>
                         {ecosystemInfo.details && (
                           <span className="text-xs text-muted-foreground font-medium text-center sm:text-left">
-                            {ecosystemInfo.details.startsWith("(") ? ecosystemInfo.details : `(${ecosystemInfo.details})`}
+                            {ecosystemInfo.details.startsWith("(")
+                              ? ecosystemInfo.details
+                              : `(${ecosystemInfo.details})`}
                           </span>
                         )}
                       </div>
@@ -923,7 +933,8 @@ function XIcon({ className }: { className?: string }) {
 }
 
 function PartnerCard({ partner }: { partner: BevyPartner }) {
-  const logoUrl = partner.logo_url ?? partner.logo?.url ?? partner.logo?.thumbnail_url;
+  const rawLogoUrl = partner.logo_url ?? partner.logo?.url ?? partner.logo?.thumbnail_url;
+  const logoUrl = sanitizeBevyLogoUrl(rawLogoUrl);
 
   return (
     <Card className="flex flex-col justify-between border-border/60 bg-card p-4 shadow-2xs transition-all hover:bg-muted/10 sm:p-5">

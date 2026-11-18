@@ -46,6 +46,12 @@ export const DEFAULT_REJECTED_WAITLISTED_EMAIL_HTML =
 export const DEFAULT_REJECTED_PAID_WAITLISTED_EMAIL_HTML =
   '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Waitlist Update &amp; Refund Instructions: {{ $(\'event-params\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #ea4335;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      .btn {\n        display: block;\n        background-color: #1a73e8;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 70%;\n        margin: 30px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);\n      }\n      \n      .btn:hover {\n        background-color: #1557b0;\n      }\n\n      .receipt-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e8eaed;\n        border-radius: 8px;\n        padding: 16px 20px;\n        margin: 20px 0;\n      }\n\n      .receipt-row {\n        display: flex;\n        justify-content: space-between;\n        padding: 6px 0;\n        font-size: 0.9em;\n        border-bottom: 1px dashed #e8eaed;\n      }\n\n      .receipt-row:last-child {\n        border-bottom: none;\n        padding-top: 10px;\n        font-weight: 600;\n      }\n\n      .badge-refund {\n        display: inline-block;\n        background-color: #fef7e0;\n        color: #b06000;\n        font-size: 11px;\n        font-weight: 600;\n        padding: 3px 8px;\n        border-radius: 4px;\n      }\n\n      .info-box {\n        background-color: #fce8e6;\n        border: 1px solid #ea4335;\n        border-radius: 8px;\n        padding: 16px;\n        margin: 20px 0;\n        color: #b31412;\n      }\n\n      .info-box p {\n        margin-top: 0;\n        margin-bottom: 10px;\n        line-height: 1.6;\n      }\n\n      .info-box p:last-child {\n        margin-bottom: 0;\n      }\n\n      .step-box {\n        background-color: #f8f9fa;\n        padding: 20px;\n        border-radius: 8px;\n        margin: 20px 0;\n        border: 1px solid #e0e0e0;\n      }\n\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 20px 0;\n      }\n\n      .checklist-item {\n        margin-bottom: 15px;\n        display: flex;\n        align-items: flex-start;\n      }\n\n      .checklist-item:last-child {\n        margin-bottom: 0;\n      }\n\n      .icon {\n        margin-right: 12px;\n        font-size: 1.2em;\n        min-width: 25px;\n      }\n\n      .text {\n        font-size: 0.95em;\n        line-height: 1.5;\n      }\n\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      p {\n        line-height: 1.6;\n        margin-bottom: 15px;\n      }\n\n      strong {\n        color: #202124;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <img src="{{ $(\'event-params\').item.json.eventHeaderUrl }}" onerror="this.src=\'https://placehold.co/600x300?text=Waitlist+Update+%26+Refund\'" alt="Event Header" class="header-img" />\n      </div>\n      \n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        \n        <div class="start">\n          <p>Thank you for your patience on the Paid Priority Waitlist for <strong>{{ $(\'event-params\').item.json.eventName }}</strong>.</p>\n          \n          <div class="info-box">\n            <p><strong>Session Capacity Full • Refund Eligible:</strong></p>\n            <p>Unfortunately, all confirmed seats remained full and we are unable to allocate a seat for your registration. You are eligible for a <strong>full 100% refund</strong> of your ticket payment.</p>\n          </div>\n\n          <!-- Payment Receipt Summary -->\n          <div class="receipt-box">\n            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">\n              <span style="font-size: 11px; text-transform: uppercase; color: #5f6368; font-weight: 600; letter-spacing: 0.5px;">Payment Summary</span>\n              <span class="badge-refund">100% REFUND ELIGIBLE</span>\n            </div>\n            <div class="receipt-row">\n              <span style="color: #5f6368;">Invoice Number</span>\n              <span><strong>{{ invoice_number }}</strong></span>\n            </div>\n            <div class="receipt-row">\n              <span style="color: #5f6368;">Session / Ticket</span>\n              <span>{{ session_name }}</span>\n            </div>\n            <div class="receipt-row">\n              <span style="color: #5f6368;">Amount Paid</span>\n              <span style="color: #188038; font-size: 1.05em;">{{ paid_amount }}</span>\n            </div>\n          </div>\n\n          <!-- How to Request Refund -->\n          <div class="step-box">\n            <h3 style="margin-top: 0; color: #1a73e8;">How to Submit Your Refund Request</h3>\n            <p><strong>1. Open Your Member Dashboard</strong><br>Sign in to the GDG Jakarta Dashboard and navigate to <strong>My Events</strong>.</p>\n            <p><strong>2. Click &quot;Request Refund&quot;</strong><br>Select this event and click the <strong>Request Refund</strong> button. Your account is exempt from the standard refund cutoff deadline.</p>\n            <p><strong>3. Enter Payout Details</strong><br>Provide your preferred bank account or e-wallet details so our finance team can transfer your full refund promptly.</p>\n          </div>\n\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #1a73e8;">📋 Refund Guidelines</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n\n          <a href="{{ $(\'event-params\').item.json.eventActionUrl }}" class="btn">Submit Refund Request</a>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #5f6368; text-align: center;">\n            We sincerely apologize for not being able to accommodate you this time and hope to see you at our next event.\n          </p>\n        </div>\n      </div>\n      \n      <div class="center" style="text-align: center;">\n        <div class="footer" style="margin-top: 24pt; padding: 18pt; background-color: #f8f9fa; border-radius: 0 0 8px 8px; text-align: center;">\n          <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" width="113" style="width: 113px; height: auto; display: inline-block; border: 0;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
 
+export const DEFAULT_EVENT_PROPOSAL_EMAIL_HTML =
+  '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Partnership &amp; Sponsorship Proposal: {{ $(\'event-params\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #4285f4;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      .ticket-card {\n        background-color: #f8f9fa;\n        border: 2px dashed #4285f4;\n        border-radius: 12px;\n        padding: 25px;\n        margin: 25px 0;\n        text-align: center;\n      }\n\n      .ticket-title {\n        color: #4285f4;\n        font-weight: 600;\n        margin-bottom: 15px;\n        text-transform: uppercase;\n        letter-spacing: 1px;\n        font-size: 0.9em;\n      }\n\n      .attendee-name {\n        font-size: 1.3em;\n        font-weight: 600;\n        color: #202124;\n        margin: 5px 0;\n      }\n\n      .company-badge {\n        display: inline-block;\n        background-color: #e8f0fe;\n        color: #1967d2;\n        padding: 4px 12px;\n        border-radius: 4px;\n        font-size: 14px;\n        font-weight: 600;\n        margin-bottom: 20px;\n      }\n\n      .btn {\n        display: block;\n        background-color: #4285f4;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 75%;\n        margin: 18px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n      }\n      \n      .btn:hover {\n        background-color: #3367d6;\n      }\n\n      .btn-secondary {\n        display: block;\n        background-color: #ffffff;\n        color: #1a73e8 !important;\n        border: 1px solid #dadce0;\n        text-align: center;\n        border-radius: 50px;\n        padding: 10px 20px;\n        text-decoration: none;\n        width: 75%;\n        margin: 12px auto;\n        font-weight: 600;\n        font-size: 14px;\n      }\n\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 25px 0;\n      }\n\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      p {\n        line-height: 1.6;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <img src="{{ $(\'event-params\').item.json.headerEmailUrl }}" onerror="this.src=\'https://placehold.co/600x300?text=GDG+Jakarta+Partnership\'" alt="Event Header" class="header-img" />\n      </div>\n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        <div class="start">\n          <p>We are delighted to invite <strong>{{ $(\'event-params\').item.json.companyName }}</strong> to partner with Google Developer Group Jakarta for <strong>{{ $(\'event-params\').item.json.eventName }}</strong>! 🤝</p>\n          \n          <div class="ticket-card">\n            <div class="ticket-title">Partnership &amp; Sponsor Proposal</div>\n            <div class="attendee-name">{{ $(\'event-params\').item.json.companyName }}</div>\n            <div class="company-badge">Target Tier: {{ $(\'event-params\').item.json.sponsorTier }}</div>\n            \n            <p style="font-size: 0.95em; color: #5f6368; margin: 10px 0 20px 0;">\n              Connect your brand with over 1,500+ developers, tech leaders, and community builders in Jakarta.\n            </p>\n            \n            <a href="{{ $(\'event-params\').item.json.proposalUrl }}" class="btn" target="_blank">\n              🚀 Review Proposal &amp; Tap In\n            </a>\n            \n            <a href="{{ $(\'event-params\').item.json.confirmationUrl }}" class="btn-secondary" target="_blank">\n              📝 Fill Sponsor Confirmation Form\n            </a>\n          </div>\n\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #4285f4;">📋 Sponsorship Highlights</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n          \n          <p>You can also download our comprehensive event deck directly:</p>\n          <p style="text-align: center;"><a href="{{ $(\'event-params\').item.json.deckUrl }}" style="color: #1a73e8; font-weight: 600;" target="_blank">📄 Download Event Pitch Deck (PDF)</a></p>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #555;">Warm regards,<br><strong>GDG Jakarta Community Team</strong></p>\n        </div>\n      </div>\n      <div class="center">\n        <div class="footer">\n          <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
+
+export const DEFAULT_PARTNER_CONFIRMATION_EMAIL_HTML =
+  '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Thank You for Partnering with Us: {{ $(\'event-params\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #34a853;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      .ticket-card {\n        background-color: #f8f9fa;\n        border: 2px dashed #34a853;\n        border-radius: 12px;\n        padding: 25px;\n        margin: 25px 0;\n        text-align: center;\n      }\n\n      .ticket-title {\n        color: #188038;\n        font-weight: 600;\n        margin-bottom: 10px;\n        text-transform: uppercase;\n        letter-spacing: 1px;\n        font-size: 0.9em;\n      }\n\n      .attendee-name {\n        font-size: 1.3em;\n        font-weight: 600;\n        color: #202124;\n        margin: 5px 0;\n      }\n\n      .company-badge {\n        display: inline-block;\n        background-color: #e6f4ea;\n        color: #137333;\n        padding: 4px 12px;\n        border-radius: 4px;\n        font-size: 13px;\n        font-weight: 600;\n        margin-bottom: 15px;\n      }\n\n      .btn {\n        display: block;\n        background-color: #1a73e8;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 78%;\n        margin: 18px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n      }\n\n      .btn-secondary {\n        display: block;\n        background-color: #ffffff;\n        color: #1a73e8 !important;\n        border: 1px solid #dadce0;\n        text-align: center;\n        border-radius: 50px;\n        padding: 10px 20px;\n        text-decoration: none;\n        width: 78%;\n        margin: 12px auto;\n        font-weight: 600;\n        font-size: 14px;\n      }\n\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 25px 0;\n      }\n\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      p {\n        line-height: 1.6;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <img src="{{ $(\'event-params\').item.json.headerEmailUrl }}" onerror="this.src=\'https://placehold.co/600x300?text=GDG+Jakarta+Partnership\'" alt="Event Header" class="header-img" />\n      </div>\n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        <div class="start">\n          <p>Thank you so much for submitting your partner confirmation! We are thrilled to officially welcome <strong>{{ $(\'event-params\').item.json.companyName }}</strong> in supporting <strong>{{ $(\'event-params\').item.json.eventName }}</strong>. 🎉</p>\n          \n          <div class="ticket-card">\n            <div class="ticket-title">Official Partnership &amp; Sponsorship Confirmation</div>\n            <div class="attendee-name">{{ $(\'event-params\').item.json.companyName }}</div>\n            <div class="company-badge">✓ Confirmed Partner</div>\n            \n            <p style="font-size: 0.95em; color: #5f6368; margin: 8px 0 18px 0;">\n              We have received your company brand details and poster logo. Below is our official GDG Jakarta Logo &amp; Brand Guideline reference for your marketing and co-branding materials:\n            </p>\n            \n            <a href="{{ $(\'event-params\').item.json.brandGuideUrl }}" class="btn" target="_blank">\n              🎨 View GDG Jakarta Logo &amp; Brand Guideline\n            </a>\n            \n            <a href="{{ $(\'event-params\').item.json.confirmationUrl }}" class="btn-secondary" target="_blank">\n              ✏️ Review or Update Your Partner Submission\n            </a>\n          </div>\n\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #188038;">📋 Next Steps &amp; Co-Branding Guidelines</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n          \n          <p>Our partnership team will follow up shortly regarding your official agreement (LOA / MOU), deliverables coordination, and promotional schedule. If you need any assistance, simply reply to this email.</p>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #555;">Warm regards,<br><strong>GDG Jakarta Partnership &amp; Community Team</strong></p>\n        </div>\n      </div>\n      <div class="center">\n        <div class="footer">\n          <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
+
 export interface TemplateVariableInfo {
   tag: string;
   label: string;
@@ -682,6 +688,106 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
       sampleValue: "Speaker Guidelines & Stage Checklists",
     },
   ],
+  event_proposal: [
+    {
+      tag: "{{ $('event-params').item.json.eventName }}",
+      label: "Event Name",
+      description: "Name of the GDG event",
+      sampleValue: "DevFest Jakarta 2026",
+    },
+    {
+      tag: "{{ $('event-params').item.json.headerEmailUrl }}",
+      label: "Header Banner URL",
+      description: "Banner image URL for the email header",
+      sampleValue: "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png",
+    },
+    {
+      tag: "{{ $('loop-send-email').item.json['Full Name'] }}",
+      label: "Contact Full Name",
+      description: "Sponsor representative full name",
+      sampleValue: "Jane Doe",
+    },
+    {
+      tag: "{{ $('event-params').item.json.companyName }}",
+      label: "Company Name",
+      description: "Company or Partner Organization name",
+      sampleValue: "Google Cloud",
+    },
+    {
+      tag: "{{ $('event-params').item.json.sponsorTier }}",
+      label: "Target Tier",
+      description: "Proposed partnership tier (e.g. Gold, Platinum, Community)",
+      sampleValue: "Gold Sponsor",
+    },
+    {
+      tag: "{{ $('event-params').item.json.proposalUrl }}",
+      label: "Proposal Decision URL",
+      description: "Interactive link where sponsor can review proposal and Tap In",
+      sampleValue: "https://gdgjakarta.com/partnership/proposals/prop_sample",
+    },
+    {
+      tag: "{{ $('event-params').item.json.confirmationUrl }}",
+      label: "Sponsor Confirmation Form URL",
+      description: "Direct link to submit company logo and contact details",
+      sampleValue: "https://gdgjakarta.com/events/132640/partner-confirmation?token=spn_sample",
+    },
+    {
+      tag: "{{ $('event-params').item.json.deckUrl }}",
+      label: "Pitch Deck URL",
+      description: "Link to download event sponsorship pitch deck",
+      sampleValue: "https://gdgjakarta.org/devfest26-partnership-kit",
+    },
+    {
+      tag: "{{ $('event-params').item.json.eventChecklistItems }}",
+      label: "Checklist Items",
+      description: "Rendered HTML sponsorship highlights and perks",
+      sampleValue: "Sponsorship Highlights & Benefits",
+    },
+  ],
+  partner_confirmation: [
+    {
+      tag: "{{ $('event-params').item.json.eventName }}",
+      label: "Event / Community Name",
+      description: "Name of the GDG event or 'GDG Jakarta Community' for chapter partnerships",
+      sampleValue: "DevFest Jakarta 2026",
+    },
+    {
+      tag: "{{ $('event-params').item.json.headerEmailUrl }}",
+      label: "Header Banner URL",
+      description: "Banner image URL for the email header",
+      sampleValue: "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png",
+    },
+    {
+      tag: "{{ $('loop-send-email').item.json['Full Name'] }}",
+      label: "Contact Full Name",
+      description: "Partner representative full name",
+      sampleValue: "Jane Doe",
+    },
+    {
+      tag: "{{ $('event-params').item.json.companyName }}",
+      label: "Company Name",
+      description: "Company or Partner Organization name",
+      sampleValue: "Google Cloud",
+    },
+    {
+      tag: "{{ $('event-params').item.json.brandGuideUrl }}",
+      label: "Logo & Brand Guideline URL",
+      description: "Configurable GDG Jakarta logo and brand guideline reference URL",
+      sampleValue: "https://gdgjakarta.org/brand-guide",
+    },
+    {
+      tag: "{{ $('event-params').item.json.confirmationUrl }}",
+      label: "Partner Confirmation Form URL",
+      description: "Link for the partner to review or edit their submitted confirmation",
+      sampleValue: "https://gdgjakarta.com/events/132640/partner-confirmation?token=spn_sample",
+    },
+    {
+      tag: "{{ $('event-params').item.json.eventChecklistItems }}",
+      label: "Checklist Items",
+      description: "Rendered HTML co-branding guidelines and next steps",
+      sampleValue: "Co-Branding Guidelines & Next Steps",
+    },
+  ],
 };
 
 export const EMAIL_TEMPLATES_CONFIG: EmailTemplateMeta[] = [
@@ -840,6 +946,32 @@ export const EMAIL_TEMPLATES_CONFIG: EmailTemplateMeta[] = [
     isCuratedOnly: false,
     variables: EMAIL_TEMPLATE_VARIABLES.speaker_invitation,
   },
+  {
+    key: "event_proposal",
+    name: "Event Proposal / Partnership Pitch",
+    badge: "Partnership • Outreach",
+    subjectDefault: "Partnership & Sponsorship Proposal: {{ $('event-params').item.json.eventName }}",
+    description:
+      "Sent to prospective sponsors and partners. Includes the target tier, event overview, deck download link, interactive proposal decision portal, and direct sponsor confirmation link.",
+    n8nNode: "loop-send-email",
+    triggerDescription: "Triggered from Partnership Dashboard or Event Sponsors tab when sending a pitch email",
+    defaultHtml: DEFAULT_EVENT_PROPOSAL_EMAIL_HTML,
+    isCuratedOnly: false,
+    variables: EMAIL_TEMPLATE_VARIABLES.event_proposal,
+  },
+  {
+    key: "partner_confirmation",
+    name: "Partner & Sponsor Confirmation (Thank You)",
+    badge: "Partnership • Confirmed",
+    subjectDefault: "Thank You for Supporting {{ $('event-params').item.json.eventName }}!",
+    description:
+      "Sent automatically when a partner or sponsor submits the Partner Confirmation Form (both event-bound and chapter-wide). Includes GDG Jakarta Logo & Brand Guideline reference and next steps.",
+    n8nNode: "loop-send-email",
+    triggerDescription: "Triggered automatically on Partner Confirmation Form submission",
+    defaultHtml: DEFAULT_PARTNER_CONFIRMATION_EMAIL_HTML,
+    isCuratedOnly: false,
+    variables: EMAIL_TEMPLATE_VARIABLES.partner_confirmation,
+  },
 ];
 
 export const CUSTOM_DEFAULT_TEMPLATES_KEY = "gdg_custom_default_email_templates";
@@ -921,6 +1053,10 @@ export function getFactoryDefaultTemplateByKey(key: EmailTemplateKey): string {
       return DEFAULT_REJECTED_PAID_WAITLISTED_EMAIL_HTML;
     case "speaker_invitation":
       return DEFAULT_SPEAKER_INVITATION_EMAIL_HTML;
+    case "event_proposal":
+      return DEFAULT_EVENT_PROPOSAL_EMAIL_HTML;
+    case "partner_confirmation":
+      return DEFAULT_PARTNER_CONFIRMATION_EMAIL_HTML;
     default:
       return "";
   }
@@ -970,6 +1106,12 @@ export interface TemplateSimulatedData {
   talkTitle?: string;
   speakerHandbookUrl?: string;
   presenterRole?: string;
+  proposalUrl?: string;
+  deckUrl?: string;
+  confirmationUrl?: string;
+  brandGuideUrl?: string;
+  sponsorTier?: string;
+  companyName?: string;
 }
 
 export const DEFAULT_INTEREST_CHECKLIST_ITEMS: string[] = [
@@ -1064,6 +1206,18 @@ export const DEFAULT_CHECKLIST_ITEMS_BY_TYPE: Record<EmailTemplateKey, string[]>
   rejected_waitlisted: DEFAULT_REJECTED_WAITLISTED_CHECKLIST_ITEMS,
   rejected_paid_waitlisted: DEFAULT_REJECTED_PAID_WAITLISTED_CHECKLIST_ITEMS,
   speaker_invitation: DEFAULT_SPEAKER_INVITATION_CHECKLIST_ITEMS,
+  event_proposal: [
+    "High-Visibility Brand Exposure: Prominent logo placement across website, event banner, badges, and keynote backdrop.",
+    "Exclusive Booth & Interactive Space: Direct engagement opportunities with 1,500+ developers, builders, and decision-makers.",
+    "Complimentary VIP Tickets: Guaranteed executive access, networking lounge passes, and speaker dinner invitations.",
+    "Community Media Spotlight: Dedicated shoutout on social channels (LinkedIn, Instagram) and post-event recap videos.",
+  ],
+  partner_confirmation: [
+    "Logo & Brand Guidelines: Please refer to the official GDG Jakarta Brand Guide (https://gdgjakarta.org/brand-guide) when placing our logo on co-branded posts or banners.",
+    "Brand Assets Received: Your poster logo and company profile have been recorded and queued for website and promotional publication.",
+    "Agreement & Deliverables Coordination: Our partnership team will reach out regarding your Letter of Agreement (LOA) or MOU and promotional timeline.",
+    "Update Anytime: If you need to update your logo or billing details, click the Review Submission link above and use Load My Response.",
+  ],
 };
 
 export const DEFAULT_CHECKLIST_ITEMS: string[] = DEFAULT_ACCEPTED_CHECKLIST_ITEMS;
@@ -1592,6 +1746,15 @@ export function getCleanDefaultTemplateDataForType(
     talkTitle: customData?.talkTitle ?? "Building Scalable Cloud Native Applications with Gemini & Google Cloud",
     speakerHandbookUrl: customData?.speakerHandbookUrl ?? defaultHandbookUrl,
     presenterRole: customData?.presenterRole ?? "Speaker",
+    proposalUrl: customData?.proposalUrl ?? `https://gdgjakarta.com/partnership/proposals/prop_${event.id}`,
+    deckUrl: customData?.deckUrl ?? "https://gdgjakarta.org/devfest26-partnership-kit",
+    confirmationUrl:
+      customData?.confirmationUrl ??
+      `https://gdgjakarta.com/events/${event.id}/partner-confirmation?token=${event.sponsor_config?.share_token || "spn_sample"}`,
+    brandGuideUrl:
+      customData?.brandGuideUrl ?? event.sponsor_config?.brand_guide_url ?? "https://gdgjakarta.org/brand-guide",
+    sponsorTier: customData?.sponsorTier ?? "Gold Partner",
+    companyName: customData?.companyName ?? "Partner Organization",
   };
 }
 
@@ -1611,6 +1774,8 @@ export function getAllCleanDefaultTemplatesData(
     cancelled: getCleanDefaultTemplateDataForType("cancelled", event),
     cancelled_attendee: getCleanDefaultTemplateDataForType("cancelled_attendee", event),
     speaker_invitation: getCleanDefaultTemplateDataForType("speaker_invitation", event),
+    event_proposal: getCleanDefaultTemplateDataForType("event_proposal", event),
+    partner_confirmation: getCleanDefaultTemplateDataForType("partner_confirmation", event),
   };
 }
 
@@ -1703,6 +1868,12 @@ export function getDefaultTemplateDataForType(key: EmailTemplateKey, event: Fire
     talkTitle: savedData.talkTitle ?? cleanDefaults.talkTitle,
     speakerHandbookUrl: savedData.speakerHandbookUrl ?? cleanDefaults.speakerHandbookUrl,
     presenterRole: savedData.presenterRole ?? cleanDefaults.presenterRole,
+    proposalUrl: savedData.proposalUrl ?? cleanDefaults.proposalUrl,
+    deckUrl: savedData.deckUrl ?? cleanDefaults.deckUrl,
+    confirmationUrl: savedData.confirmationUrl ?? cleanDefaults.confirmationUrl,
+    brandGuideUrl: savedData.brandGuideUrl ?? cleanDefaults.brandGuideUrl,
+    sponsorTier: savedData.sponsorTier ?? cleanDefaults.sponsorTier,
+    companyName: savedData.companyName ?? cleanDefaults.companyName,
   };
 }
 
@@ -1720,6 +1891,8 @@ export function getAllDefaultTemplatesData(event: FirestoreEvent): Record<EmailT
     cancelled: getDefaultTemplateDataForType("cancelled", event),
     cancelled_attendee: getDefaultTemplateDataForType("cancelled_attendee", event),
     speaker_invitation: getDefaultTemplateDataForType("speaker_invitation", event),
+    event_proposal: getDefaultTemplateDataForType("event_proposal", event),
+    partner_confirmation: getDefaultTemplateDataForType("partner_confirmation", event),
   };
 }
 
@@ -1961,6 +2134,32 @@ export function interpolateTemplateHtml(
   rendered = rendered.replaceAll("{{ presenterRole }}", presenterRole);
   rendered = rendered.replaceAll("{ presenterRole }", presenterRole);
 
+  // Sponsor & Event Proposal variables
+  const proposalUrl = data.proposalUrl || "https://gdgjakarta.com/partnership";
+  const deckUrl = data.deckUrl || "https://gdgjakarta.org/partnership-kit";
+  const confirmationUrl = data.confirmationUrl || "https://gdgjakarta.com";
+  const brandGuideUrl = data.brandGuideUrl || "https://gdgjakarta.org/brand-guide";
+  const sponsorTier = data.sponsorTier || "Sponsor";
+  const companyName = data.companyName || "Partner Organization";
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.proposalUrl }}", proposalUrl);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.proposalUrl }", proposalUrl);
+  rendered = rendered.replaceAll("{{ proposalUrl }}", proposalUrl);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.deckUrl }}", deckUrl);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.deckUrl }", deckUrl);
+  rendered = rendered.replaceAll("{{ deckUrl }}", deckUrl);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.confirmationUrl }}", confirmationUrl);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.confirmationUrl }", confirmationUrl);
+  rendered = rendered.replaceAll("{{ confirmationUrl }}", confirmationUrl);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.brandGuideUrl }}", brandGuideUrl);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.brandGuideUrl }", brandGuideUrl);
+  rendered = rendered.replaceAll("{{ brandGuideUrl }}", brandGuideUrl);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.sponsorTier }}", sponsorTier);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.sponsorTier }", sponsorTier);
+  rendered = rendered.replaceAll("{{ sponsorTier }}", sponsorTier);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.companyName }}", companyName);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.companyName }", companyName);
+  rendered = rendered.replaceAll("{{ companyName }}", companyName);
+
   // Clean bracketed tokens support (used in Email Manager and direct templates)
   rendered = rendered.replaceAll("[[EventName]]", event.eventName);
   rendered = rendered.replaceAll("[[EventDate]]", data.eventDate || "");
@@ -1972,6 +2171,13 @@ export function interpolateTemplateHtml(
   rendered = rendered.replaceAll("[[SessionTitle]]", talkTitle);
   rendered = rendered.replaceAll("[[SpeakerHandbookUrl]]", speakerHandbookUrl);
   rendered = rendered.replaceAll("[[PresenterRole]]", presenterRole);
+  rendered = rendered.replaceAll("[[ProposalUrl]]", proposalUrl);
+  rendered = rendered.replaceAll("[[DeckUrl]]", deckUrl);
+  rendered = rendered.replaceAll("[[ConfirmationUrl]]", confirmationUrl);
+  rendered = rendered.replaceAll("[[BrandGuideUrl]]", brandGuideUrl);
+  rendered = rendered.replaceAll("[[SponsorTier]]", sponsorTier);
+  rendered = rendered.replaceAll("[[Company]]", companyName);
+  rendered = rendered.replaceAll("[[CompanyName]]", companyName);
   rendered = rendered.replaceAll("[[Name]]", attendee.name);
   rendered = rendered.replaceAll("[[Email]]", attendee.email);
 
@@ -2145,6 +2351,15 @@ export function buildRenderedEmailForAttendee({
   cancellationReason,
   bundleName,
   bundleVouchers,
+  talkType,
+  talkTitle,
+  speakerHandbookUrl,
+  presenterRole,
+  proposalUrl,
+  deckUrl,
+  confirmationUrl,
+  sponsorTier,
+  companyName,
 }: {
   templateKey: EmailTemplateKey;
   attendee: { name: string; email: string };
@@ -2159,6 +2374,12 @@ export function buildRenderedEmailForAttendee({
   talkTitle?: string;
   speakerHandbookUrl?: string;
   presenterRole?: string;
+  proposalUrl?: string;
+  deckUrl?: string;
+  confirmationUrl?: string;
+  brandGuideUrl?: string;
+  sponsorTier?: string;
+  companyName?: string;
 }): {
   firstName: string;
   lastName: string;
@@ -2209,6 +2430,15 @@ export function buildRenderedEmailForAttendee({
   if (cancellationReason) simulatedData.cancellationReason = cancellationReason;
   if (bundleName) simulatedData.bundleName = bundleName;
   if (bundleVouchers) simulatedData.bundleVouchers = bundleVouchers;
+  if (talkType) simulatedData.talkType = talkType;
+  if (talkTitle) simulatedData.talkTitle = talkTitle;
+  if (speakerHandbookUrl) simulatedData.speakerHandbookUrl = speakerHandbookUrl;
+  if (presenterRole) simulatedData.presenterRole = presenterRole;
+  if (proposalUrl) simulatedData.proposalUrl = proposalUrl;
+  if (deckUrl) simulatedData.deckUrl = deckUrl;
+  if (confirmationUrl) simulatedData.confirmationUrl = confirmationUrl;
+  if (sponsorTier) simulatedData.sponsorTier = sponsorTier;
+  if (companyName) simulatedData.companyName = companyName;
 
   // Get raw template HTML
   const rawHtml =

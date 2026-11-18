@@ -32,10 +32,9 @@ import {
 import { toast } from "sonner";
 
 import { HtmlEditorPreview } from "@/app/(main)/dashboard/email-manager/_components/html-editor-preview";
-import { isExecutiveOrganizer } from "@/lib/auth-roles";
-import { useAuthStore } from "@/stores/auth/auth-provider";
 import { DatePicker } from "@/components/date-picker";
 import { GoogleMapsPinpointDialog } from "@/components/maps/google-maps-pinpoint-dialog";
+import { AdjustImageDialog } from "@/components/ui/adjust-image-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,7 +65,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { AdjustImageDialog } from "@/components/ui/adjust-image-dialog";
+import { isExecutiveOrganizer } from "@/lib/auth-roles";
 import type { BevyImageUploadResponse, BevyPersonSearchResult } from "@/lib/bevy/client";
 import { SPEAKER_ROLES_CONFIG, type SpeakerRoleKey } from "@/lib/bevy/speakers";
 import {
@@ -94,7 +93,6 @@ import { getBevySpeakerPersonAction, searchBevyPersonsAction } from "@/server/be
 import {
   addManualSpeakerConfirmationAction,
   deleteSpeakerConfirmationAction,
-  uploadSpeakerImageToBevyAction,
   getEventSpeakerConfirmationsAction,
   getExistingEventSlideTemplateOptionsAction,
   getOrInitEventSpeakerConfigAction,
@@ -104,7 +102,9 @@ import {
   updateEventSpeakerConfigAction,
   updateEventSpeakerEmailTemplateAction,
   updateSpeakerConfirmationAction,
+  uploadSpeakerImageToBevyAction,
 } from "@/server/speaker-confirmation-actions";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 const SPEAKER_DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Halal", "Gluten-free", "No-spicy", "None"] as const;
 const SPEAKER_CONTACT_CHANNELS = ["Whatsapp", "Telegram", "Email"] as const;
@@ -831,7 +831,12 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
     let initialSessionSlot = enrichedConf.session_slot || "";
     if (agendaSlots.length > 0) {
       const clean = (s?: string | null) =>
-        (s || "").toLowerCase().replace(/['"’]/g, "").replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+        (s || "")
+          .toLowerCase()
+          .replace(/['"’]/g, "")
+          .replace(/[^\w\s]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
       const currentValMatches = agendaSlots.some((s) => s.value === initialSessionSlot);
 
       if (!currentValMatches) {
@@ -846,13 +851,20 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
           if (!cleanTitle || cleanTitle.includes("session")) continue;
 
           // 1. Exact activity match
-          let matchedSlot = agendaSlots.find((s) => clean(s.value).includes(cleanTitle) || clean(s.label).includes(cleanTitle));
+          let matchedSlot = agendaSlots.find(
+            (s) => clean(s.value).includes(cleanTitle) || clean(s.label).includes(cleanTitle),
+          );
           // 2. Substring match
           if (!matchedSlot && cleanTitle.length >= 6) {
             matchedSlot = agendaSlots.find((s) => {
               const cleanVal = clean(s.value);
               const cleanAct = clean(s.label);
-              return cleanTitle.includes(cleanVal) || cleanVal.includes(cleanTitle) || cleanTitle.includes(cleanAct) || cleanAct.includes(cleanTitle);
+              return (
+                cleanTitle.includes(cleanVal) ||
+                cleanVal.includes(cleanTitle) ||
+                cleanTitle.includes(cleanAct) ||
+                cleanAct.includes(cleanTitle)
+              );
             });
           }
           if (matchedSlot) {
@@ -1036,7 +1048,7 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
           instagram_username: editInstagram.trim() || undefined,
           portfolio_url: editPortfolioUrl.trim() || undefined,
           whatsapp_number: editWhatsapp.trim() || undefined,
-        contact_channels: editContactChannels,
+          contact_channels: editContactChannels,
           presenter_role: editPresenterRole,
           presentation_slides_url: editSlidesUrl.trim() || undefined,
           google_ecosystem_or_technology: editPrimaryTechnology.trim() || undefined,
@@ -1052,8 +1064,13 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
           updated_at: new Date().toISOString(),
         };
 
-        setConfirmations((prev) => prev.map((c) => (c.id === editingSpeaker.id || c.id === effectiveId ? updatedObj : c)));
-        if (viewingConfirmation && (viewingConfirmation.id === editingSpeaker.id || viewingConfirmation.id === effectiveId)) {
+        setConfirmations((prev) =>
+          prev.map((c) => (c.id === editingSpeaker.id || c.id === effectiveId ? updatedObj : c)),
+        );
+        if (
+          viewingConfirmation &&
+          (viewingConfirmation.id === editingSpeaker.id || viewingConfirmation.id === effectiveId)
+        ) {
           setViewingConfirmation(updatedObj);
         }
         setIsEditingSpeakerOpen(false);
@@ -1112,7 +1129,8 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
           ...target,
           bevy_person_id: Number(p.id) || target.bevy_person_id,
           full_name: target.full_name || pFullName,
-          job_title: (target.job_title && target.job_title !== "Speaker" ? target.job_title : p.title) || target.job_title,
+          job_title:
+            (target.job_title && target.job_title !== "Speaker" ? target.job_title : p.title) || target.job_title,
           company_institution: target.company_institution || p.company || "",
           speaker_profile_url: target.speaker_profile_url || pPicture || "",
           talk_description: target.talk_description || p.bio || "",
@@ -1249,42 +1267,44 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
         description: m.description,
         options,
         imageUrl: m.image_url || (Array.isArray(m.images) ? m.images[0] : undefined),
-        images: Array.isArray(m.images) && m.images.length > 0 ? m.images : (m.image_url ? [m.image_url] : undefined),
-        guideline: m.guideline ? {
-          title: m.guideline.title || "Size & Product Guideline",
-          text: m.guideline.text,
-          image_url: m.guideline.image_url,
-        } : undefined,
+        images: Array.isArray(m.images) && m.images.length > 0 ? m.images : m.image_url ? [m.image_url] : undefined,
+        guideline: m.guideline
+          ? {
+              title: m.guideline.title || "Size & Product Guideline",
+              text: m.guideline.text,
+              image_url: m.guideline.image_url,
+            }
+          : undefined,
       });
     });
 
-      // 2. Custom Swags not in merchandise catalog (filter out hidden ones)
-      const customSwags = swagConfig?.custom_swags;
-      const hasConfiguredCustomSwags = Boolean(customSwags && Array.isArray(customSwags));
-      if (customSwags && Array.isArray(customSwags)) {
-        customSwags.forEach((cs) => {
-          if (cs.hidden) return;
-          items.push({
-            id: cs.id === "default_tshirt" ? "default_tshirt" : `custom_${cs.id}`,
-            label: cs.label,
-            description: cs.description,
-            options: cs.options?.length ? cs.options : ["S", "M", "L", "XL", "2XL", "3XL", "4XL"],
-          });
-        });
-      }
-
-      // 3. Fallback: ONLY IF custom_swags was never configured and no merchandise selected
-      if (items.length === 0 && !hasConfiguredCustomSwags && (!selectedMerchIds || selectedMerchIds.length === 0)) {
+    // 2. Custom Swags not in merchandise catalog (filter out hidden ones)
+    const customSwags = swagConfig?.custom_swags;
+    const hasConfiguredCustomSwags = Boolean(customSwags && Array.isArray(customSwags));
+    if (customSwags && Array.isArray(customSwags)) {
+      customSwags.forEach((cs) => {
+        if (cs.hidden) return;
         items.push({
-          id: "default_tshirt",
-          label: "T-Shirt Size (Unisex Standard)",
-          description: "Official GDG community conference commemorative t-shirt",
-          options: ["S", "M", "L", "XL", "2XL", "3XL", "4XL"],
+          id: cs.id === "default_tshirt" ? "default_tshirt" : `custom_${cs.id}`,
+          label: cs.label,
+          description: cs.description,
+          options: cs.options?.length ? cs.options : ["S", "M", "L", "XL", "2XL", "3XL", "4XL"],
         });
-      }
+      });
+    }
 
-      return items;
-    }, [event.merchandise, config]);
+    // 3. Fallback: ONLY IF custom_swags was never configured and no merchandise selected
+    if (items.length === 0 && !hasConfiguredCustomSwags && (!selectedMerchIds || selectedMerchIds.length === 0)) {
+      items.push({
+        id: "default_tshirt",
+        label: "T-Shirt Size (Unisex Standard)",
+        description: "Official GDG community conference commemorative t-shirt",
+        options: ["S", "M", "L", "XL", "2XL", "3XL", "4XL"],
+      });
+    }
+
+    return items;
+  }, [event.merchandise, config]);
 
   const filteredConfirmations = useMemo(() => {
     if (!searchQuery.trim()) return confirmations;
@@ -1767,7 +1787,9 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                               <div className="mt-1 flex flex-wrap items-center gap-1">
                                 {conf.talk_type &&
                                   conf.talk_type.trim().toLowerCase().replace(/s$/, "") !==
-                                    (conf.presenter_role === "speakers" ? "speaker" : conf.presenter_role?.replace(/s$/, "").toLowerCase()) && (
+                                    (conf.presenter_role === "speakers"
+                                      ? "speaker"
+                                      : conf.presenter_role?.replace(/s$/, "").toLowerCase()) && (
                                     <Badge variant="outline" className="text-[10px]">
                                       {conf.talk_type}
                                     </Badge>
@@ -3413,16 +3435,10 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                           const trackName = bracketMatch ? bracketMatch[1] : null;
                           const restLabel = bracketMatch ? bracketMatch[2] : slot.label;
                           return (
-                            <SelectItem
-                              key={slot.id}
-                              value={slot.value}
-                              className="items-start py-2 text-xs"
-                            >
+                            <SelectItem key={slot.id} value={slot.value} className="items-start py-2 text-xs">
                               <div className="flex flex-col gap-0.5 text-left">
                                 {trackName && (
-                                  <span className="font-medium text-[11px] text-muted-foreground">
-                                    [{trackName}]
-                                  </span>
+                                  <span className="font-medium text-[11px] text-muted-foreground">[{trackName}]</span>
                                 )}
                                 <span className="font-medium text-foreground whitespace-normal break-words">
                                   {restLabel}
@@ -3557,7 +3573,9 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                       <SelectItem value="AI / Machine Learning (Gemini / Vertex AI)">
                         AI / ML (Gemini / Vertex AI)
                       </SelectItem>
-                      <SelectItem value="Web & Chrome (Angular, Firebase)">Web &amp; Chrome (Angular, Firebase)</SelectItem>
+                      <SelectItem value="Web & Chrome (Angular, Firebase)">
+                        Web &amp; Chrome (Angular, Firebase)
+                      </SelectItem>
                       <SelectItem value="Flutter & Dart">Flutter &amp; Dart</SelectItem>
                       <SelectItem value="Other">Other</SelectItem>
                     </SelectContent>
@@ -4269,8 +4287,8 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
               <span>Edit Speaker Profile &amp; Bevy Sync</span>
             </DialogTitle>
             <DialogDescription className="text-xs sm:text-sm">
-              Update speaker personal details, talk title, presentation slides, and social links. Changes seamlessly sync
-              to Cloud Firestore and the official Bevy People roster.
+              Update speaker personal details, talk title, presentation slides, and social links. Changes seamlessly
+              sync to Cloud Firestore and the official Bevy People roster.
             </DialogDescription>
           </DialogHeader>
 
@@ -4454,10 +4472,7 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                 <div className="space-y-1 sm:col-span-2">
                   <Label htmlFor="edit_session_slot">Stage / Slot</Label>
                   {agendaSlots.length > 0 ? (
-                    <Select
-                      value={editSessionSlot}
-                      onValueChange={(val) => setEditSessionSlot(val)}
-                    >
+                    <Select value={editSessionSlot} onValueChange={(val) => setEditSessionSlot(val)}>
                       <SelectTrigger
                         id="edit_session_slot"
                         className="!h-auto min-h-10 w-full min-w-0 !px-3.5 !py-2.5 text-xs text-left"
@@ -4473,16 +4488,10 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                           const trackName = bracketMatch ? bracketMatch[1] : null;
                           const restLabel = bracketMatch ? bracketMatch[2] : slot.label;
                           return (
-                            <SelectItem
-                              key={slot.id}
-                              value={slot.value}
-                              className="items-start py-2 text-xs"
-                            >
+                            <SelectItem key={slot.id} value={slot.value} className="items-start py-2 text-xs">
                               <div className="flex flex-col gap-0.5 text-left">
                                 {trackName && (
-                                  <span className="font-medium text-[11px] text-muted-foreground">
-                                    [{trackName}]
-                                  </span>
+                                  <span className="font-medium text-[11px] text-muted-foreground">[{trackName}]</span>
                                 )}
                                 <span className="font-medium text-foreground whitespace-normal break-words">
                                   {restLabel}
@@ -4757,11 +4766,7 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
                   Cancel
                 </Button>
                 <Button type="submit" size="sm" disabled={isUpdatingSpeaker} className="gap-1.5 text-xs">
-                  {isUpdatingSpeaker ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Pencil className="size-3.5" />
-                  )}
+                  {isUpdatingSpeaker ? <Loader2 className="size-3.5 animate-spin" /> : <Pencil className="size-3.5" />}
                   <span>Save Changes</span>
                 </Button>
               </DialogFooter>

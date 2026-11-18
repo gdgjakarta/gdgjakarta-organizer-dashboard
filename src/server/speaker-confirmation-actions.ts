@@ -356,8 +356,18 @@ export async function getEventSpeakerConfirmationsAction(
             event.agenda as {
               days?: Array<{
                 title?: string;
-                items?: Array<{ activity?: string; time?: string; description?: string; speakers?: Array<{ name?: string }> }>;
-                agenda?: Array<{ activity?: string; time?: string; description?: string; speakers?: Array<{ name?: string }> }>;
+                items?: Array<{
+                  activity?: string;
+                  time?: string;
+                  description?: string;
+                  speakers?: Array<{ name?: string }>;
+                }>;
+                agenda?: Array<{
+                  activity?: string;
+                  time?: string;
+                  description?: string;
+                  speakers?: Array<{ name?: string }>;
+                }>;
               }>;
             }
           ).days || [];
@@ -366,8 +376,26 @@ export async function getEventSpeakerConfirmationsAction(
         const day = days[dIdx];
         const trackName = (day as { title?: string }).title?.trim() || `Track ${dIdx + 1}`;
         const items =
-          (day as { items?: Array<{ activity?: string; time?: string; description?: string; speakers?: Array<{ name?: string }> }> }).items ||
-          (day as { agenda?: Array<{ activity?: string; time?: string; description?: string; speakers?: Array<{ name?: string }> }> }).agenda ||
+          (
+            day as {
+              items?: Array<{
+                activity?: string;
+                time?: string;
+                description?: string;
+                speakers?: Array<{ name?: string }>;
+              }>;
+            }
+          ).items ||
+          (
+            day as {
+              agenda?: Array<{
+                activity?: string;
+                time?: string;
+                description?: string;
+                speakers?: Array<{ name?: string }>;
+              }>;
+            }
+          ).agenda ||
           [];
         for (const item of items) {
           const actTitle = item.activity?.trim();
@@ -435,9 +463,7 @@ export async function getEventSpeakerConfirmationsAction(
             spkEmail && spkEmail !== "synced from event roster"
               ? buildSpeakerConfirmationDocId(eventId, spkEmail)
               : undefined,
-            spkPersonId
-              ? buildSpeakerConfirmationDocId(eventId, `speaker_${spkPersonId}@gdgjakarta.org`)
-              : undefined,
+            spkPersonId ? buildSpeakerConfirmationDocId(eventId, `speaker_${spkPersonId}@gdgjakarta.org`) : undefined,
             buildSpeakerConfirmationDocId(
               eventId,
               `speaker_${encodeURIComponent(spkName.toLowerCase().replace(/\s+/g, "_"))}@gdgjakarta.org`,
@@ -491,9 +517,7 @@ export async function getEventSpeakerConfirmationsAction(
 
           const matchedSession = slidesMap.get(spkName.toLowerCase());
           const resolvedTalkTitle =
-            (spk.talk_title as string)?.trim() ||
-            matchedSession?.sessionTitle ||
-            `${spkName}'s Session`;
+            (spk.talk_title as string)?.trim() || matchedSession?.sessionTitle || `${spkName}'s Session`;
 
           deduped.push({
             id: `roster_${eventId}_${spkPersonId || encodeURIComponent(spkName)}`,
@@ -529,17 +553,33 @@ export async function getEventSpeakerConfirmationsAction(
 
     // Resolve session_slot, presentation_slides_url, canonical Bevy person ID, and roster fields for all deduped records
     const cleanStr = (s?: string | null) =>
-      (s || "").toLowerCase().replace(/['"’]/g, "").replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+      (s || "")
+        .toLowerCase()
+        .replace(/['"’]/g, "")
+        .replace(/[^\w\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
 
     // Build agenda lookup list for slot binding
     const agendaSlotCandidates: Array<{ value: string; activity: string; track?: string; time?: string }> = [];
     if (event?.agenda) {
       const days = Array.isArray(event.agenda)
         ? event.agenda
-        : (event.agenda as { days?: Array<{ title?: string; items?: Array<{ activity?: string; time?: string }>; agenda?: Array<{ activity?: string; time?: string }> }> }).days || [];
+        : (
+            event.agenda as {
+              days?: Array<{
+                title?: string;
+                items?: Array<{ activity?: string; time?: string }>;
+                agenda?: Array<{ activity?: string; time?: string }>;
+              }>;
+            }
+          ).days || [];
       days.forEach((day, dIdx) => {
         const trackName = (day as { title?: string }).title?.trim() || `Track ${dIdx + 1}`;
-        const items = (day as { items?: Array<{ activity?: string; time?: string }> }).items || (day as { agenda?: Array<{ activity?: string; time?: string }> }).agenda || [];
+        const items =
+          (day as { items?: Array<{ activity?: string; time?: string }> }).items ||
+          (day as { agenda?: Array<{ activity?: string; time?: string }> }).agenda ||
+          [];
         items.forEach((item) => {
           const act = item.activity?.trim();
           if (act) {
@@ -570,7 +610,12 @@ export async function getEventSpeakerConfirmationsAction(
       }
 
       // If session_slot is still empty, map it based on which agenda item the speaker/talk title is bound with
-      if (!item.session_slot && agendaSlotCandidates.length > 0 && item.talk_title && item.talk_title !== `${item.full_name}'s Session`) {
+      if (
+        !item.session_slot &&
+        agendaSlotCandidates.length > 0 &&
+        item.talk_title &&
+        item.talk_title !== `${item.full_name}'s Session`
+      ) {
         const cleanTalk = cleanStr(item.talk_title);
         // 1. Exact activity match
         let foundSlot = agendaSlotCandidates.find((s) => cleanStr(s.activity) === cleanTalk);
@@ -650,8 +695,7 @@ export async function getEventSpeakerConfirmationsAction(
         const { item, res } = settled.value;
         if (!res.success || !res.data) continue;
         const p = res.data;
-        const pPicture =
-          typeof p.picture === "string" ? p.picture : p.picture?.url || p.picture?.thumbnail_url || "";
+        const pPicture = typeof p.picture === "string" ? p.picture : p.picture?.url || p.picture?.thumbnail_url || "";
         const pFullName = `${p.first_name || ""} ${p.last_name || ""}`.trim();
 
         if (!item.full_name && pFullName) item.full_name = pFullName;
@@ -1573,11 +1617,16 @@ export async function syncSpeakerConfirmationToBevyAction(
         last_name: lastName,
         title,
         company: confirmation.company_institution || undefined,
-        bio: confirmation.talk_description || confirmation.biography || (confirmation.talk_title ? `Speaker for: ${confirmation.talk_title}` : ""),
+        bio:
+          confirmation.talk_description ||
+          confirmation.biography ||
+          (confirmation.talk_title ? `Speaker for: ${confirmation.talk_title}` : ""),
         picture: confirmation.speaker_profile_url || undefined,
         personal_twitter: cleanTwitterUsername(confirmation.twitter_url),
         company_twitter: cleanTwitterUsername(confirmation.company_twitter_username),
-        personal_linkedin_page: cleanLinkedInIdentifier(confirmation.linkedin_url || confirmation.linkedin_or_social_url),
+        personal_linkedin_page: cleanLinkedInIdentifier(
+          confirmation.linkedin_url || confirmation.linkedin_or_social_url,
+        ),
       });
       if (!updateRes.success) {
         return { success: false, error: updateRes.error };
@@ -2039,9 +2088,9 @@ export async function updateSpeakerConfirmationAction(
     } else {
       effectiveSpeakerEmail = currentConf.speaker_email
         ? currentConf.speaker_email
-        : (hasValidEmail
-            ? cleanEmail
-            : `speaker_${input.bevy_person_id || encodeURIComponent(input.full_name.trim())}@gdgjakarta.org`);
+        : hasValidEmail
+          ? cleanEmail
+          : `speaker_${input.bevy_person_id || encodeURIComponent(input.full_name.trim())}@gdgjakarta.org`;
     }
 
     const now = new Date().toISOString();
@@ -2084,8 +2133,7 @@ export async function updateSpeakerConfirmationAction(
       dietary_restrictions: input.dietary_restrictions?.trim() || currentConf.dietary_restrictions || undefined,
       dietary_restrictions_list: input.dietary_restrictions_list || currentConf.dietary_restrictions_list,
       tshirt_size: input.tshirt_size?.trim() || currentConf.tshirt_size || undefined,
-      swag_selections:
-        input.swag_selections !== undefined ? input.swag_selections : currentConf.swag_selections,
+      swag_selections: input.swag_selections !== undefined ? input.swag_selections : currentConf.swag_selections,
       additional_inquiry: input.additional_inquiry?.trim() || currentConf.additional_inquiry || undefined,
       updated_at: now,
     };
@@ -2156,7 +2204,10 @@ export async function updateSpeakerConfirmationAction(
         event_person_id: updatedConf.bevy_person_id || undefined,
         confirmation_id: confirmationId,
         talk_title: updatedConf.talk_title,
-        email: updatedConf.speaker_email && !updatedConf.speaker_email.startsWith("speaker_") ? updatedConf.speaker_email : undefined,
+        email:
+          updatedConf.speaker_email && !updatedConf.speaker_email.startsWith("speaker_")
+            ? updatedConf.speaker_email
+            : undefined,
       };
 
       const existingIdx = currentList.findIndex(
@@ -2471,9 +2522,7 @@ export interface PublicSpeakerEcosystemItem {
  * details for speakers of an event. Publicly callable without authentication so live event pages
  * can render badges accurately.
  */
-export async function getEventSpeakerEcosystemPublicAction(
-  eventId: string | number,
-): Promise<{
+export async function getEventSpeakerEcosystemPublicAction(eventId: string | number): Promise<{
   success: boolean;
   speakers?: Record<string, PublicSpeakerEcosystemItem>;
   error?: string;
@@ -2548,16 +2597,17 @@ export async function getEventSpeakerEcosystemPublicAction(
 
     const confIds = Array.from(
       new Set(
-        allRoleArrays
-          .map((s) => (s as { confirmation_id?: string }).confirmation_id)
-          .filter(Boolean) as string[],
+        allRoleArrays.map((s) => (s as { confirmation_id?: string }).confirmation_id).filter(Boolean) as string[],
       ),
     );
 
     if (confIds.length > 0) {
       await Promise.all(
         confIds.map(async (cid) => {
-          const doc = (await getFirestoreDoc("event_speaker_confirmations", cid)) as unknown as EventSpeakerConfirmation | null;
+          const doc = (await getFirestoreDoc(
+            "event_speaker_confirmations",
+            cid,
+          )) as unknown as EventSpeakerConfirmation | null;
           if (doc?.is_from_google_ecosystem && doc.is_from_google_ecosystem !== "None above") {
             const item: PublicSpeakerEcosystemItem = {
               ecosystem: doc.is_from_google_ecosystem,

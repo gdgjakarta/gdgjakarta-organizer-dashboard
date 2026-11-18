@@ -132,9 +132,13 @@ export function PublicEventHeader({ event, firestoreEvent }: PublicEventHeaderPr
     event.event_type_logo?.url ??
     event.event_type_logo?.thumbnail_url;
 
-  const thumbnailImageUrl = rawThumbnailUrl && rawThumbnailUrl.includes("res.cloudinary.com")
-    ? rawThumbnailUrl.replace(/\/image\/upload\/(?:.+?\/)?v1\//, "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/")
-    : rawThumbnailUrl;
+  const thumbnailImageUrl =
+    rawThumbnailUrl && rawThumbnailUrl.includes("res.cloudinary.com")
+      ? rawThumbnailUrl.replace(
+          /\/image\/upload\/(?:.+?\/)?v1\//,
+          "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/",
+        )
+      : rawThumbnailUrl;
 
   const shortUrl = firestoreEvent?.live_short_url ?? firestoreEvent?.short_url;
   const shortPath =

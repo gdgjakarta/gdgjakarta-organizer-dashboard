@@ -13,9 +13,11 @@ import {
   Copy,
   CreditCard,
   Eye,
+  Handshake,
   Info,
   Laptop,
   Mail,
+  Mic,
   RotateCcw,
   Send,
   SlidersHorizontal,
@@ -111,6 +113,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       cancelled: cancelledHtml,
       cancelled_attendee: event.email_templates?.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
       speaker_invitation: event.email_templates?.speaker_invitation ?? getDefaultTemplateByKey("speaker_invitation"),
+      event_proposal: event.email_templates?.event_proposal ?? getDefaultTemplateByKey("event_proposal"),
+      partner_confirmation:
+        event.email_templates?.partner_confirmation ?? getDefaultTemplateByKey("partner_confirmation"),
     };
   });
 
@@ -136,6 +141,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       cancelled: cancelledHtml,
       cancelled_attendee: event.email_templates?.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
       speaker_invitation: event.email_templates?.speaker_invitation ?? getDefaultTemplateByKey("speaker_invitation"),
+      event_proposal: event.email_templates?.event_proposal ?? getDefaultTemplateByKey("event_proposal"),
+      partner_confirmation:
+        event.email_templates?.partner_confirmation ?? getDefaultTemplateByKey("partner_confirmation"),
     };
   });
 
@@ -254,6 +262,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
                 docData.email_templates.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
               speaker_invitation:
                 docData.email_templates.speaker_invitation ?? getDefaultTemplateByKey("speaker_invitation"),
+              event_proposal: docData.email_templates.event_proposal ?? getDefaultTemplateByKey("event_proposal"),
+              partner_confirmation:
+                docData.email_templates.partner_confirmation ?? getDefaultTemplateByKey("partner_confirmation"),
             };
             setTemplates(loaded);
             setSavedTemplates(loaded);
@@ -290,7 +301,10 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       templates.rejected_non_hybrid !== savedTemplates.rejected_non_hybrid ||
       templates.rejected_virtual !== savedTemplates.rejected_virtual ||
       templates.cancelled !== savedTemplates.cancelled ||
-      templates.cancelled_attendee !== savedTemplates.cancelled_attendee;
+      templates.cancelled_attendee !== savedTemplates.cancelled_attendee ||
+      templates.speaker_invitation !== savedTemplates.speaker_invitation ||
+      templates.event_proposal !== savedTemplates.event_proposal ||
+      templates.partner_confirmation !== savedTemplates.partner_confirmation;
 
     const dataChanged = JSON.stringify(templatesData) !== JSON.stringify(savedTemplatesData);
 
@@ -385,6 +399,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       cancelled: getDefaultTemplateByKey("cancelled"),
       cancelled_attendee: getDefaultTemplateByKey("cancelled_attendee"),
       speaker_invitation: getDefaultTemplateByKey("speaker_invitation"),
+      event_proposal: getDefaultTemplateByKey("event_proposal"),
+      partner_confirmation: getDefaultTemplateByKey("partner_confirmation"),
     };
     setTemplates(allDefaults);
 
@@ -408,6 +424,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       cancelled: getDefaultTemplateByKey("cancelled"),
       cancelled_attendee: getDefaultTemplateByKey("cancelled_attendee"),
       speaker_invitation: getDefaultTemplateByKey("speaker_invitation"),
+      event_proposal: getDefaultTemplateByKey("event_proposal"),
+      partner_confirmation: getDefaultTemplateByKey("partner_confirmation"),
     };
     const cleanData = getAllCleanDefaultTemplatesData(event);
     setTemplates(allDefaults);
@@ -427,6 +445,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           rejected_virtual: allDefaults.rejected_virtual,
           cancelled: allDefaults.cancelled,
           cancelled_attendee: allDefaults.cancelled_attendee,
+          speaker_invitation: allDefaults.speaker_invitation,
+          event_proposal: allDefaults.event_proposal,
+          partner_confirmation: allDefaults.partner_confirmation,
           template_data: {
             headerEmailUrl: cleanData[activeKey].event.headerEmailUrl,
             eventName: cleanData[activeKey].event.eventName,
@@ -534,6 +555,31 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               attendeeName: cleanData.cancelled_attendee.attendee.name,
               attendeeEmail: cleanData.cancelled_attendee.attendee.email,
             },
+            event_proposal: {
+              headerEmailUrl: cleanData.event_proposal.event.headerEmailUrl,
+              eventName: cleanData.event_proposal.event.eventName,
+              eventCtaUrl: cleanData.event_proposal.event.eventCtaUrl,
+              eventChecklistItems: cleanData.event_proposal.event.eventChecklistItems,
+              attendeeName: cleanData.event_proposal.attendee.name,
+              attendeeEmail: cleanData.event_proposal.attendee.email,
+              proposalUrl: cleanData.event_proposal.proposalUrl,
+              deckUrl: cleanData.event_proposal.deckUrl,
+              confirmationUrl: cleanData.event_proposal.confirmationUrl,
+              sponsorTier: cleanData.event_proposal.sponsorTier,
+              companyName: cleanData.event_proposal.companyName,
+            },
+            partner_confirmation: {
+              headerEmailUrl: cleanData.partner_confirmation.event.headerEmailUrl,
+              eventName: cleanData.partner_confirmation.event.eventName,
+              eventCtaUrl: cleanData.partner_confirmation.event.eventCtaUrl,
+              eventChecklistItems: cleanData.partner_confirmation.event.eventChecklistItems,
+              attendeeName: cleanData.partner_confirmation.attendee.name,
+              attendeeEmail: cleanData.partner_confirmation.attendee.email,
+              confirmationUrl: cleanData.partner_confirmation.confirmationUrl,
+              brandGuideUrl: cleanData.partner_confirmation.brandGuideUrl,
+              sponsorTier: cleanData.partner_confirmation.sponsorTier,
+              companyName: cleanData.partner_confirmation.companyName,
+            },
           },
         };
         const res = await updateEventEmailTemplatesAction(String(event.id), payload, event);
@@ -594,6 +640,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           rejected_virtual: templates.rejected_virtual,
           cancelled: templates.cancelled,
           cancelled_attendee: templates.cancelled_attendee,
+          speaker_invitation: templates.speaker_invitation,
+          event_proposal: templates.event_proposal,
+          partner_confirmation: templates.partner_confirmation,
           // Legacy template_data fallback for existing listeners
           template_data: {
             headerEmailUrl: templatesData[activeKey].event.headerEmailUrl,
@@ -702,6 +751,31 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               eventChecklistItems: templatesData.cancelled_attendee.event.eventChecklistItems,
               attendeeName: templatesData.cancelled_attendee.attendee.name,
               attendeeEmail: templatesData.cancelled_attendee.attendee.email,
+            },
+            event_proposal: {
+              headerEmailUrl: templatesData.event_proposal.event.headerEmailUrl,
+              eventName: templatesData.event_proposal.event.eventName,
+              eventCtaUrl: templatesData.event_proposal.event.eventCtaUrl,
+              eventChecklistItems: templatesData.event_proposal.event.eventChecklistItems,
+              attendeeName: templatesData.event_proposal.attendee.name,
+              attendeeEmail: templatesData.event_proposal.attendee.email,
+              proposalUrl: templatesData.event_proposal.proposalUrl,
+              deckUrl: templatesData.event_proposal.deckUrl,
+              confirmationUrl: templatesData.event_proposal.confirmationUrl,
+              sponsorTier: templatesData.event_proposal.sponsorTier,
+              companyName: templatesData.event_proposal.companyName,
+            },
+            partner_confirmation: {
+              headerEmailUrl: templatesData.partner_confirmation.event.headerEmailUrl,
+              eventName: templatesData.partner_confirmation.event.eventName,
+              eventCtaUrl: templatesData.partner_confirmation.event.eventCtaUrl,
+              eventChecklistItems: templatesData.partner_confirmation.event.eventChecklistItems,
+              attendeeName: templatesData.partner_confirmation.attendee.name,
+              attendeeEmail: templatesData.partner_confirmation.attendee.email,
+              confirmationUrl: templatesData.partner_confirmation.confirmationUrl,
+              brandGuideUrl: templatesData.partner_confirmation.brandGuideUrl,
+              sponsorTier: templatesData.partner_confirmation.sponsorTier,
+              companyName: templatesData.partner_confirmation.companyName,
             },
           },
         };
@@ -944,6 +1018,11 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
                         {cfg.key === "paid_waitlisted" && <CreditCard className="size-3.5 text-indigo-500 shrink-0" />}
                         {cfg.key.startsWith("rejected") && <XCircle className="size-3.5 text-red-500 shrink-0" />}
                         {cfg.key.startsWith("cancelled") && <XCircle className="size-3.5 text-amber-500 shrink-0" />}
+                        {cfg.key === "speaker_invitation" && <Mic className="size-3.5 text-purple-500 shrink-0" />}
+                        {cfg.key === "event_proposal" && <Handshake className="size-3.5 text-teal-500 shrink-0" />}
+                        {cfg.key === "partner_confirmation" && (
+                          <Handshake className="size-3.5 text-emerald-500 shrink-0" />
+                        )}
                         <span className="truncate">{cfg.name}</span>
                         {!isCurrentActiveInFlow && (
                           <Badge variant="outline" className="ml-1 px-1 py-0 text-[9px] opacity-70">

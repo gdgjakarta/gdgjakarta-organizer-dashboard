@@ -575,6 +575,124 @@ service cloud.firestore {
     //   - create, update: Authenticated users / Team access (Organizers & Staff) with strict domain validation & immutable fields.
     //   - delete: Authenticated users / Team access (Organizers & Staff).
     //
+    // Collection: chapter_sponsors
+    // Document ID: sponsorDocId (e.g. sps_{sanitized_company})
+    // Fields:
+    //   - id: string (required, immutable, <= 128 chars) - Sponsor ID
+    //   - company: string (required, 1-150 chars) - Company or organization name
+    //   - sponsor_type: string (required, <= 100 chars) - Category or partnership tier
+    //   - url: string|null (optional, <= 2000 chars) - Website or link
+    //   - logo_url: string|null (optional, <= 50000 chars) - Logo image URL or data URI
+    //   - description: string|null (optional, <= 5000 chars) - Bio or summary
+    //   - contact_name: string|null (optional, <= 150 chars) - Primary contact person name
+    //   - contact_email: string|null (optional, valid email if present, <= 150 chars) - Contact email
+    //   - contact_phone: string|null (optional, <= 50 chars) - Contact phone number
+    //   - contact_role: string|null (optional, <= 150 chars) - Contact job role
+    //   - event_id: string|null (optional, <= 128 chars) - Associated event ID
+    //   - event_name: string|null (optional, <= 300 chars) - Associated event title
+    //   - status: string (required, <= 50 chars) - Pipeline or partnership status
+    //   - target_tier: string|null (optional, <= 100 chars) - Target tier ID
+    //   - estimated_amount: int|float|null (optional, >= 0) - Sponsorship deal value in IDR
+    //   - proposal_token: string|null (optional, <= 128 chars) - Opaque proposal token
+    //   - proposal_url: string|null (optional, <= 2000 chars) - Direct proposal URL
+    //   - proposal_sent_at: string|null (optional, <= 50 chars) - Proposal dispatch timestamp
+    //   - proposal_opened_at: string|null (optional, <= 50 chars) - Proposal view timestamp
+    //   - decision_at: string|null (optional, <= 50 chars) - Decision timestamp
+    //   - decision_notes: string|null (optional, <= 2000 chars) - Decision feedback notes
+    //   - is_active: bool|null (optional) - Active sponsor flag
+    //   - visible_on_website: bool|null (optional) - Public website visibility toggle
+    //   - created_at: string (required, <= 50 chars) - Creation timestamp ISO string
+    //   - updated_at: string (required, <= 50 chars) - Last update timestamp ISO string
+    //   - created_by: string|null (optional, <= 150 chars) - Creator user UID or name
+    //   - bevy_sponsor_id: int|float|null (optional, >= 0) - Associated Bevy sponsor ID
+    // Permissions:
+    //   - get, list: Public / anyone (`if true;`) for community landing page partner showcases.
+    //   - create, update, delete: Team members only (`hasTeamAccess()`).
+    //
+    // Collection: event_sponsor_confirmations
+    // Document ID: confirmationDocId (e.g. spsconf_${eventId}_${sanitizedEmail})
+    // Fields:
+    //   - id: string (required, immutable, <= 128 chars) - Confirmation ID
+    //   - event_id: string (required, immutable, <= 128 chars) - Associated event ID
+    //   - event_title: string|null (optional, <= 300 chars) - Event title
+    //   - email: string (required, valid email, <= 150 chars) - Sponsor submission email
+    //   - company_name: string (required, 1-150 chars) - Company name
+    //   - company_url: string|null (optional, <= 2000 chars) - Company website URL
+    //   - company_description: string|null (optional, <= 5000 chars) - Company description
+    //   - company_logo_url: string|null (optional, <= 50000 chars) - Company logo image URL
+    //   - contact_name: string|null (optional, <= 150 chars) - Contact person name
+    //   - contact_work_email: string|null (optional, valid email if present, <= 150 chars) - Work email
+    //   - contact_phone: string|null (optional, <= 50 chars) - Contact phone number
+    //   - assigned_tier: string|null (optional, <= 100 chars) - Assigned sponsorship tier
+    //   - bevy_sponsor_id: int|float|null (optional, >= 0) - Associated Bevy sponsor ID
+    //   - synced_to_bevy: bool|null (optional) - Bevy sync status
+    //   - synced_at: string|null (optional, <= 50 chars) - Bevy sync timestamp
+    //   - status: string (required, <= 50 chars) - Status ('confirmed'|'draft'|'under_review')
+    //   - submitted_at: string (required, <= 50 chars) - Submission timestamp
+    //   - updated_at: string (required, <= 50 chars) - Last update timestamp
+    // Permissions:
+    //   - get: Public / anyone (`if true;`) for loading exact confirmation by ID without enumeration.
+    //   - list: Restricted strictly to team members (`hasTeamAccess()`).
+    //   - create, update: Allowed publicly or for team members with valid field bounds and ID match.
+    //   - delete: Team members only (`hasTeamAccess()`).
+    //
+    // Collection: sponsor_proposals
+    // Document ID: proposalDocId (e.g. opaque tokenized proposal ID)
+    // Fields:
+    //   - id: string (required, immutable, <= 128 chars) - Proposal session token ID
+    //   - sponsor_id: string|null (optional, <= 128 chars) - Linked sponsor ID
+    //   - company: string|null (optional, <= 150 chars) - Company name
+    //   - company_name: string|null (optional, <= 150 chars) - Alternate company name
+    //   - contact_email: string|null (optional, valid email if present, <= 150 chars) - Contact email
+    //   - event_id: string|null (optional, <= 128 chars) - Associated event ID
+    //   - event_name: string|null (optional, <= 300 chars) - Associated event title
+    //   - proposal_deck_url: string|null (optional, <= 2000 chars) - Link to proposal PDF or deck
+    //   - valid_until: string|null (optional, <= 50 chars) - Expiration timestamp
+    //   - status: string (required, <= 50 chars) - Proposal status
+    //   - decision: string|null (optional, <= 50 chars) - Decision ('confirmed'|'declined'|'tap_in')
+    //   - feedback: string|null (optional, <= 2000 chars) - Sponsor feedback
+    //   - notes: string|null (optional, <= 2000 chars) - Proposal notes
+    //   - created_at: string (required, <= 50 chars) - Creation timestamp
+    //   - updated_at: string (required, <= 50 chars) - Last update timestamp
+    // Permissions:
+    //   - get: Public lookup by tokenized proposal ID (`if true;`).
+    //   - list: Team members only (`hasTeamAccess()`).
+    //   - create, delete: Team members only (`hasTeamAccess()`).
+    //   - update: Allowed (`if true;`) so partners can submit decisions and notes.
+    //
+    // Collection: sponsor_documents
+    // Document ID: docId (e.g. spsdoc_... or tokenized document ID)
+    // Fields:
+    //   - id: string (required, immutable, <= 128 chars) - Document ID
+    //   - document_number: string|null (optional, <= 128 chars) - Formatted doc number (e.g. GDG/INV/2026/...)
+    //   - type: string (required, <= 50 chars) - Document type ('invoice'|'quotation'|'loa'|'receipt')
+    //   - sponsor_id: string|null (optional, <= 128 chars) - Associated chapter sponsor ID
+    //   - company_name: string (required, 1-150 chars) - Company or organization name
+    //   - contact_email: string|null (optional, valid email if present, <= 150 chars) - Contact email
+    //   - event_id: string|null (optional, <= 128 chars) - Associated event ID
+    //   - share_token: string|null (optional, <= 128 chars) - Opaque public share token
+    //   - status: string (required, <= 50 chars) - Status ('draft'|'sent'|'signed'|'paid'|'cancelled')
+    //   - sponsor_signed_name: string|null (optional, <= 150 chars) - Signatory name
+    //   - sponsor_signed_title: string|null (optional, <= 150 chars) - Signatory job title
+    //   - sponsor_signed_at: string|null (optional, <= 50 chars) - Signature timestamp
+    //   - sponsor_signature_data_url: string|null (optional, <= 500000 chars) - Counter-signature image data URL
+    //   - created_at: string (required, <= 50 chars) - Creation timestamp
+    //   - updated_at: string (required, <= 50 chars) - Last update timestamp
+    // Permissions:
+    //   - get: Public lookup (`if true;`) so sponsors can view their tokenized Invoice, Quotation, or LOA.
+    //   - list: Restricted strictly to team members (`hasTeamAccess()`) to prevent enumeration of financial documents.
+    //   - create, delete: Restricted strictly to team members (`hasTeamAccess()`).
+    //   - update: Team members (`hasTeamAccess()`) or public sponsor counter-signature updating only signature fields and status.
+    //
+    // Collection: site_config
+    // Document ID: docId (e.g. sponsor_document_templates, general, etc.)
+    // Fields: Configuration settings maps and templates.
+    // Permissions:
+    //   - get: Public read for general configuration & document templates.
+    //   - list: Team members only (`hasTeamAccess()`).
+    //   - create, update, delete: Team members only (`hasTeamAccess()`).
+    //
+    //
     // ===============================================================
 
     // ===============================================================
@@ -1981,6 +2099,99 @@ service cloud.firestore {
 
       // Delete: Team members (Organizers & Staff).
       allow delete: if hasTeamAccess();
+    }
+
+    // -------------------------------------------------------------
+    // Chapter Sponsors Collection
+    // -------------------------------------------------------------
+    match /chapter_sponsors/{sponsorDocId} {
+      // Get, List: Publicly accessible for partner showcases, chapter landing page sponsors, and directory view.
+      allow get, list: if true;
+
+      // Create, Update, Delete: Restricted to team members (Organizers & Staff).
+      allow create, update, delete: if hasTeamAccess();
+    }
+
+    // -------------------------------------------------------------
+    // Event Sponsor Confirmations Collection
+    // -------------------------------------------------------------
+    match /event_sponsor_confirmations/{confirmationDocId} {
+      // Get: Public lookup by exact ID (spsconf_${eventId}_${sanitizedEmail}) for self-service status verification or loading prior submission to edit.
+      allow get: if true;
+
+      // List: Strictly restricted to team members (Organizers & Staff) to prevent enumeration of event sponsors.
+      allow list: if hasTeamAccess();
+
+      // Create: Public sponsor submission via share token or team members.
+      allow create: if true;
+
+      // Update: Self-service sponsor response update or team members.
+      allow update: if true;
+
+      // Delete: Restricted strictly to team members (Organizers & Staff).
+      allow delete: if hasTeamAccess();
+    }
+
+    // -------------------------------------------------------------
+    // Sponsor Proposals Collection
+    // -------------------------------------------------------------
+    match /sponsor_proposals/{proposalDocId} {
+      // Get: Public lookup by exact tokenized proposal ID for partners reviewing their custom deck and proposal.
+      allow get: if true;
+
+      // List: Strictly restricted to team members (Organizers & Staff) to prevent enumeration of confidential proposals.
+      allow list: if hasTeamAccess();
+
+      // Create, Delete: Restricted strictly to team members (Organizers & Staff).
+      allow create, delete: if hasTeamAccess();
+
+      // Update: Allowed for partners submitting their decision ('confirmed' / 'declined') and feedback notes, or team members updating proposal details.
+      allow update: if true;
+    }
+
+    // -------------------------------------------------------------
+    // Sponsor Documents Collection (Invoices, Quotations, LOA, Receipts)
+    // -------------------------------------------------------------
+    match /sponsor_documents/{docId} {
+      // Get: Public lookup by document ID / token so sponsors can view and review their tokenized Invoice, Quotation, or LOA.
+      allow get: if true;
+
+      // List: Strictly restricted to team members (Organizers & Staff) to prevent enumeration of financial documents.
+      allow list: if hasTeamAccess();
+
+      // Create, Delete: Restricted strictly to team members (Organizers & Staff).
+      allow create, delete: if hasTeamAccess();
+
+      // Update: Full access for team members (Organizers & Staff).
+      // Public sponsors can counter-sign documents online, strictly restricted to signing fields and status transition.
+      allow update: if hasTeamAccess() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'sponsor_signed_name',
+          'sponsor_signed_title',
+          'sponsor_signed_at',
+          'sponsor_signature_data_url',
+          'status',
+          'updated_at'
+        ]) &&
+        (!('sponsor_signed_name' in request.resource.data) || (request.resource.data.sponsor_signed_name is string && request.resource.data.sponsor_signed_name.size() <= 150)) &&
+        (!('sponsor_signed_title' in request.resource.data) || (request.resource.data.sponsor_signed_title is string && request.resource.data.sponsor_signed_title.size() <= 150)) &&
+        (!('sponsor_signed_at' in request.resource.data) || (request.resource.data.sponsor_signed_at is string && request.resource.data.sponsor_signed_at.size() <= 50)) &&
+        (!('sponsor_signature_data_url' in request.resource.data) || (request.resource.data.sponsor_signature_data_url is string && request.resource.data.sponsor_signature_data_url.size() <= 500000)) &&
+        request.resource.data.status in ['signed', 'draft', 'sent', 'paid', 'cancelled'] &&
+        request.resource.data.updated_at is string &&
+        request.resource.data.updated_at.size() <= 50
+      );
+    }
+
+    // -------------------------------------------------------------
+    // Site Config Collection (Document Templates, Global Configurations)
+    // -------------------------------------------------------------
+    match /site_config/{docId} {
+      // Read: Public read for site configuration documents & sponsor document templates.
+      allow read: if true;
+
+      // Create, Update, Delete: Restricted strictly to team members (Organizers & Staff).
+      allow create, update, delete: if hasTeamAccess();
     }
   }
 }
