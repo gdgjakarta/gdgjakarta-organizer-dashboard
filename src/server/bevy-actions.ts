@@ -10,6 +10,7 @@ import {
   createBevyPerson,
   deleteBevyAttendee,
   deleteBevyChapterTeamMember,
+  ensureAlgoliaMemberConfig,
   findBevyAttendeeIdByEmail,
   generateBevyAiEventDetails,
   getAllBevyChapterEvents,
@@ -25,6 +26,7 @@ import {
   modifyBevyAiEventContent,
   putBevyAttendeeCheckIn,
   reorderBevyChapterTeam,
+  resolveRegistrantCheckInRate,
   searchBevyChapterMembers,
   searchBevyPersons,
   type UpdateBevyChapterTeamMemberParams,
@@ -38,6 +40,7 @@ import type {
   BevyCreateEventInput,
   BevyUpdateEventInput,
   BevyUser,
+  CheckInRateResult,
 } from "@/lib/bevy/types";
 
 /**
@@ -791,4 +794,111 @@ export async function getBevyChapterMemberDetailAction(memberId: string | number
   const data = await getBevyChapterMemberById(memberId);
   if (!data) return { success: false as const, error: "Member not found in Bevy or session expired." };
   return { success: true as const, data };
+}
+
+/**
+ * Batch-resolve historical Bevy check-in rates for up to 12 unique registrant emails.
+ * Protected: organizer session required.
+ */
+export async function fetchRegistrantsCheckInRatesAction(
+  items: Array<{ email: string; memberId?: string; memberName?: string }>,
+  chapterId?: string,
+): Promise<
+  | { success: false; error: string }
+  | {
+      success: true;
+      results: Record<string, CheckInRateResult>;
+      sessionExpired?: boolean;
+      rateLimited?: boolean;
+    }
+> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  const deduped: Array<{ email: string; memberId?: string; memberName?: string }> = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const email = item.email.trim().toLowerCase();
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    deduped.push({ email, memberId: item.memberId, memberName: item.memberName });
+    if (deduped.length >= 12) break;
+  }
+
+  if (deduped.length === 0) {
+    return { success: true, results: {} };
+  }
+
+  // Pre-warm Algolia config once before fanning out concurrent lookups
+  const algoliaWarm = await ensureAlgoliaMemberConfig(chapterId);
+  if (algoliaWarm.status === "auth_error") {
+    const results: Record<string, CheckInRateResult> = {};
+    for (const item of deduped) results[item.email] = { status: "auth_error" };
+    return { success: true, results, sessionExpired: true };
+  }
+  if (algoliaWarm.status === "rate_limited") {
+    const results: Record<string, CheckInRateResult> = {};
+    for (const item of deduped) results[item.email] = { status: "rate_limited" };
+    return { success: true, results, rateLimited: true };
+  }
+
+  const results: Record<string, CheckInRateResult> = {};
+  let sessionExpired = false;
+  let rateLimited = false;
+  const WAVE_SIZE = 4;
+
+  for (let i = 0; i < deduped.length; i += WAVE_SIZE) {
+    if (sessionExpired || rateLimited) {
+      const remainingStatus: CheckInRateResult = sessionExpired ? { status: "auth_error" } : { status: "rate_limited" };
+      for (let j = i; j < deduped.length; j++) {
+        results[deduped[j].email] = remainingStatus;
+      }
+      break;
+    }
+
+    const wave = deduped.slice(i, i + WAVE_SIZE);
+    const waveResults = await Promise.all(
+      wave.map(async (item) => {
+        let chapterMemberId: string | null = null;
+        // Tier 1: Firestore members fast lookup
+        try {
+          const { getFirestoreDoc, queryFirestoreDocs } = await import("@/server/firestore-admin");
+          if (item.memberId && !item.memberId.startsWith("manual_")) {
+            const doc = await getFirestoreDoc("members", item.memberId);
+            if (doc && typeof doc.bevy_member_id === "string" && doc.bevy_member_id.trim()) {
+              chapterMemberId = doc.bevy_member_id.trim();
+            }
+          }
+          if (!chapterMemberId) {
+            const docs = await queryFirestoreDocs("members", [
+              { fieldFilter: { field: { fieldPath: "email" }, op: "EQUAL", value: { stringValue: item.email } } },
+            ]);
+            const match = docs.find((d) => typeof d.bevy_member_id === "string" && d.bevy_member_id.trim());
+            if (match && typeof match.bevy_member_id === "string") {
+              chapterMemberId = match.bevy_member_id.trim();
+            }
+          }
+        } catch {
+          // Fall through to Tier 2
+        }
+
+        const res = await resolveRegistrantCheckInRate(item, chapterId, chapterMemberId);
+        return { email: item.email, res };
+      }),
+    );
+
+    for (const { email, res } of waveResults) {
+      results[email] = res;
+      if (res.status === "auth_error") sessionExpired = true;
+      if (res.status === "rate_limited") rateLimited = true;
+    }
+  }
+
+  return {
+    success: true,
+    results,
+    ...(sessionExpired ? { sessionExpired: true } : {}),
+    ...(rateLimited ? { rateLimited: true } : {}),
+  };
 }

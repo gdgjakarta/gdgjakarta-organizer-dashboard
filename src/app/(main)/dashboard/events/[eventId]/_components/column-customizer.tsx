@@ -72,11 +72,18 @@ export function ColumnCustomizer({
     ];
 
     if (isCurationMode) {
-      list.push({
-        id: "reviewed_by",
-        label: "Reviewed By",
-        description: "Organizer who approved, rejected, or waitlisted",
-      });
+      list.push(
+        {
+          id: "checkin_rate",
+          label: "Check-in Rate",
+          description: "Member historical event check-in rate from Bevy",
+        },
+        {
+          id: "reviewed_by",
+          label: "Reviewed By",
+          description: "Organizer who approved, rejected, or waitlisted",
+        },
+      );
     }
 
     if (hasTickets) {
@@ -326,7 +333,7 @@ export function ColumnCustomizer({
           <div className="flex flex-col gap-2">
             <div className="max-h-60 space-y-1 overflow-y-auto rounded-md border bg-muted/20 p-1.5 pr-1">
               {filteredStandard.map((col) => {
-                const isChecked = col.locked ? true : Boolean(visibleStandardColumns[col.id]);
+                const isChecked = col.locked ? true : visibleStandardColumns[col.id] !== false;
                 const checkboxId = `col-std-${col.id}`;
                 return (
                   <label

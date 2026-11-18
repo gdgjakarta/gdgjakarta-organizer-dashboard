@@ -4,6 +4,9 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useT
 
 import { format } from "date-fns";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   BookOpen,
   Check,
   ChevronDown,
@@ -23,6 +26,7 @@ import {
   QrCode,
   RefreshCw,
   RotateCcw,
+  RotateCw,
   Search,
   Tag,
   Ticket,
@@ -79,7 +83,8 @@ import {
 } from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import type { BevyAttendee } from "@/lib/bevy/types";
+import { hasTeamOperationalAccess } from "@/lib/auth-roles";
+import type { BevyAttendee, CheckInRateResult } from "@/lib/bevy/types";
 import { formatFirestoreDate } from "@/lib/date-utils";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { validateAttendeeApprovalCapacity, validateBatchApprovalCapacity } from "@/lib/events/capacity-validator";
@@ -131,7 +136,11 @@ import {
 } from "@/lib/google-drive/venue-tickets";
 import { enqueueCheckInBadgeIfEnabled } from "@/lib/printers/checkin-auto-print";
 import { cn, getInitials } from "@/lib/utils";
-import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
+import {
+  checkInBevyAttendeeAction,
+  fetchAllBevyEventAttendeesAction,
+  fetchRegistrantsCheckInRatesAction,
+} from "@/server/bevy-actions";
 import {
   rejectAttendeeAction,
   resendInterestEmailAction,
@@ -390,6 +399,13 @@ function RegistrantsTableSkeleton({
               </div>
             </TableCell>
           )}
+          {isCurationMode && visibleStandardColumns.checkin_rate !== false && (
+            <TableCell>
+              <div className="relative h-4 w-20 overflow-hidden rounded bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          )}
           {isCurationMode && visibleStandardColumns.reviewed_by !== false && (
             <TableCell>
               <div className="relative h-4 w-24 overflow-hidden rounded bg-muted">
@@ -595,6 +611,7 @@ function getPageNumbers(currentPage: number, pageCount: number) {
 export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: RegistrantsTabProps) {
   const user = useAuthStore((s) => s.user);
   const isAuthLoading = useAuthStore((s) => s.isLoading || s.isLoggingOut);
+  const hasTeamAccess = useMemo(() => !isAuthLoading && hasTeamOperationalAccess(user), [isAuthLoading, user]);
   const [registrationsList, setRegistrationsList] = useState<FirestoreRegistration[]>(() =>
     registrations.map((r) => normalizeRegistrationDoc(r as unknown as Record<string, unknown>, r.id)),
   );
@@ -609,6 +626,18 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [merchandiseVariantFilter, setMerchandiseVariantFilter] = useState<string>("all");
   const [reviewerFilter, setReviewerFilter] = useState<string>("all");
   const [venueTicketFilter, setVenueTicketFilter] = useState<string>("all");
+  const [checkInRateFilter, setCheckInRateFilter] = useState<
+    "all" | "high" | "medium" | "low" | "zero" | "unavailable"
+  >("all");
+  const [checkInRateSort, setCheckInRateSort] = useState<"default" | "rate_desc" | "rate_asc">("default");
+  type CheckInRateEntry = CheckInRateResult | { status: "loading" };
+  const [checkInRateCache, setCheckInRateCache] = useState<Map<string, CheckInRateEntry>>(() => new Map());
+  const checkInRateCacheRef = useRef<Map<string, CheckInRateEntry>>(new Map());
+  const inFlightEmailsRef = useRef<Set<string>>(new Set());
+  const fetchGenRef = useRef(0);
+  const [hydrationProgress, setHydrationProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const [rateSessionExpired, setRateSessionExpired] = useState(false);
+  const [rateLimitedPaused, setRateLimitedPaused] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [isStatusGuideOpen, setIsStatusGuideOpen] = useState(false);
@@ -652,6 +681,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [visibleStandardColumns, setVisibleStandardColumns] = useState<Record<string, boolean>>({
     applicant: true,
     status: true,
+    checkin_rate: true,
     reviewed_by: true,
     ticket: true,
     merchandise: true,
@@ -1421,8 +1451,16 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       if (reviewerFilter !== "all") {
         setReviewerFilter("all");
       }
+      if (checkInRateFilter !== "all") {
+        setCheckInRateFilter("all");
+      }
+      if (checkInRateSort !== "default") {
+        setCheckInRateSort("default");
+      }
+      fetchGenRef.current += 1;
+      setHydrationProgress(null);
     }
-  }, [isCurationMode, statusFilter, reviewerFilter]);
+  }, [isCurationMode, statusFilter, reviewerFilter, checkInRateFilter, checkInRateSort]);
 
   const autoSyncingExpiredIdsRef = useRef<Set<string>>(new Set());
 
@@ -1831,6 +1869,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     const defaultStandard = {
       applicant: true,
       status: true,
+      checkin_rate: true,
       reviewed_by: true,
       ticket: hasTickets || hasBundles,
       merchandise: hasMerchandise,
@@ -1937,6 +1976,8 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     setBundleFilter("all");
     setPromoReferralFilter("all");
     setMerchandiseFilter("all");
+    setCheckInRateFilter("all");
+    setCheckInRateSort("default");
     setMerchandiseVariantFilter("all");
     setReviewerFilter("all");
     setVenueTicketFilter("all");
@@ -2203,7 +2244,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     };
   }, [preStatusFiltered, currentEvent]);
 
-  const filtered = useMemo(() => {
+  const statusFiltered = useMemo(() => {
     const filterStatus = (statusFilter ?? "all").toLowerCase().trim();
     if (filterStatus === "all") return preStatusFiltered;
 
@@ -2267,6 +2308,56 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     });
   }, [preStatusFiltered, statusFilter, currentEvent]);
 
+  const filtered = useMemo(() => {
+    let list = statusFiltered;
+
+    if (isCurationMode && checkInRateFilter !== "all") {
+      list = list.filter((reg) => {
+        const email = reg.member_email?.trim().toLowerCase();
+        if (!email) return checkInRateFilter === "unavailable";
+        const entry = checkInRateCache.get(email);
+        if (!entry || entry.status === "loading") return false;
+        if (checkInRateFilter === "unavailable") return entry.status === "unavailable";
+        if (entry.status !== "ready") return false;
+        if (checkInRateFilter === "high") return entry.registered > 0 && entry.rate >= 75;
+        if (checkInRateFilter === "medium") return entry.registered > 0 && entry.rate >= 50 && entry.rate < 75;
+        if (checkInRateFilter === "low") return entry.registered > 0 && entry.rate < 50;
+        if (checkInRateFilter === "zero") return entry.rate === 0 || entry.registered === 0;
+        return true;
+      });
+    }
+
+    if (isCurationMode && checkInRateSort !== "default") {
+      const getTier = (reg: FirestoreRegistration) => {
+        const email = reg.member_email?.trim().toLowerCase();
+        if (!email) return { tier: 3, rate: -1, checkedIn: -1, registered: -1 };
+        const entry = checkInRateCache.get(email);
+        if (!entry || entry.status === "loading") return { tier: 2, rate: -1, checkedIn: -1, registered: -1 };
+        if (entry.status === "ready") {
+          return entry.registered > 0
+            ? { tier: 0, rate: entry.rate, checkedIn: entry.checkedIn, registered: entry.registered }
+            : { tier: 1, rate: 0, checkedIn: 0, registered: 0 };
+        }
+        return { tier: 3, rate: -1, checkedIn: -1, registered: -1 };
+      };
+
+      const indexed = list.map((reg, idx) => ({ reg, idx, meta: getTier(reg) }));
+      indexed.sort((a, b) => {
+        if (a.meta.tier !== b.meta.tier) return a.meta.tier - b.meta.tier;
+        if (a.meta.tier === 0) {
+          const rateDiff = checkInRateSort === "rate_desc" ? b.meta.rate - a.meta.rate : a.meta.rate - b.meta.rate;
+          if (rateDiff !== 0) return rateDiff;
+          if (b.meta.checkedIn !== a.meta.checkedIn) return b.meta.checkedIn - a.meta.checkedIn;
+          if (b.meta.registered !== a.meta.registered) return b.meta.registered - a.meta.registered;
+        }
+        return a.idx - b.idx;
+      });
+      list = indexed.map((item) => item.reg);
+    }
+
+    return list;
+  }, [statusFiltered, isCurationMode, checkInRateFilter, checkInRateSort, checkInRateCache]);
+
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safeCurrentPage = Math.min(currentPage, pageCount);
   const pageNumbers = useMemo(() => getPageNumbers(safeCurrentPage, pageCount), [safeCurrentPage, pageCount]);
@@ -2274,6 +2365,199 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     const start = (safeCurrentPage - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
   }, [filtered, safeCurrentPage, pageSize]);
+
+  // Reset check-in rate cache when eventId changes
+  useEffect(() => {
+    fetchGenRef.current += 1;
+    checkInRateCacheRef.current = new Map();
+    inFlightEmailsRef.current.clear();
+    setCheckInRateCache(new Map());
+    setHydrationProgress(null);
+    setRateSessionExpired(false);
+    setRateLimitedPaused(false);
+  }, [eventId]);
+
+  const fetchCheckInRateChunk = useCallback(
+    async (
+      chunk: Array<{ email: string; memberId?: string; memberName?: string }>,
+      gen: number,
+    ): Promise<"ok" | "session_expired" | "rate_limited" | "aborted"> => {
+      if (fetchGenRef.current !== gen || chunk.length === 0) return "aborted";
+
+      for (const item of chunk) {
+        inFlightEmailsRef.current.add(item.email);
+        checkInRateCacheRef.current.set(item.email, { status: "loading" });
+      }
+      setCheckInRateCache(new Map(checkInRateCacheRef.current));
+
+      try {
+        const res = await fetchRegistrantsCheckInRatesAction(chunk);
+        if (fetchGenRef.current !== gen) return "aborted";
+
+        if (!res.success) {
+          for (const item of chunk) {
+            inFlightEmailsRef.current.delete(item.email);
+            checkInRateCacheRef.current.set(item.email, { status: "error" });
+          }
+          setCheckInRateCache(new Map(checkInRateCacheRef.current));
+          return "ok";
+        }
+
+        for (const item of chunk) {
+          inFlightEmailsRef.current.delete(item.email);
+          const result = res.results[item.email] ?? { status: "error" as const };
+          checkInRateCacheRef.current.set(item.email, result);
+        }
+        setCheckInRateCache(new Map(checkInRateCacheRef.current));
+
+        if (res.sessionExpired) {
+          setRateSessionExpired(true);
+          return "session_expired";
+        }
+        if (res.rateLimited) {
+          setRateLimitedPaused(true);
+          return "rate_limited";
+        }
+        return "ok";
+      } catch {
+        if (fetchGenRef.current !== gen) return "aborted";
+        for (const item of chunk) {
+          inFlightEmailsRef.current.delete(item.email);
+          checkInRateCacheRef.current.set(item.email, { status: "error" });
+        }
+        setCheckInRateCache(new Map(checkInRateCacheRef.current));
+        return "ok";
+      }
+    },
+    [],
+  );
+
+  // Per-page async check-in rate fetching (default mode)
+  useEffect(() => {
+    if (!isCurationMode || !hasTeamAccess || isLoading) return;
+    if (rateSessionExpired || rateLimitedPaused) return;
+    const isRateFilterOrSortActive = checkInRateFilter !== "all" || checkInRateSort !== "default";
+    if (visibleStandardColumns.checkin_rate === false && !isRateFilterOrSortActive) return;
+    if (paginatedFiltered.length === 0) return;
+
+    const toFetch: Array<{ email: string; memberId?: string; memberName?: string }> = [];
+    const seen = new Set<string>();
+    for (const reg of paginatedFiltered) {
+      const email = reg.member_email?.trim().toLowerCase();
+      if (!email || seen.has(email) || inFlightEmailsRef.current.has(email)) continue;
+      const cached = checkInRateCacheRef.current.get(email);
+      if (cached && (cached.status === "ready" || cached.status === "unavailable" || cached.status === "loading")) {
+        continue;
+      }
+      seen.add(email);
+      toFetch.push({ email, memberId: reg.member_id, memberName: reg.member_name });
+    }
+
+    if (toFetch.length === 0) return;
+
+    const gen = fetchGenRef.current;
+    let cancelled = false;
+
+    (async () => {
+      for (let i = 0; i < toFetch.length; i += 10) {
+        if (cancelled || fetchGenRef.current !== gen) break;
+        const status = await fetchCheckInRateChunk(toFetch.slice(i, i + 10), gen);
+        if (status !== "ok") break;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isCurationMode,
+    hasTeamAccess,
+    isLoading,
+    visibleStandardColumns.checkin_rate,
+    paginatedFiltered,
+    checkInRateFilter,
+    checkInRateSort,
+    rateSessionExpired,
+    rateLimitedPaused,
+    fetchCheckInRateChunk,
+  ]);
+
+  // Progressive hydration across statusFiltered when Check-in Rate sort or filter is active
+  useEffect(() => {
+    if (!isCurationMode || !hasTeamAccess || isLoading) {
+      setHydrationProgress(null);
+      return;
+    }
+    if (checkInRateFilter === "all" && checkInRateSort === "default") {
+      setHydrationProgress(null);
+      return;
+    }
+    if (rateSessionExpired || rateLimitedPaused) return;
+
+    const toFetch: Array<{ email: string; memberId?: string; memberName?: string }> = [];
+    const seen = new Set<string>();
+    for (const reg of statusFiltered) {
+      const email = reg.member_email?.trim().toLowerCase();
+      if (!email || seen.has(email) || inFlightEmailsRef.current.has(email)) continue;
+      const cached = checkInRateCacheRef.current.get(email);
+      if (cached && (cached.status === "ready" || cached.status === "unavailable" || cached.status === "loading")) {
+        continue;
+      }
+      seen.add(email);
+      toFetch.push({ email, memberId: reg.member_id, memberName: reg.member_name });
+      if (toFetch.length >= 500) break;
+    }
+
+    if (toFetch.length === 0) {
+      setHydrationProgress(null);
+      return;
+    }
+
+    const gen = fetchGenRef.current;
+    let cancelled = false;
+    setHydrationProgress({ loaded: 0, total: toFetch.length });
+
+    (async () => {
+      for (let i = 0; i < toFetch.length; i += 10) {
+        if (cancelled || fetchGenRef.current !== gen) break;
+        const status = await fetchCheckInRateChunk(toFetch.slice(i, i + 10), gen);
+        if (cancelled || fetchGenRef.current !== gen) break;
+        setHydrationProgress({ loaded: Math.min(i + 10, toFetch.length), total: toFetch.length });
+        if (status !== "ok") break;
+        if (i + 10 < toFetch.length) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+      }
+      if (!cancelled && fetchGenRef.current === gen) {
+        setHydrationProgress(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isCurationMode,
+    hasTeamAccess,
+    isLoading,
+    checkInRateFilter,
+    checkInRateSort,
+    statusFiltered,
+    rateSessionExpired,
+    rateLimitedPaused,
+    fetchCheckInRateChunk,
+  ]);
+
+  const handleRetryCheckInRates = useCallback(() => {
+    for (const [email, entry] of checkInRateCacheRef.current.entries()) {
+      if (entry.status === "rate_limited" || entry.status === "auth_error" || entry.status === "error") {
+        checkInRateCacheRef.current.delete(email);
+      }
+    }
+    setCheckInRateCache(new Map(checkInRateCacheRef.current));
+    setRateSessionExpired(false);
+    setRateLimitedPaused(false);
+  }, []);
 
   const handleStatusChange = (
     registrationId: string,
@@ -3988,7 +4272,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       "Name",
       "Email",
       "Status",
-      ...(isCurationMode ? ["Reviewed By", "Reviewed At"] : []),
+      ...(isCurationMode ? ["Check-in Rate", "Reviewed By", "Reviewed At"] : []),
       ...(hasTickets || hasBundles
         ? ["Ticket Pass", "Ticket Type", "Ticket Price", "Bundle Package", "Bundle Price"]
         : []),
@@ -4034,6 +4318,12 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         `"${(r.status || "").replace(/"/g, '""')}"`,
         ...(isCurationMode
           ? [
+              (() => {
+                const email = r.member_email?.trim().toLowerCase();
+                const entry = email ? checkInRateCache.get(email) : undefined;
+                const val = entry?.status === "ready" ? `${entry.rate}% (${entry.checkedIn}/${entry.registered})` : "—";
+                return `"${val}"`;
+              })(),
               `"${(r.reviewed_by_name || "").replace(/"/g, '""')}"`,
               `"${formatFirestoreDate(r.reviewed_at, "yyyy-MM-dd HH:mm:ss", "").replace(/"/g, '""')}"`,
             ]
@@ -4085,6 +4375,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const totalColumnCount = useMemo(() => {
     let count = 2; // Checkbox + Applicant
     if (visibleStandardColumns.status !== false) count += 1;
+    if (isCurationMode && visibleStandardColumns.checkin_rate !== false) count += 1;
     if (isCurationMode && visibleStandardColumns.reviewed_by !== false) count += 1;
     if ((hasTickets || hasBundles) && visibleStandardColumns.ticket !== false) count += 1;
     if (hasMerchandise && visibleStandardColumns.merchandise !== false) count += 1;
@@ -4113,6 +4404,8 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const hasActiveFilters = Boolean(
     search.trim() ||
       statusFilter !== "all" ||
+      checkInRateFilter !== "all" ||
+      checkInRateSort !== "default" ||
       sessionFilter !== "all" ||
       ticketFilter !== "all" ||
       bundleFilter !== "all" ||
@@ -4682,6 +4975,56 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   />
                 )}
 
+                {isCurationMode && (
+                  <FilterSelect
+                    value={checkInRateFilter}
+                    onValueChange={(val) => {
+                      setCheckInRateFilter(val as typeof checkInRateFilter);
+                      setCurrentPage(1);
+                    }}
+                    icon={<UserCheck className="size-3 shrink-0 text-muted-foreground" />}
+                    prefix="Check-in Rate:"
+                    options={[
+                      { value: "all", label: "All Rates" },
+                      { value: "high", label: "High (75%+)" },
+                      { value: "medium", label: "Moderate (50–74%)" },
+                      { value: "low", label: "Low (<50%)" },
+                      { value: "zero", label: "0% (No Check-ins)" },
+                      { value: "unavailable", label: "Unavailable (—)" },
+                    ]}
+                  />
+                )}
+
+                {isCurationMode && hydrationProgress && (
+                  <div className="flex items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin" />
+                    <span>
+                      Loading check-in rates: {hydrationProgress.loaded} / {hydrationProgress.total}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        fetchGenRef.current += 1;
+                        setHydrationProgress(null);
+                        setCheckInRateFilter("all");
+                        setCheckInRateSort("default");
+                      }}
+                      className="ml-1 font-medium text-foreground hover:underline"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+
+                {isCurationMode && (rateSessionExpired || rateLimitedPaused) && (
+                  <div className="flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
+                    <span>{rateSessionExpired ? "Bevy session expired" : "Bevy rate limited"}</span>
+                    <button type="button" onClick={handleRetryCheckInRates} className="font-medium underline">
+                      Retry
+                    </button>
+                  </div>
+                )}
+
                 <FilterSelect
                   value={venueTicketFilter}
                   onValueChange={handleVenueTicketFilterChange}
@@ -5210,6 +5553,38 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   </TableHead>
                   <TableHead>Applicant</TableHead>
                   {visibleStandardColumns.status !== false && <TableHead>Status</TableHead>}
+                  {isCurationMode && visibleStandardColumns.checkin_rate !== false && (
+                    <TableHead
+                      aria-sort={
+                        checkInRateSort === "rate_desc"
+                          ? "descending"
+                          : checkInRateSort === "rate_asc"
+                            ? "ascending"
+                            : "none"
+                      }
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCheckInRateSort((prev) =>
+                            prev === "default" ? "rate_desc" : prev === "rate_desc" ? "rate_asc" : "default",
+                          );
+                          setCurrentPage(1);
+                        }}
+                        className="inline-flex items-center gap-1 font-medium hover:text-foreground"
+                        title="Sort by historical Bevy check-in rate"
+                      >
+                        <span>Check-in Rate</span>
+                        {checkInRateSort === "rate_desc" ? (
+                          <ArrowDown className="size-3.5 text-primary" />
+                        ) : checkInRateSort === "rate_asc" ? (
+                          <ArrowUp className="size-3.5 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="size-3.5 text-muted-foreground" />
+                        )}
+                      </button>
+                    </TableHead>
+                  )}
                   {isCurationMode && visibleStandardColumns.reviewed_by !== false && <TableHead>Reviewed By</TableHead>}
                   {(hasTickets || hasBundles) && visibleStandardColumns.ticket !== false && (
                     <TableHead>Ticket Pass</TableHead>
@@ -5414,6 +5789,100 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                 </span>
                               )}
                             </div>
+                          </TableCell>
+                        )}
+
+                        {isCurationMode && visibleStandardColumns.checkin_rate !== false && (
+                          <TableCell onClick={() => setInspectRegistration(reg)}>
+                            {(() => {
+                              const email = reg.member_email?.trim().toLowerCase();
+                              if (!email) {
+                                return (
+                                  <span
+                                    className="text-muted-foreground tabular-nums"
+                                    title="Member attendance data unavailable on Bevy chapter"
+                                  >
+                                    —
+                                  </span>
+                                );
+                              }
+                              const entry = checkInRateCache.get(email);
+                              if (!entry || entry.status === "loading") {
+                                return <Shimmer className="h-4 w-20 rounded" />;
+                              }
+                              if (entry.status === "ready") {
+                                const isZero = entry.registered === 0;
+                                const toneClass = isZero
+                                  ? "text-muted-foreground"
+                                  : entry.rate >= 75
+                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    : entry.rate >= 50
+                                      ? "text-amber-600 dark:text-amber-400"
+                                      : "text-rose-600 dark:text-rose-400";
+                                const barClass = isZero
+                                  ? "bg-muted-foreground/30"
+                                  : entry.rate >= 75
+                                    ? "bg-emerald-500"
+                                    : entry.rate >= 50
+                                      ? "bg-amber-500"
+                                      : "bg-rose-500";
+                                return (
+                                  <div
+                                    className="flex w-24 flex-col gap-1"
+                                    title={`Registered: ${entry.registered} · Checked in: ${entry.checkedIn} · Check-in rate: ${entry.rate}%`}
+                                  >
+                                    <div className="flex items-baseline justify-between gap-1.5 tabular-nums">
+                                      <span className={`font-semibold text-xs ${toneClass}`}>{entry.rate}%</span>
+                                      <span className="text-[11px] text-muted-foreground">
+                                        ({entry.checkedIn}/{entry.registered})
+                                      </span>
+                                    </div>
+                                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                      <div
+                                        className={`h-full rounded-full transition-all ${barClass}`}
+                                        style={{ width: `${Math.min(100, Math.max(0, entry.rate))}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              if (entry.status === "unavailable") {
+                                return (
+                                  <span
+                                    className="text-muted-foreground tabular-nums"
+                                    title="Member attendance data unavailable on Bevy chapter"
+                                  >
+                                    —
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="inline-flex items-center gap-1 text-muted-foreground tabular-nums">
+                                  <span
+                                    title={
+                                      entry.status === "auth_error"
+                                        ? "Bevy session expired"
+                                        : entry.status === "rate_limited"
+                                          ? "Rate limited — click to retry"
+                                          : "Failed to load — click to retry"
+                                    }
+                                  >
+                                    —
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRetryCheckInRates();
+                                    }}
+                                    className="rounded p-0.5 hover:bg-muted hover:text-foreground"
+                                    aria-label="Retry check-in rate lookup"
+                                  >
+                                    <RotateCw className="size-3" />
+                                  </button>
+                                </span>
+                              );
+                            })()}
                           </TableCell>
                         )}
 

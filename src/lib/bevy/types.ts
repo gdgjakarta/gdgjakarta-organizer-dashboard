@@ -637,3 +637,10 @@ export interface BevyChapterMemberDetail {
     chapter: { id: number; title: string; chapter_location?: string; url?: string; logo?: { url?: string } };
   }>;
 }
+
+export type CheckInRateResult =
+  | { status: "ready"; registered: number; checkedIn: number; rate: number; bevyMemberId: string }
+  | { status: "unavailable" }
+  | { status: "rate_limited" }
+  | { status: "auth_error" }
+  | { status: "error" };

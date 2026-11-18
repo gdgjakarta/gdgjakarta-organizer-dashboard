@@ -43,6 +43,7 @@ import {
   type BevyUpdateEventInput,
   type BevyUser,
   ChapterRole,
+  type CheckInRateResult,
   getChapterRoleById,
   isChapterTeamRole,
   type OrganizerValidationResult,
@@ -1270,6 +1271,277 @@ export async function searchBevyChapterMembers(
     console.warn("[searchBevyChapterMembers] Algolia search failed:", err);
     return [];
   }
+}
+
+type AlgoliaConfigResult =
+  | { status: "ready"; config: AlgoliaConfigCache }
+  | { status: "auth_error" | "rate_limited" | "error" };
+
+const algoliaMemberInitPromise = new Map<string, Promise<AlgoliaConfigResult>>();
+
+/**
+ * Single-flight Algolia config bootstrap for chapter member search.
+ * Pre-warming once before a batch prevents cold-isolate thundering herds and preserves 401/403/429 status.
+ */
+export async function ensureAlgoliaMemberConfig(
+  chapterId: string = BEVY_CONFIG.chapterId,
+): Promise<AlgoliaConfigResult> {
+  const now = Date.now();
+  if (algoliaMemberCache && now - algoliaMemberCache.fetchedAt <= ALGOLIA_CACHE_TTL_MS) {
+    return { status: "ready", config: algoliaMemberCache };
+  }
+
+  const existing = algoliaMemberInitPromise.get(chapterId);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<AlgoliaConfigResult> => {
+    const chapterSlug = BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const [algoliaRes, memberRes] = await Promise.all([
+      bevyFetchWithResponse<{
+        application_id?: string;
+        index_prefix?: string;
+        index_suffix?: string;
+      }>(
+        "/config/algolia/",
+        {
+          headers: {
+            Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/members/`,
+            "X-Requested-With": "XMLHttpRequest",
+          },
+        },
+        chapterId,
+      ),
+      bevyFetchWithResponse<{ chapter_member_key?: string }>(
+        `/chapter/${chapterId}/member/?page_size=1`,
+        {
+          requireAuth: true,
+          headers: {
+            Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/members/`,
+            "X-Requested-With": "XMLHttpRequest",
+          },
+        },
+        chapterId,
+      ),
+    ]);
+
+    if (
+      algoliaRes.status === 401 ||
+      algoliaRes.status === 403 ||
+      memberRes.status === 401 ||
+      memberRes.status === 403
+    ) {
+      return { status: "auth_error" };
+    }
+    if (algoliaRes.status === 429 || memberRes.status === 429) {
+      return { status: "rate_limited" };
+    }
+    if (
+      !algoliaRes.ok ||
+      !memberRes.ok ||
+      !algoliaRes.data?.application_id ||
+      !algoliaRes.data.index_prefix ||
+      !algoliaRes.data.index_suffix ||
+      !memberRes.data?.chapter_member_key
+    ) {
+      return { status: "error" };
+    }
+
+    algoliaMemberCache = {
+      applicationId: algoliaRes.data.application_id,
+      indexPrefix: algoliaRes.data.index_prefix,
+      indexSuffix: algoliaRes.data.index_suffix,
+      chapterMemberKey: memberRes.data.chapter_member_key,
+      fetchedAt: Date.now(),
+    };
+    return { status: "ready", config: algoliaMemberCache };
+  })().finally(() => {
+    algoliaMemberInitPromise.delete(chapterId);
+  });
+
+  algoliaMemberInitPromise.set(chapterId, promise);
+  return promise;
+}
+
+/**
+ * Status-preserving Algolia chapter member search so 401/403/429 are not collapsed into [].
+ */
+export async function searchBevyChapterMembersWithStatus(
+  query: string,
+  chapterId: string = BEVY_CONFIG.chapterId,
+  hitsPerPage = 5,
+): Promise<{ status: "ready"; members: BevyChapterMember[] } | { status: "auth_error" | "rate_limited" | "error" }> {
+  const cleanQuery = query.trim();
+  if (!cleanQuery) return { status: "ready", members: [] };
+
+  const configResult = await ensureAlgoliaMemberConfig(chapterId);
+  if (configResult.status !== "ready") {
+    return { status: configResult.status };
+  }
+
+  const { applicationId, indexPrefix, indexSuffix, chapterMemberKey } = configResult.config;
+  const indexName = `${indexPrefix}_chapter_member_index_${indexSuffix}`;
+
+  try {
+    const res = await fetch(
+      `https://${applicationId}-dsn.algolia.net/1/indexes/${encodeURIComponent(indexName)}/query`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Algolia-Application-Id": applicationId,
+          "X-Algolia-API-Key": chapterMemberKey,
+        },
+        body: JSON.stringify({
+          query: cleanQuery,
+          filters: `chapter_id=${chapterId}`,
+          page: 0,
+          hitsPerPage,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+
+    if (res.status === 401 || res.status === 403) {
+      algoliaMemberCache = null;
+      return { status: "auth_error" };
+    }
+    if (res.status === 429) {
+      return { status: "rate_limited" };
+    }
+    if (!res.ok) {
+      algoliaMemberCache = null;
+      return { status: "error" };
+    }
+
+    const data = (await res.json()) as { hits?: AlgoliaMemberHit[] };
+    const members: BevyChapterMember[] = (data.hits ?? []).map((hit) => {
+      let createdDate: string | undefined;
+      if (hit.created_date != null) {
+        if (typeof hit.created_date === "number" || /^\d+$/.test(String(hit.created_date))) {
+          createdDate = new Date(Number(hit.created_date) * 1000).toISOString();
+        } else {
+          createdDate = String(hit.created_date);
+        }
+      }
+      return {
+        id: hit.id,
+        user: {
+          id: hit.user_id ?? hit.id,
+          full_name: hit.user_full_name || "",
+          email: hit.user_email || hit.masked_email,
+          profile_url: hit.user_profile_url,
+          is_email_verified: Boolean(hit.is_email_verified),
+        },
+        created_date: createdDate,
+        events_registered_count: hit.events_registered_count ?? 0,
+      };
+    });
+    return { status: "ready", members };
+  } catch (err) {
+    console.warn("[searchBevyChapterMembersWithStatus] Algolia search failed:", err);
+    return { status: "error" };
+  }
+}
+
+/**
+ * Status-preserving Bevy chapter member detail lookup.
+ */
+export async function getBevyChapterMemberDetailWithStatus(
+  memberId: string | number,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<
+  | { status: "ready"; detail: BevyChapterMemberDetail }
+  | { status: "unavailable" | "rate_limited" | "auth_error" | "error" }
+> {
+  const chapterSlug = BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+  const { ok, status, data } = await bevyFetchWithResponse<BevyChapterMemberDetail>(
+    `/chapter/${chapterId}/member/${encodeURIComponent(String(memberId))}/`,
+    {
+      requireAuth: true,
+      headers: {
+        Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/members/${memberId}`,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    },
+    chapterId,
+  );
+
+  if (ok && data) return { status: "ready", detail: data };
+  if (status === 404) return { status: "unavailable" };
+  if (status === 429) return { status: "rate_limited" };
+  if (status === 401 || status === 403) return { status: "auth_error" };
+  return { status: "error" };
+}
+
+/**
+ * Resolve a registrant's historical Bevy check-in rate via:
+ * Tier 1: Firestore `members.bevy_member_id` (zero Bevy REST cost)
+ * Tier 2: Algolia chapter member index lookup
+ * Tier 3: Authenticated Bevy member detail endpoint (`/chapter/{chapterId}/member/{memberId}/`)
+ */
+export async function resolveRegistrantCheckInRate(
+  input: { email: string; memberId?: string; memberName?: string },
+  chapterId: string = BEVY_CONFIG.chapterId,
+  knownChapterMemberId?: string | null,
+): Promise<CheckInRateResult> {
+  const normalizedEmail = input.email.trim().toLowerCase();
+  if (!normalizedEmail) return { status: "unavailable" };
+
+  let chapterMemberId: string | null = knownChapterMemberId ?? null;
+
+  // Tier 2: Algolia chapter member index lookup
+  if (!chapterMemberId) {
+    const searchRes = await searchBevyChapterMembersWithStatus(normalizedEmail, chapterId, 5);
+    if (searchRes.status !== "ready") {
+      return { status: searchRes.status };
+    }
+
+    const exactMatch = searchRes.members.find((m) => m.user.email?.trim().toLowerCase() === normalizedEmail);
+    if (exactMatch) {
+      chapterMemberId = String(exactMatch.id);
+    } else {
+      const maskedMatches = searchRes.members.filter((m) => isEmailMatch(m.user.email, normalizedEmail));
+      if (maskedMatches.length === 1) {
+        chapterMemberId = String(maskedMatches[0].id);
+      } else if (maskedMatches.length > 1) {
+        const idMatch = input.memberId
+          ? maskedMatches.find((m) => String(m.user.id) === String(input.memberId))
+          : undefined;
+        if (idMatch) {
+          chapterMemberId = String(idMatch.id);
+        } else if (input.memberName) {
+          const targetName = input.memberName.trim().toLowerCase();
+          const nameMatches = maskedMatches.filter((m) => m.user.full_name?.trim().toLowerCase() === targetName);
+          if (nameMatches.length === 1) {
+            chapterMemberId = String(nameMatches[0].id);
+          }
+        }
+      }
+    }
+
+    if (!chapterMemberId) {
+      return { status: "unavailable" };
+    }
+  }
+
+  // Tier 3: Member Detail fetch
+  const detailRes = await getBevyChapterMemberDetailWithStatus(chapterMemberId, chapterId);
+  if (detailRes.status !== "ready") {
+    return { status: detailRes.status };
+  }
+
+  const agg = detailRes.detail.event_attendance_stats?.aggregate;
+  const registered = agg?.total_events_registered ?? detailRes.detail.events_registered_count ?? 0;
+  const checkedIn = agg?.total_checked_in ?? 0;
+  const rate = registered > 0 ? Math.round((checkedIn / registered) * 100) : 0;
+
+  return {
+    status: "ready",
+    registered,
+    checkedIn,
+    rate,
+    bevyMemberId: chapterMemberId,
+  };
 }
 
 /**
