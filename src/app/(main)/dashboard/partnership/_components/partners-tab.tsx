@@ -546,20 +546,28 @@ export function PartnersTab({ onSignPartnerPdf }: PartnersTabProps = {}) {
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Public Sponsor Confirmation Link (Directory &amp; Website Showcase)
               </p>
-              <p className="text-xs font-mono text-foreground truncate mt-0.5">{shareLink || "Loading link..."}</p>
+              {isLoading ? (
+                <Skeleton className="h-4 w-3/4 mt-1" />
+              ) : (
+                <p className="text-xs font-mono text-foreground truncate mt-0.5">{shareLink || "Unavailable"}</p>
+              )}
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={handleCopyLink}
-                disabled={!shareLink}
-                className="text-xs"
-              >
-                <Copy className="mr-1.5 h-3.5 w-3.5" />
-                Copy Link
-              </Button>
+              {isLoading ? (
+                <Skeleton className="h-8 w-24" />
+              ) : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleCopyLink}
+                  disabled={!shareLink}
+                  className="text-xs"
+                >
+                  <Copy className="mr-1.5 h-3.5 w-3.5" />
+                  Copy Link
+                </Button>
+              )}
             </div>
           </div>
 
@@ -569,42 +577,55 @@ export function PartnersTab({ onSignPartnerPdf }: PartnersTabProps = {}) {
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 GDG Jakarta Brand Guide URL (Confirmation Email)
               </p>
-              <Input
-                type="url"
-                value={brandGuideUrl}
-                onChange={(e) => setBrandGuideUrl(e.target.value)}
-                placeholder="https://gdgjakarta.org/brand-guide"
-                className="h-8 text-xs font-mono bg-background"
-              />
+              {isLoading ? (
+                <Skeleton className="h-8 w-full" />
+              ) : (
+                <Input
+                  type="url"
+                  value={brandGuideUrl}
+                  onChange={(e) => setBrandGuideUrl(e.target.value)}
+                  placeholder="https://gdgjakarta.org/brand-guide"
+                  className="h-8 text-xs font-mono bg-background"
+                />
+              )}
             </div>
             <div className="flex items-center gap-2 sm:self-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                asChild
-                disabled={!brandGuideUrl.trim()}
-                className="text-xs h-8"
-              >
-                <a href={brandGuideUrl.trim() || "#"} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                  Open
-                </a>
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={handleSaveBrandGuideUrl}
-                disabled={
-                  isSavingBrandGuide ||
-                  !brandGuideUrl.trim() ||
-                  brandGuideUrl.trim() === (chapterConfig?.brand_guide_url || "https://gdgjakarta.org/brand-guide")
-                }
-                className="text-xs h-8"
-              >
-                {isSavingBrandGuide ? "Saving..." : "Save URL"}
-              </Button>
+              {isLoading ? (
+                <>
+                  <Skeleton className="h-8 w-16" />
+                  <Skeleton className="h-8 w-20" />
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    disabled={!brandGuideUrl.trim()}
+                    className="text-xs h-8"
+                  >
+                    <a href={brandGuideUrl.trim() || "#"} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                      Open
+                    </a>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleSaveBrandGuideUrl}
+                    disabled={
+                      isSavingBrandGuide ||
+                      !brandGuideUrl.trim() ||
+                      brandGuideUrl.trim() === (chapterConfig?.brand_guide_url || "https://gdgjakarta.org/brand-guide")
+                    }
+                    className="text-xs h-8"
+                  >
+                    {isSavingBrandGuide ? "Saving..." : "Save URL"}
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
@@ -614,44 +635,57 @@ export function PartnersTab({ onSignPartnerPdf }: PartnersTabProps = {}) {
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Email Header Image URL (Confirmation Email)
               </p>
-              <Input
-                type="url"
-                value={emailHeaderUrl}
-                onChange={(e) => setEmailHeaderUrl(e.target.value)}
-                placeholder="https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png"
-                className="h-8 text-xs font-mono bg-background"
-              />
+              {isLoading ? (
+                <Skeleton className="h-8 w-full" />
+              ) : (
+                <Input
+                  type="url"
+                  value={emailHeaderUrl}
+                  onChange={(e) => setEmailHeaderUrl(e.target.value)}
+                  placeholder="https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png"
+                  className="h-8 text-xs font-mono bg-background"
+                />
+              )}
             </div>
             <div className="flex items-center gap-2 sm:self-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                asChild
-                disabled={!emailHeaderUrl.trim()}
-                className="text-xs h-8"
-              >
-                <a href={emailHeaderUrl.trim() || "#"} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                  Open
-                </a>
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={handleSaveEmailHeaderUrl}
-                disabled={
-                  isSavingEmailHeader ||
-                  !emailHeaderUrl.trim() ||
-                  emailHeaderUrl.trim() ===
-                    (chapterConfig?.email_header_url ||
-                      "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png")
-                }
-                className="text-xs h-8"
-              >
-                {isSavingEmailHeader ? "Saving..." : "Save URL"}
-              </Button>
+              {isLoading ? (
+                <>
+                  <Skeleton className="h-8 w-16" />
+                  <Skeleton className="h-8 w-20" />
+                </>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    disabled={!emailHeaderUrl.trim()}
+                    className="text-xs h-8"
+                  >
+                    <a href={emailHeaderUrl.trim() || "#"} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                      Open
+                    </a>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleSaveEmailHeaderUrl}
+                    disabled={
+                      isSavingEmailHeader ||
+                      !emailHeaderUrl.trim() ||
+                      emailHeaderUrl.trim() ===
+                        (chapterConfig?.email_header_url ||
+                          "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png")
+                    }
+                    className="text-xs h-8"
+                  >
+                    {isSavingEmailHeader ? "Saving..." : "Save URL"}
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
