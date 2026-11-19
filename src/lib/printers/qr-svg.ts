@@ -57,8 +57,18 @@ function computeReedSolomon(data: number[], ecLen: number): number[] {
   return rem;
 }
 
-export function generateQrSvgDataUrl(payload: string): string {
-  const bytes = Array.from(new TextEncoder().encode(payload || "GDG"));
+/**
+ * Builds a raw binary QR matrix (1 = dark module, 0 = light module) up to QR Version 5 (106 bytes).
+ * Returns null when the payload is empty or exceeds Version 5 capacity.
+ */
+export function buildQrMatrix(payload: string): Uint8Array[] | null {
+  if (!payload) return null;
+  const bytes = Array.from(new TextEncoder().encode(payload));
+
+  const maxCap = VERSION_PARAMS[5].total - VERSION_PARAMS[5].ec - 2;
+  if (bytes.length > maxCap) {
+    return null;
+  }
 
   // Pick smallest version (1..5) that fits byte payload
   let version = 1;
@@ -215,6 +225,16 @@ export function generateQrSvgDataUrl(payload: string): string {
       grid[8][size - 15 + i] = bit;
     }
   }
+
+  return grid;
+}
+
+export function generateQrSvgDataUrl(payload: string): string {
+  const grid = buildQrMatrix(payload || "GDG");
+  if (!grid) {
+    throw new Error("QR payload exceeds Version 5 capacity.");
+  }
+  const size = grid.length;
 
   // Build compact SVG path
   const margin = 1;

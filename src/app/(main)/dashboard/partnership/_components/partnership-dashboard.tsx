@@ -40,10 +40,12 @@ import { type EventTokenContext, resolveEventTokens, resolveStatTokens } from "@
 import type { PartnershipFaq, PartnershipFormat, PartnershipTier } from "@/lib/content/types";
 import { cn } from "@/lib/utils";
 import { fetchBevyChapterLiveMetricsAction, fetchBevyEventDetailForSpotlightAction } from "@/server/bevy-actions";
+import type { FirestoreSponsor } from "@/types/sponsor";
 
 import { DocumentTemplatesTab } from "./document-templates-tab";
 import { FormatDialog } from "./format-dialog";
 import { PartnersTab } from "./partners-tab";
+import { SignDocumentsTab } from "./sign-documents-tab";
 import { TierDialog } from "./tier-dialog";
 
 interface PartnershipDashboardProps {
@@ -73,6 +75,7 @@ export function PartnershipDashboard({ initialEvents = [] }: PartnershipDashboar
   });
 
   const [activeTab, setActiveTab] = useState("sponsors");
+  const [partnerForSigning, setPartnerForSigning] = useState<FirestoreSponsor | null>(null);
   const heroDescRef = useRef<HTMLTextAreaElement>(null);
 
   const insertTokenIntoHeroDesc = (tokenStr: string) => {
@@ -353,6 +356,9 @@ export function PartnershipDashboard({ initialEvents = [] }: PartnershipDashboar
             <TabsTrigger value="documents" className="whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
               Document Templates
             </TabsTrigger>
+            <TabsTrigger value="sign-documents" className="whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Sign Partner PDFs
+            </TabsTrigger>
             <TabsTrigger value="hero" className="whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
               Hero & Metrics
             </TabsTrigger>
@@ -373,12 +379,26 @@ export function PartnershipDashboard({ initialEvents = [] }: PartnershipDashboar
 
         {/* ── 0. Partners & Sponsors Directory Tab ── */}
         <TabsContent value="sponsors" className="space-y-6">
-          <PartnersTab />
+          <PartnersTab
+            onSignPartnerPdf={(sponsor) => {
+              setPartnerForSigning(sponsor);
+              setActiveTab("sign-documents");
+            }}
+          />
         </TabsContent>
 
         {/* ── 0b. Document Templates Tab (Quotation V1, LOA V2, Invoice V2) ── */}
         <TabsContent value="documents" className="space-y-6">
           <DocumentTemplatesTab />
+        </TabsContent>
+
+        {/* ── 0c. Partner PDF Signage & E-Certificate Tab ── */}
+        <TabsContent value="sign-documents" className="space-y-6">
+          <SignDocumentsTab
+            preselectedPartner={partnerForSigning}
+            onClearPreselectedPartner={() => setPartnerForSigning(null)}
+            availableEvents={availableEvents}
+          />
         </TabsContent>
 
         {/* ── 1. Hero & Metrics Tab ── */}

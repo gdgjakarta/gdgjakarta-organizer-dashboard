@@ -17,6 +17,7 @@ import {
   Loader2,
   Mail,
   Pencil,
+  PenTool,
   Plus,
   RefreshCw,
   Search,
@@ -26,7 +27,7 @@ import {
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
-import { SponsorDocumentsDialog, type SponsorDocumentsContext } from "@/components/sponsor-documents-dialog";
+import { type SponsorDocumentsContext, SponsorDocumentsDialog } from "@/components/sponsor-documents-dialog";
 import { SponsorLogoCropperDialog } from "@/components/sponsor-logo-cropper-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -82,7 +83,11 @@ function WhatsAppIcon({ className = "size-3" }: { className?: string }) {
   );
 }
 
-export function PartnersTab() {
+interface PartnersTabProps {
+  onSignPartnerPdf?: (sponsor: FirestoreSponsor) => void;
+}
+
+export function PartnersTab({ onSignPartnerPdf }: PartnersTabProps = {}) {
   const [sponsors, setSponsors] = useState<FirestoreSponsor[]>([]);
   const [originalSponsors, setOriginalSponsors] = useState<FirestoreSponsor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -930,6 +935,20 @@ export function PartnersTab() {
                                 <span className="hidden xl:inline">Documents</span>
                               </Button>
 
+                              {onSignPartnerPdf && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs font-medium text-foreground hover:bg-background hover:shadow-2xs gap-1.5"
+                                  title="Sign Partner PDF with E-Certificate"
+                                  onClick={() => onSignPartnerPdf(s)}
+                                >
+                                  <PenTool className="h-3.5 w-3.5 text-emerald-600" />
+                                  <span className="hidden xl:inline">Sign PDF</span>
+                                </Button>
+                              )}
+
                               <div className="h-4 w-px bg-border/70 mx-0.5" />
 
                               <Button
@@ -1070,6 +1089,23 @@ export function PartnersTab() {
                                 <FileText className="h-3 w-3 text-primary" />
                                 Docs
                               </button>
+                              {onSignPartnerPdf && (
+                                <>
+                                  <span className="text-muted-foreground/40">•</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onSignPartnerPdf(s);
+                                    }}
+                                    className="text-[11px] font-medium text-muted-foreground hover:text-foreground underline-offset-2 hover:underline flex items-center gap-0.5 cursor-pointer"
+                                    title="Sign Partner PDF with E-Certificate"
+                                  >
+                                    <PenTool className="h-3 w-3 text-emerald-600" />
+                                    Sign
+                                  </button>
+                                </>
+                              )}
                               <span className="text-muted-foreground/40">•</span>
                               <button
                                 type="button"

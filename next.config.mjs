@@ -21,6 +21,7 @@ const REQUIRED_PUBLIC_ENV = [
 const nextConfig = {
   reactCompiler: true,
   experimental: {
+    agentUpgrade: "security",
     turbopackFileSystemCacheForDev: false,
     serverActions: {
       bodySizeLimit: "6mb",
@@ -134,13 +135,17 @@ const nextConfig = {
   },
   turbopack: {},
   webpack(config, { isServer }) {
-    if (isServer) {
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        "firebase/firestore": new URL("./src/lib/firestore/server-noop.ts", import.meta.url).pathname,
-        "@firebase/firestore": new URL("./src/lib/firestore/server-noop.ts", import.meta.url).pathname,
-      };
-    }
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      canvas: false,
+      encoding: false,
+      ...(isServer
+        ? {
+            "firebase/firestore": new URL("./src/lib/firestore/server-noop.ts", import.meta.url).pathname,
+            "@firebase/firestore": new URL("./src/lib/firestore/server-noop.ts", import.meta.url).pathname,
+          }
+        : {}),
+    };
     return config;
   },
 };

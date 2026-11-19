@@ -41,7 +41,8 @@
       "!out",
       "!src/components/ui",
       "!src/components/calendar",
-      "!cloudflare-env.d.ts"
+      "!cloudflare-env.d.ts",
+      "!public/pdf.worker.min.mjs"
     ]
   },
   "formatter": {

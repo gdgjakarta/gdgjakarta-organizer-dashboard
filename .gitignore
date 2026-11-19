@@ -49,6 +49,9 @@ service-account/
 /service-account/
 *.service-account.json
 service-account.json
+.certs/
+*.p12
+*.pfx
 
 # firebase
 .firebase/
