@@ -23,8 +23,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatCourierName, getCourierTrackingUrl, hasOfficialCourierTrackingWebsite } from "@/lib/courier-utils";
 import { trackDeliveryPackageAction } from "@/lib/firestore/actions";
 import type { CourierType } from "@/lib/firestore/types";
 import type { CekResiTrackingData } from "@/lib/shipping/cek-resi";
@@ -37,6 +37,7 @@ const COURIER_OPTIONS: Array<{ value: CourierType; label: string }> = [
   { value: "pos", label: "Pos Indonesia" },
   { value: "anteraja", label: "Anteraja" },
   { value: "paxel", label: "Paxel" },
+  { value: "lion_parcel", label: "Lion Parcel" },
   { value: "gojek", label: "Gojek" },
   { value: "grab", label: "Grab" },
   { value: "other", label: "Other / Auto" },
@@ -222,7 +223,7 @@ export function PackageTrackingDialog({
             <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-muted/30 rounded-xl border">
               <div className="space-y-0.5">
                 <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                  Tracking Number ({courier.toUpperCase()})
+                  Tracking Number ({formatCourierName(courier)})
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-bold text-base">{trackingNumber}</span>
@@ -249,15 +250,23 @@ export function PackageTrackingDialog({
                   <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
                   Refresh
                 </Button>
-                {trackingData?.linkCekResi && (
+                {trackingNumber && (
                   <Button
                     variant="ghost"
                     size="sm"
                     asChild
                     className="h-8 text-xs gap-1 text-primary hover:text-primary/80"
                   >
-                    <a href={trackingData.linkCekResi} target="_blank" rel="noopener noreferrer">
-                      <span>CekResi</span>
+                    <a
+                      href={
+                        hasOfficialCourierTrackingWebsite(courier)
+                          ? getCourierTrackingUrl(courier, trackingNumber)
+                          : (trackingData?.linkCekResi ?? getCourierTrackingUrl(courier, trackingNumber))
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <span>{hasOfficialCourierTrackingWebsite(courier) ? formatCourierName(courier) : "CekResi"}</span>
                       <ExternalLink className="size-3" />
                     </a>
                   </Button>
@@ -308,23 +317,21 @@ export function PackageTrackingDialog({
                 <div className="p-3 rounded-lg border bg-card space-y-0.5">
                   <span className="text-[11px] text-muted-foreground font-medium">Courier</span>
                   <p className="font-semibold text-sm truncate">
-                    {trackingData.expedisi ? trackingData.expedisi : courier.toUpperCase()}
+                    {courier && courier.toLowerCase() !== "other"
+                      ? formatCourierName(courier)
+                      : trackingData.expedisi || courier.toUpperCase()}
                   </p>
                 </div>
                 <div className="p-3 rounded-lg border bg-card space-y-0.5">
                   <span className="text-[11px] text-muted-foreground font-medium">Destination / Recipient</span>
-                  <p className="font-semibold text-sm truncate">
+                  <p className="font-semibold text-sm leading-snug break-words">
                     {recipientName ?? (trackingData.tujuan !== "-" ? trackingData.tujuan : "As per Order Address")}
                   </p>
                 </div>
                 <div className="p-3 rounded-lg border bg-card space-y-0.5 col-span-2 sm:col-span-1">
-                  <span className="text-[11px] text-muted-foreground font-medium">Latest Status</span>
-                  <p className="font-semibold text-sm text-primary truncate">
-                    {trackingData.penerima
-                      ? trackingData.penerima
-                      : trackingData.status
-                        ? trackingData.status
-                        : "In Transit"}
+                  <span className="text-[11px] text-muted-foreground font-medium">Status</span>
+                  <p className="font-semibold text-sm text-primary leading-snug break-words">
+                    {trackingData.status || "In Transit"}
                   </p>
                 </div>
               </div>
@@ -359,7 +366,7 @@ export function PackageTrackingDialog({
                     pickup.
                   </div>
                 ) : (
-                  <ScrollArea className="max-h-[320px] rounded-xl border bg-muted/10 p-4">
+                  <div className="max-h-[320px] overflow-y-auto rounded-xl border bg-muted/10 p-4">
                     <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[2px] before:bg-border">
                       {trackingData.perjalanan.map((step, idx) => {
                         const isLatest = idx === 0;
@@ -409,7 +416,7 @@ export function PackageTrackingDialog({
                         );
                       })}
                     </div>
-                  </ScrollArea>
+                  </div>
                 )}
               </div>
 

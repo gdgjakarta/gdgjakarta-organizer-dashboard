@@ -32,6 +32,16 @@ import { toast } from "sonner";
 import { MerchandiseDeliveryStatusDialog } from "@/app/(main)/dashboard/member/my-events/_components/merchandise-delivery-status-dialog";
 import { PackageTrackingDialog } from "@/components/delivery/package-tracking-dialog";
 import { Shimmer } from "@/components/shimmer";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,10 +56,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatCourierName, resolveCourierTrackingUrl } from "@/lib/courier-utils";
 import { formatFirestoreDate } from "@/lib/date-utils";
 import {
   fetchEventMerchandiseDeliveryRequestsAction,
   markMerchandiseDeliveredAction,
+  revertMerchandiseDeliveryToInTransitAction,
   updateEventMerchandiseDeliveryConfigAction,
 } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration, MerchandiseDeliveryStatus } from "@/lib/firestore/types";
@@ -98,6 +110,25 @@ const STATUS_CONFIG: Record<
     icon: XCircle,
   },
 };
+
+function getCourierBadgeClass(courier?: string | null): string {
+  const key = (courier || "").trim().toLowerCase();
+  if (key.includes("paxel")) return "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300";
+  if (key.includes("jne")) return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
+  if (key.includes("j&t") || key.includes("jnt"))
+    return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300";
+  if (key.includes("sicepat")) return "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300";
+  if (key.includes("anteraja")) return "border-fuchsia-500/30 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-300";
+  if (key.includes("gosend") || key.includes("gojek") || key.includes("grab"))
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  if (key.includes("pos") || key.includes("spx") || key.includes("shopee") || key.includes("lalamove"))
+    return "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300";
+  if (key.includes("tiki") || key.includes("ninja") || key.includes("lion"))
+    return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+  if (key.includes("wahana") || key.includes("id express") || key === "ide")
+    return "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+  return "border-indigo-500/30 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300";
+}
 
 export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTabProps) {
   const [registrations, setRegistrations] = useState<FirestoreRegistration[]>([]);
@@ -218,6 +249,8 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
   const [viewingDetailReg, setViewingDetailReg] = useState<FirestoreRegistration | null>(null);
   const [printingQueueRegs, setPrintingQueueRegs] = useState<FirestoreRegistration[]>([]);
   const [markingDeliveredId, setMarkingDeliveredId] = useState<string | null>(null);
+  const [confirmingDeliverReg, setConfirmingDeliverReg] = useState<FirestoreRegistration | null>(null);
+  const [revertingDeliveryId, setRevertingDeliveryId] = useState<string | null>(null);
   const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
 
@@ -286,6 +319,33 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
       toast.error("Failed to mark as delivered.");
     } finally {
       setMarkingDeliveredId(null);
+    }
+  };
+
+  const handleRevertToInTransit = async (reg: FirestoreRegistration) => {
+    try {
+      setRevertingDeliveryId(reg.id);
+      const res = await revertMerchandiseDeliveryToInTransitAction(reg.id, eventId);
+      if (res.success) {
+        toast.success(`Reverted ${reg.member_name}'s delivery back to In Transit.`);
+        if (reg.delivery_request) {
+          const { delivered_at: _cleared, ...restReq } = reg.delivery_request;
+          handleRegistrationUpdated({
+            ...reg,
+            delivery_request: {
+              ...restReq,
+              status: "approved",
+              updated_at: new Date().toISOString(),
+            },
+          });
+        }
+      } else {
+        toast.error(res.error || "Failed to revert delivery status.");
+      }
+    } catch {
+      toast.error("Failed to revert delivery status.");
+    } finally {
+      setRevertingDeliveryId(null);
     }
   };
 
@@ -677,7 +737,21 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                     const phone = req.recipient_phone || reg.member_phone || "";
 
                     return (
-                      <TableRow key={reg.id} className="text-xs">
+                      <TableRow
+                        key={reg.id}
+                        className="cursor-pointer text-xs"
+                        onClick={(e) => {
+                          if (
+                            (e.target as HTMLElement).closest(
+                              'button, a, input, [role="menuitem"], [role="checkbox"], [data-radix-collection-item]',
+                            ) ||
+                            window.getSelection()?.toString()
+                          ) {
+                            return;
+                          }
+                          setViewingDetailReg(reg);
+                        }}
+                      >
                         {/* Attendee & Recipient Column */}
                         <TableCell className="align-top">
                           <div className="flex items-start gap-2.5">
@@ -872,12 +946,25 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                         {/* Courier & Tracking Column */}
                         <TableCell className="align-top">
                           {req.tracking_number ? (
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-1.5">
-                                <Badge variant="secondary" className="font-semibold text-[10px] uppercase">
-                                  {req.courier_type || "Standard"}
-                                </Badge>
-                                <span className="font-mono font-semibold text-xs">{req.tracking_number}</span>
+                            <div className="w-fit min-w-[200px] max-w-[240px] overflow-hidden rounded-lg border border-border/70 bg-muted/25">
+                              <div className="flex items-center justify-between gap-2 px-2.5 py-1.5">
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "shrink-0 rounded px-1.5 py-0 text-[10px] font-semibold tracking-wide",
+                                      getCourierBadgeClass(req.courier_type),
+                                    )}
+                                  >
+                                    {formatCourierName(req.courier_type)}
+                                  </Badge>
+                                  <span
+                                    className="truncate font-mono text-xs font-semibold tracking-tight text-foreground"
+                                    title={req.tracking_number}
+                                  >
+                                    {req.tracking_number}
+                                  </span>
+                                </div>
                                 <Button
                                   variant="ghost"
                                   size="icon"
@@ -885,17 +972,18 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                                     navigator.clipboard.writeText(req.tracking_number || "");
                                     toast.success("Tracking ID copied!");
                                   }}
-                                  className="size-5 text-muted-foreground hover:text-foreground"
+                                  className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
                                   title="Copy Resi"
+                                  aria-label="Copy Resi"
                                 >
                                   <Copy className="size-3" />
                                 </Button>
                               </div>
-                              <div className="flex flex-wrap items-center gap-1.5">
+                              <div className="flex items-center divide-x divide-border/60 border-t border-border/60 bg-background/70">
                                 <Button
-                                  variant="outline"
+                                  variant="ghost"
                                   size="sm"
-                                  className="h-6 gap-1 px-1.5 text-[10px] border-primary/30 text-primary hover:bg-primary/5"
+                                  className="h-7 flex-1 justify-center gap-1.5 rounded-none px-2.5 text-[11px] font-medium text-foreground hover:bg-muted/70"
                                   onClick={() => {
                                     setActiveTracking({
                                       number: req.tracking_number || "",
@@ -905,23 +993,45 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                                     });
                                     setIsTrackingModalOpen(true);
                                   }}
+                                  title="Track package directly"
                                 >
-                                  <Truck className="size-2.5" />
-                                  Lacak
+                                  <Truck className="size-3 text-primary" />
+                                  Track
                                 </Button>
-                                {req.tracking_url && (
-                                  <Button asChild variant="ghost" size="sm" className="h-6 gap-1 px-1.5 text-[10px]">
-                                    <a href={req.tracking_url} target="_blank" rel="noopener noreferrer">
-                                      Track
-                                      <ExternalLink className="size-2.5" />
-                                    </a>
-                                  </Button>
-                                )}
+                                {(() => {
+                                  const externalTrackingUrl = resolveCourierTrackingUrl(
+                                    req.courier_type,
+                                    req.tracking_number,
+                                    req.tracking_url,
+                                  );
+                                  return (
+                                    externalTrackingUrl && (
+                                      <Button
+                                        asChild
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-8 shrink-0 rounded-none text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                                        title="Open courier tracking website"
+                                        aria-label="Open courier tracking website"
+                                      >
+                                        <a href={externalTrackingUrl} target="_blank" rel="noopener noreferrer">
+                                          <ExternalLink className="size-3" />
+                                        </a>
+                                      </Button>
+                                    )
+                                  );
+                                })()}
                                 {req.delivery_proof_url && (
-                                  <Button asChild variant="ghost" size="sm" className="h-6 gap-1 px-1.5 text-[10px]">
+                                  <Button
+                                    asChild
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-8 shrink-0 rounded-none text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                                    title="View delivery / drop-off proof"
+                                    aria-label="View delivery / drop-off proof"
+                                  >
                                     <a href={req.delivery_proof_url} target="_blank" rel="noopener noreferrer">
-                                      <FileImage className="size-2.5" />
-                                      Proof
+                                      <FileImage className="size-3" />
                                     </a>
                                   </Button>
                                 )}
@@ -933,170 +1043,200 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                         </TableCell>
 
                         {/* Actions Column */}
-                        <TableCell className="whitespace-nowrap text-right align-top">
+                        <TableCell className="whitespace-nowrap align-top">
                           <div className="flex items-center justify-end gap-1">
-                            {req.status === "pending_review" && (
-                              <>
+                            <div className="flex items-center gap-1">
+                              {req.status === "pending_review" && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="icon-xs"
+                                    onClick={() => setApprovingReg(reg)}
+                                    title="Approve & Ship"
+                                    aria-label="Approve & Ship"
+                                    className="size-7 border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:border-emerald-500/50 hover:bg-emerald-500/20 dark:text-emerald-300"
+                                  >
+                                    <Truck className="size-3.5" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    onClick={() => setRejectingReg(reg)}
+                                    title="Reject delivery request"
+                                    className="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                  >
+                                    <X className="size-3.5" />
+                                  </Button>
+                                </>
+                              )}
+
+                              {req.status === "approved" && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="icon-xs"
+                                    disabled={markingDeliveredId === reg.id}
+                                    onClick={() => setConfirmingDeliverReg(reg)}
+                                    title="Mark as delivered"
+                                    aria-label="Mark as delivered"
+                                    className="size-7 border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:border-emerald-500/50 hover:bg-emerald-500/20 dark:text-emerald-300"
+                                  >
+                                    {markingDeliveredId === reg.id ? (
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                    ) : (
+                                      <CheckCircle2 className="size-3.5" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    onClick={() => setApprovingReg(reg)}
+                                    title="Edit tracking & courier"
+                                    aria-label="Edit tracking & courier"
+                                    className="size-7 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                                  >
+                                    <Pencil className="size-3.5" />
+                                  </Button>
+                                </>
+                              )}
+
+                              {req.status === "delivered" && (
+                                <>
+                                  <Badge
+                                    variant="outline"
+                                    className="h-7 gap-1 border-emerald-500/25 bg-emerald-500/5 px-2 font-medium text-[11px] text-emerald-700 dark:text-emerald-300"
+                                  >
+                                    <CheckCircle2 className="size-3" />
+                                    Fulfilled
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    onClick={() => setApprovingReg(reg)}
+                                    title="Edit tracking & courier"
+                                    aria-label="Edit tracking & courier"
+                                    className="size-7 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                                  >
+                                    <Pencil className="size-3.5" />
+                                  </Button>
+                                </>
+                              )}
+
+                              {req.status === "rejected" && (
                                 <Button
                                   variant="outline"
                                   size="xs"
                                   onClick={() => setApprovingReg(reg)}
-                                  className="h-7 gap-1.5 border-emerald-500/30 bg-emerald-500/10 px-2.5 font-medium text-[11px] text-emerald-700 hover:border-emerald-500/50 hover:bg-emerald-500/20 dark:text-emerald-300"
+                                  className="h-7 gap-1.5 px-2.5 text-[11px]"
                                 >
-                                  <Truck className="size-3" />
-                                  Ship
+                                  <RotateCcw className="size-3" />
+                                  Re-approve
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-xs"
-                                  onClick={() => setViewingDetailReg(reg)}
-                                  title="View details & audit logs"
-                                  className="size-7 text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                                >
-                                  <Eye className="size-3.5" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-xs"
-                                  onClick={() => setRejectingReg(reg)}
-                                  title="Reject delivery request"
-                                  className="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                >
-                                  <X className="size-3.5" />
-                                </Button>
-                              </>
-                            )}
+                              )}
+                            </div>
 
-                            {req.status === "approved" && (
+                            <div className="flex items-center gap-1">
                               <Button
-                                variant="outline"
-                                size="xs"
-                                disabled={markingDeliveredId === reg.id}
-                                onClick={() => handleMarkDelivered(reg)}
-                                className="h-7 gap-1.5 border-emerald-500/30 bg-emerald-500/10 px-2.5 font-medium text-[11px] text-emerald-700 hover:border-emerald-500/50 hover:bg-emerald-500/20 dark:text-emerald-300"
+                                variant="ghost"
+                                size="icon-xs"
+                                onClick={() => setPrintingQueueRegs([reg])}
+                                title={
+                                  req.maps_url
+                                    ? "Preview & print shipping label (with Maps QR)"
+                                    : "Preview & print shipping label"
+                                }
+                                className="size-7 text-muted-foreground hover:bg-primary/10 hover:text-primary"
                               >
-                                {markingDeliveredId === reg.id ? (
-                                  <Loader2 className="size-3 animate-spin" />
-                                ) : (
-                                  <CheckCircle2 className="size-3" />
-                                )}
-                                Deliver
+                                <Printer className="size-3.5" />
                               </Button>
-                            )}
 
-                            {req.status === "delivered" && (
-                              <Badge
-                                variant="outline"
-                                className="h-7 gap-1 border-emerald-500/25 bg-emerald-500/5 px-2 font-medium text-[11px] text-emerald-700 dark:text-emerald-300"
-                              >
-                                <CheckCircle2 className="size-3" />
-                                Fulfilled
-                              </Badge>
-                            )}
-
-                            {req.status === "rejected" && (
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                onClick={() => setApprovingReg(reg)}
-                                className="h-7 gap-1.5 px-2.5 text-[11px]"
-                              >
-                                <RotateCcw className="size-3" />
-                                Re-approve
-                              </Button>
-                            )}
-
-                            <Button
-                              variant="ghost"
-                              size="icon-xs"
-                              onClick={() => setPrintingQueueRegs([reg])}
-                              title={
-                                req.maps_url
-                                  ? "Preview & print shipping label (with Maps QR)"
-                                  : "Preview & print shipping label"
-                              }
-                              className="size-7 text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                            >
-                              <Printer className="size-3.5" />
-                            </Button>
-
-                            <DropdownMenu modal={false}>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-xs"
-                                  className="size-7 text-muted-foreground hover:text-foreground"
-                                  aria-label="More delivery actions"
-                                >
-                                  <MoreHorizontal className="size-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-52">
-                                <DropdownMenuItem onClick={() => setViewingDetailReg(reg)}>
-                                  <Eye className="size-3.5 text-primary" />
-                                  View details & audit logs
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setPrintingQueueRegs([reg])}>
-                                  <Printer className="size-3.5 text-primary" />
-                                  Print shipping label
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                {req.status === "pending_review" && (
-                                  <DropdownMenuItem onClick={() => setApprovingReg(reg)}>
-                                    <Truck className="size-3.5 text-emerald-600" />
-                                    Approve & Ship
-                                  </DropdownMenuItem>
-                                )}
-                                {(req.status === "approved" || req.status === "delivered") && (
-                                  <DropdownMenuItem onClick={() => setApprovingReg(reg)}>
-                                    <Pencil className="size-3.5" />
-                                    Edit tracking & courier
-                                  </DropdownMenuItem>
-                                )}
-                                {req.status === "approved" && (
-                                  <DropdownMenuItem
-                                    disabled={markingDeliveredId === reg.id}
-                                    onClick={() => handleMarkDelivered(reg)}
+                              <DropdownMenu modal={false}>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon-xs"
+                                    className="size-7 text-muted-foreground hover:text-foreground"
+                                    aria-label="More delivery actions"
                                   >
-                                    <CheckCircle2 className="size-3.5 text-emerald-600" />
-                                    Mark as delivered
+                                    <MoreHorizontal className="size-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-52">
+                                  <DropdownMenuItem onClick={() => setViewingDetailReg(reg)}>
+                                    <Eye className="size-3.5 text-primary" />
+                                    View details & audit logs
                                   </DropdownMenuItem>
-                                )}
-                                {req.status === "rejected" && (
-                                  <DropdownMenuItem onClick={() => setApprovingReg(reg)}>
-                                    <RotateCcw className="size-3.5" />
-                                    Re-approve & Ship
+                                  <DropdownMenuItem onClick={() => setPrintingQueueRegs([reg])}>
+                                    <Printer className="size-3.5 text-primary" />
+                                    Print shipping label
                                   </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    const text = `${req.recipient_name} (${req.recipient_phone})\n${req.shipping_address}, ${req.city} ${req.postal_code}`;
-                                    void navigator.clipboard.writeText(text);
-                                    toast.success("Shipping address copied!");
-                                  }}
-                                >
-                                  <Copy className="size-3.5" />
-                                  Copy shipping address
-                                </DropdownMenuItem>
-                                {req.maps_url && (
-                                  <DropdownMenuItem asChild>
-                                    <a href={req.maps_url} target="_blank" rel="noopener noreferrer">
-                                      <MapPin className="size-3.5" />
-                                      Open in Google Maps
-                                    </a>
-                                  </DropdownMenuItem>
-                                )}
-                                {(req.status === "pending_review" || req.status === "approved") && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem variant="destructive" onClick={() => setRejectingReg(reg)}>
-                                      <XCircle className="size-3.5" />
-                                      Reject request
+                                  <DropdownMenuSeparator />
+                                  {req.status === "pending_review" && (
+                                    <DropdownMenuItem onClick={() => setApprovingReg(reg)}>
+                                      <Truck className="size-3.5 text-emerald-600" />
+                                      Approve & Ship
                                     </DropdownMenuItem>
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                                  )}
+                                  {(req.status === "approved" || req.status === "delivered") && (
+                                    <DropdownMenuItem onClick={() => setApprovingReg(reg)}>
+                                      <Pencil className="size-3.5" />
+                                      Edit tracking & courier
+                                    </DropdownMenuItem>
+                                  )}
+                                  {req.status === "approved" && (
+                                    <DropdownMenuItem
+                                      disabled={markingDeliveredId === reg.id}
+                                      onClick={() => setConfirmingDeliverReg(reg)}
+                                    >
+                                      <CheckCircle2 className="size-3.5 text-emerald-600" />
+                                      Mark as delivered
+                                    </DropdownMenuItem>
+                                  )}
+                                  {req.status === "delivered" && (
+                                    <DropdownMenuItem
+                                      disabled={revertingDeliveryId === reg.id}
+                                      onClick={() => handleRevertToInTransit(reg)}
+                                    >
+                                      <RotateCcw className="size-3.5 text-amber-600" />
+                                      Revert to In Transit
+                                    </DropdownMenuItem>
+                                  )}
+                                  {req.status === "rejected" && (
+                                    <DropdownMenuItem onClick={() => setApprovingReg(reg)}>
+                                      <RotateCcw className="size-3.5" />
+                                      Re-approve & Ship
+                                    </DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      const text = `${req.recipient_name} (${req.recipient_phone})\n${req.shipping_address}, ${req.city} ${req.postal_code}`;
+                                      void navigator.clipboard.writeText(text);
+                                      toast.success("Shipping address copied!");
+                                    }}
+                                  >
+                                    <Copy className="size-3.5" />
+                                    Copy shipping address
+                                  </DropdownMenuItem>
+                                  {req.maps_url && (
+                                    <DropdownMenuItem asChild>
+                                      <a href={req.maps_url} target="_blank" rel="noopener noreferrer">
+                                        <MapPin className="size-3.5" />
+                                        Open in Google Maps
+                                      </a>
+                                    </DropdownMenuItem>
+                                  )}
+                                  {(req.status === "pending_review" || req.status === "approved") && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem variant="destructive" onClick={() => setRejectingReg(reg)}>
+                                        <XCircle className="size-3.5" />
+                                        Reject request
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1143,6 +1283,10 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
           registration={viewingDetailReg}
           event={event}
           onPrintLabel={() => setPrintingQueueRegs([viewingDetailReg])}
+          onEdit={() => {
+            setApprovingReg(viewingDetailReg);
+            setViewingDetailReg(null);
+          }}
         />
       )}
 
@@ -1161,6 +1305,32 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
         recipientName={activeTracking.recipient}
         allowManualSearch={activeTracking.allowManualSearch}
       />
+
+      <AlertDialog open={Boolean(confirmingDeliverReg)} onOpenChange={(open) => !open && setConfirmingDeliverReg(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark package as delivered?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark <span className="font-medium text-foreground">{confirmingDeliverReg?.member_name}</span>
+              &apos;s merchandise delivery as <span className="font-medium text-foreground">Delivered</span>. You can
+              revert it back to In Transit from the row menu if needed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmingDeliverReg) {
+                  void handleMarkDelivered(confirmingDeliverReg);
+                  setConfirmingDeliverReg(null);
+                }
+              }}
+            >
+              Confirm Delivered
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <MerchandiseDeliveryConfigDialog
         isOpen={isConfigDialogOpen}

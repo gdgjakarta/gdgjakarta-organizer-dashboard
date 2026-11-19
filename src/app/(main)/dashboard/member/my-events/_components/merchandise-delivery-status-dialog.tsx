@@ -11,6 +11,7 @@ import {
   ExternalLink,
   FileImage,
   MapPin,
+  Pencil,
   Printer,
   ShieldCheck,
   ShoppingBag,
@@ -30,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatCourierName, resolveCourierTrackingUrl } from "@/lib/courier-utils";
 import {
   formatMerchandiseDeliveryNotice,
   getMerchandiseDeliveryTimeline,
@@ -45,6 +47,7 @@ interface MerchandiseDeliveryStatusDialogProps {
   event?: FirestoreEvent;
   onOpenPayment?: () => void;
   onPrintLabel?: () => void;
+  onEdit?: () => void;
 }
 
 const DELIVERY_STATUS_CONFIG: Record<
@@ -85,6 +88,7 @@ export function MerchandiseDeliveryStatusDialog({
   event,
   onOpenPayment,
   onPrintLabel,
+  onEdit,
 }: MerchandiseDeliveryStatusDialogProps) {
   const req = registration.delivery_request;
   const [copiedResi, setCopiedResi] = useState(false);
@@ -224,7 +228,7 @@ export function MerchandiseDeliveryStatusDialog({
         badgeLabel: "Dispatched",
         badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
         notes: req.tracking_number
-          ? `Dispatched via ${req.courier_type || "Courier"} (Resi: ${req.tracking_number}).`
+          ? `Dispatched via ${formatCourierName(req.courier_type, "Courier")} (Resi: ${req.tracking_number}).`
           : "Delivery request approved for dispatch.",
       });
     }
@@ -320,8 +324,8 @@ export function MerchandiseDeliveryStatusDialog({
             <div className="space-y-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3.5">
               <div className="flex items-center justify-between border-border/40 border-b pb-2">
                 <span className="text-muted-foreground">Courier Service:</span>
-                <Badge variant="secondary" className="font-semibold text-[11px] uppercase tracking-wider">
-                  {req.courier_type ?? "Standard Courier"}
+                <Badge variant="secondary" className="font-semibold text-[11px] tracking-wider">
+                  {formatCourierName(req.courier_type, "Standard Courier")}
                 </Badge>
               </div>
 
@@ -376,18 +380,27 @@ export function MerchandiseDeliveryStatusDialog({
                     onClick={() => setIsLiveTrackingOpen(true)}
                   >
                     <Truck className="size-3.5" />
-                    Lacak Perjalanan Paket
+                    Track Shipment
                   </Button>
                 )}
 
-                {req.tracking_url && (
-                  <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                    <a href={req.tracking_url} target="_blank" rel="noopener noreferrer">
-                      Buka Web Ekspedisi
-                      <ExternalLink className="size-3" />
-                    </a>
-                  </Button>
-                )}
+                {(() => {
+                  const externalTrackingUrl = resolveCourierTrackingUrl(
+                    req.courier_type,
+                    req.tracking_number,
+                    req.tracking_url,
+                  );
+                  return (
+                    externalTrackingUrl && (
+                      <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                        <a href={externalTrackingUrl} target="_blank" rel="noopener noreferrer">
+                          Open Courier Website
+                          <ExternalLink className="size-3" />
+                        </a>
+                      </Button>
+                    )
+                  );
+                })()}
 
                 {req.delivery_proof_url && (
                   <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
@@ -573,6 +586,12 @@ export function MerchandiseDeliveryStatusDialog({
         </div>
 
         <DialogFooter className="gap-2">
+          {onEdit && (
+            <Button type="button" variant="outline" size="sm" onClick={onEdit} className="h-8 gap-1.5 text-xs">
+              <Pencil className="size-3.5" />
+              Edit
+            </Button>
+          )}
           {onPrintLabel && (
             <Button type="button" variant="outline" size="sm" onClick={onPrintLabel} className="h-8 gap-1.5 text-xs">
               <Printer className="size-3.5" />

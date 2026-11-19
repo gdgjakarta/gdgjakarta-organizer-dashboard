@@ -5299,12 +5299,16 @@ export async function updateMerchandiseDeliveryStatus(
   }
 
   const now = new Date().toISOString();
+  const isRevertingDelivered = existingRequest.status === "delivered" && status === "approved";
   const mergedRequest: MerchandiseDeliveryRequest = {
     ...existingRequest,
     ...(details ?? {}),
     status,
     updated_at: now,
   };
+  if (isRevertingDelivered) {
+    delete mergedRequest.delivered_at;
+  }
 
   const existingLogs = Array.isArray(existing.status_logs) ? existing.status_logs : [];
   const logEntry: RegistrationStatusLog = {
@@ -5315,6 +5319,9 @@ export async function updateMerchandiseDeliveryStatus(
     changed_by_name: reviewer?.name ?? details?.reviewed_by_name ?? "Organizer",
     changed_by_email: reviewer?.email,
     notes: (() => {
+      if (isRevertingDelivered) {
+        return "Delivery status reverted from Delivered back to In Transit.";
+      }
       if (status === "approved") {
         return `Delivery approved & dispatched. Courier: ${details?.courier_type ?? mergedRequest.courier_type ?? "Courier"} (Resi: ${details?.tracking_number ?? mergedRequest.tracking_number ?? "N/A"}).`;
       }

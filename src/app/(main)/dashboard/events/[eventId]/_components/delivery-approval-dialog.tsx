@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
-import { CheckCircle2, ExternalLink, Loader2, Printer, Search, Truck } from "lucide-react";
+import { CheckCircle2, ExternalLink, Loader2, Printer, Search, Truck, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { DatePicker } from "@/components/date-picker";
@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getCourierTrackingUrl } from "@/lib/courier-utils";
 import { formatFirestoreDate } from "@/lib/date-utils";
 import { approveMerchandiseDeliveryAction } from "@/lib/firestore/actions";
 import type { CourierType, FirestoreRegistration } from "@/lib/firestore/types";
@@ -69,6 +70,8 @@ export function DeliveryApprovalDialog({
   );
   const [notes, setNotes] = useState<string>(req?.notes ?? "");
   const [isTrackingTestOpen, setIsTrackingTestOpen] = useState(false);
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
+  const proofFileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, startTransition] = useTransition();
 
   useEffect(() => {
@@ -83,6 +86,62 @@ export function DeliveryApprovalDialog({
       setNotes(req.notes ?? "");
     }
   }, [req]);
+
+  const handleUploadProof = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Image must be 10MB or smaller.");
+      return;
+    }
+
+    setIsUploadingProof(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("prefix", `delivery-proofs/${eventId}`);
+
+      const res = await fetch("/api/media/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = (await res.json()) as { success?: boolean; items?: { url: string }[]; error?: string };
+
+      if (!res.ok || !data.success || !data.items?.[0]?.url) {
+        throw new Error(data.error || "Failed to upload delivery proof.");
+      }
+
+      setDeliveryProofUrl(data.items[0].url);
+      toast.success("Delivery proof uploaded to bucket storage.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to upload delivery proof.");
+    } finally {
+      setIsUploadingProof(false);
+      if (proofFileInputRef.current) {
+        proofFileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleProofPaste = (e: React.ClipboardEvent) => {
+    if (isUploadingProof || isSubmitting) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          void handleUploadProof(file);
+        }
+        return;
+      }
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,7 +296,21 @@ export function DeliveryApprovalDialog({
               <Label htmlFor="courierType" className="text-xs">
                 Delivery Type / Courier <span className="text-destructive">*</span>
               </Label>
-              <Select value={courierType} onValueChange={setCourierType}>
+              <Select
+                value={courierType}
+                onValueChange={(nextCourier) => {
+                  const prevAutoUrl = getCourierTrackingUrl(courierType, trackingNumber);
+                  setCourierType(nextCourier);
+                  if (
+                    trackingNumber.trim() &&
+                    (!trackingUrl.trim() ||
+                      trackingUrl.trim() === prevAutoUrl ||
+                      /^https?:\/\/(www\.)?cekresi\.com/i.test(trackingUrl.trim()))
+                  ) {
+                    setTrackingUrl(getCourierTrackingUrl(nextCourier, trackingNumber));
+                  }
+                }}
+              >
                 <SelectTrigger id="courierType" className="h-9 text-xs">
                   <SelectValue placeholder="Select Courier" />
                 </SelectTrigger>
@@ -252,21 +325,9 @@ export function DeliveryApprovalDialog({
             </div>
 
             <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="trackingNumber" className="text-xs">
-                  Delivery ID / Tracking No. (Resi) <span className="text-destructive">*</span>
-                </Label>
-                {trackingNumber.trim() && (
-                  <button
-                    type="button"
-                    onClick={() => setIsTrackingTestOpen(true)}
-                    className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1"
-                  >
-                    <Search className="size-3" />
-                    Track Shipment Now
-                  </button>
-                )}
-              </div>
+              <Label htmlFor="trackingNumber" className="text-xs">
+                Delivery ID / Tracking No. (Resi) <span className="text-destructive">*</span>
+              </Label>
               <div className="flex gap-2">
                 <Input
                   id="trackingNumber"
@@ -274,9 +335,15 @@ export function DeliveryApprovalDialog({
                   value={trackingNumber}
                   onChange={(e) => {
                     const val = e.target.value;
+                    const prevAutoUrl = getCourierTrackingUrl(courierType, trackingNumber);
                     setTrackingNumber(val);
-                    if (!trackingUrl && val.trim()) {
-                      setTrackingUrl(`https://cekresi.com/?r=w&noresi=${encodeURIComponent(val.trim())}`);
+                    if (
+                      val.trim() &&
+                      (!trackingUrl.trim() ||
+                        trackingUrl.trim() === prevAutoUrl ||
+                        /^https?:\/\/(www\.)?cekresi\.com/i.test(trackingUrl.trim()))
+                    ) {
+                      setTrackingUrl(getCourierTrackingUrl(courierType, val));
                     }
                   }}
                   required
@@ -288,11 +355,11 @@ export function DeliveryApprovalDialog({
                   size="sm"
                   disabled={!trackingNumber.trim()}
                   onClick={() => setIsTrackingTestOpen(true)}
-                  className="h-9 text-xs gap-1 shrink-0 px-2.5"
+                  className="h-9 text-xs gap-1.5 shrink-0 px-3"
                   title="Track shipment via CekResi API"
                 >
-                  <Search className="size-3.5" />
-                  Track Shipment
+                  <Search className="size-3.5 text-muted-foreground" />
+                  <span>Track Shipment</span>
                 </Button>
               </div>
             </div>
@@ -314,18 +381,71 @@ export function DeliveryApprovalDialog({
               />
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1.5" onPaste={handleProofPaste}>
               <Label htmlFor="deliveryProofUrl" className="text-xs">
-                Delivery Proof Image URL (Drop-off photo / Receipt)
+                Delivery Proof Image (Drop-off photo / Receipt)
               </Label>
-              <Input
-                id="deliveryProofUrl"
-                type="url"
-                placeholder="https://storage.googleapis.com/... or image link"
-                value={deliveryProofUrl}
-                onChange={(e) => setDeliveryProofUrl(e.target.value)}
-                className="h-9 text-xs"
+              <input
+                ref={proofFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleUploadProof(file);
+                }}
               />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="deliveryProofUrl"
+                  type="url"
+                  placeholder="Paste image, URL, or upload..."
+                  value={deliveryProofUrl}
+                  onChange={(e) => setDeliveryProofUrl(e.target.value)}
+                  className="h-9 flex-1 text-xs"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 shrink-0 gap-1.5 text-xs"
+                  disabled={isUploadingProof || isSubmitting}
+                  onClick={() => proofFileInputRef.current?.click()}
+                >
+                  {isUploadingProof ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5" />
+                  )}
+                  {isUploadingProof ? "Uploading..." : "Upload"}
+                </Button>
+                {deliveryProofUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => setDeliveryProofUrl("")}
+                    aria-label="Clear delivery proof"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+              {deliveryProofUrl && (
+                <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-1.5">
+                  <img src={deliveryProofUrl} alt="Delivery proof preview" className="h-10 w-10 rounded object-cover" />
+                  <a
+                    href={deliveryProofUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex min-w-0 flex-1 items-center gap-1 truncate text-xs text-primary hover:underline"
+                  >
+                    <span className="truncate">{deliveryProofUrl}</span>
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                  </a>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

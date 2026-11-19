@@ -1103,6 +1103,31 @@ export async function markMerchandiseDeliveredAction(
 }
 
 /**
+ * Organizer reverts a delivered merchandise request back to In Transit ("approved") and clears delivered_at.
+ */
+export async function revertMerchandiseDeliveryToInTransitAction(
+  registrationId: string,
+  eventId: string,
+  reviewer?: { id: string; name: string; email?: string },
+) {
+  try {
+    const { updateMerchandiseDeliveryStatus } = await import("./client");
+
+    await updateMerchandiseDeliveryStatus(registrationId, "approved", { delivered_at: undefined }, reviewer);
+
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath("/dashboard/my-events");
+    await revalidateDashboardPath(`/dashboard/member/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to revert delivery status.";
+    console.error("[revertMerchandiseDeliveryToInTransitAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
  * Fetches all delivery requests for an event.
  */
 export async function fetchEventMerchandiseDeliveryRequestsAction(eventId: string) {
@@ -1384,13 +1409,33 @@ export async function updateEventPaymentConfigAction(
 }
 
 /**
- * Tracks a package delivery status and journey history using the CekResi engine.
+ * Tracks a package delivery status and journey history via the server-side CekResi API route.
  */
 export async function trackDeliveryPackageAction(input: { trackingNumber: string; courier?: string }) {
   try {
-    const { trackPackageWithCekResi } = await import("@/lib/shipping/cek-resi");
-    const result = await trackPackageWithCekResi(input.trackingNumber, input.courier);
-    return result;
+    const params = new URLSearchParams({ noresi: input.trackingNumber });
+    if (input.courier) params.set("courier", input.courier);
+
+    const response = await fetch(`/api/delivery/track?${params.toString()}`);
+    const payload = (await response.json()) as {
+      valid?: boolean;
+      data?: import("@/lib/shipping/cek-resi").CekResiTrackingData;
+      message?: string;
+      error?: string;
+    };
+
+    if (!response.ok || !payload.valid) {
+      return {
+        valid: false,
+        message: payload.message,
+        error: payload.error ?? payload.message ?? `Tracking request failed (HTTP ${response.status})`,
+      };
+    }
+
+    return {
+      valid: true,
+      data: payload.data,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to track package.";
     console.error("[trackDeliveryPackageAction] error:", message);

@@ -40,6 +40,8 @@ export function mapCourierToCekResiCode(courier?: CourierType | string): string 
       return "pos";
     case "anteraja":
       return "anteraja";
+    case "paxel":
+      return "paxel";
     case "tiki":
       return "tiki";
     case "wahana":
@@ -47,7 +49,10 @@ export function mapCourierToCekResiCode(courier?: CourierType | string): string 
     case "ninja":
       return "ninja";
     case "lion":
-      return "lion";
+    case "lion_parcel":
+    case "lion parcel":
+    case "lionparcel":
+      return "lionparcel";
     default:
       return "JET";
   }
