@@ -149,6 +149,8 @@ export function SignDocumentsTab({
   const [placements, setPlacements] = useState<PdfPlacement[]>([]);
   const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
   const [assetsById, setAssetsById] = useState<Record<string, CreatedSignatureAsset>>({});
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const [maxPdfFitWidth, setMaxPdfFitWidth] = useState<number>(640);
 
   // Signing Action State
   const [editingDoc, setEditingDoc] = useState<PartnerSignedDocument | null>(null);
@@ -217,6 +219,27 @@ export function SignDocumentsTab({
   useEffect(() => {
     void loadInitialData();
   }, [loadInitialData]);
+
+  // Compute upper bound for PDF "fit" zoom from the outer workspace width so the PDF column can wrap its content width
+  useEffect(() => {
+    const el = workspaceRef.current;
+    if (!showWorkspace || !el) return;
+    const updateMaxPdfFit = () => {
+      const totalWidth = el.clientWidth;
+      if (totalWidth <= 0) return;
+      const isSideBySide = window.innerWidth >= 1024;
+      const maxColWidth = isSideBySide ? Math.min(Math.floor(totalWidth * 0.62), totalWidth - 404) : totalWidth;
+      setMaxPdfFitWidth(Math.max(280, maxColWidth - 26));
+    };
+    updateMaxPdfFit();
+    const observer = new ResizeObserver(updateMaxPdfFit);
+    observer.observe(el);
+    window.addEventListener("resize", updateMaxPdfFit);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateMaxPdfFit);
+    };
+  }, [showWorkspace]);
 
   // Apply preselected partner passed from PartnersTab "Sign PDF" quick button
   useEffect(() => {
@@ -782,9 +805,13 @@ export function SignDocumentsTab({
 
       {/* ── SIGNING WORKSPACE ── */}
       {showWorkspace && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_400px] items-start">
-          {/* Left Column: PDF Upload & Interactive Canvas */}
-          <div className="min-w-0 space-y-3">
+        <div ref={workspaceRef} className="flex flex-col gap-6 lg:flex-row lg:items-start">
+          {/* Left Column: PDF Upload & Interactive Canvas (wraps rendered PDF width on desktop) */}
+          <div
+            className={`min-w-0 space-y-3 ${
+              pdfFile ? "w-full lg:w-fit lg:max-w-[62%] lg:shrink-0" : "w-full lg:flex-1"
+            }`}
+          >
             <input
               ref={pdfInputRef}
               type="file"
@@ -832,7 +859,7 @@ export function SignDocumentsTab({
               </button>
             ) : (
               <div className="space-y-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
+                <div className="flex w-full lg:w-0 lg:min-w-full flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <FileText className="h-4 w-4 shrink-0 text-primary" />
                     <span className="truncate text-xs font-medium text-foreground">{pdfFile.name}</span>
@@ -871,13 +898,18 @@ export function SignDocumentsTab({
                   assetsById={assetsById}
                   signerName={signerName}
                   signerTitle={signerTitle}
+                  maxFitWidth={maxPdfFitWidth}
                 />
               </div>
             )}
           </div>
 
           {/* Right Column: Partner Info, Signer Settings, Signature Studio & Submit */}
-          <div className="min-w-0 space-y-4">
+          <div
+            className={`min-w-0 space-y-4 ${
+              pdfFile ? "w-full lg:flex-1 lg:min-w-[380px]" : "w-full lg:w-[440px] xl:w-[480px] lg:shrink-0"
+            }`}
+          >
             {/* 1. Partner & Document Metadata */}
             <Card>
               <CardHeader className="pb-3">
@@ -1729,7 +1761,7 @@ export function SignDocumentsTab({
                       suppressContentEditableWarning
                       onInput={(e) => setEmailMessageInput(e.currentTarget.innerHTML)}
                       data-placeholder="Write a formatted note to include above the Download Signed PDF button..."
-                      className="min-h-[120px] max-h-[220px] overflow-y-auto rounded-md border border-input bg-transparent dark:bg-input/30 px-3 py-2 text-xs leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_a]:text-primary [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-4 [&_ul]:list-disc [&_ul]:pl-4"
+                      className="min-h-[120px] max-h-[220px] overflow-y-auto rounded-md border border-input bg-transparent dark:bg-input/30 px-3 py-2 text-xs leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_a]:text-primary [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-4"
                     />
                   </TabsContent>
 

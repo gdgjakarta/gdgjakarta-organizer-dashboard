@@ -26,6 +26,8 @@ interface PdfPlacementCanvasProps {
   assetsById: Record<string, CreatedSignatureAsset>;
   signerName: string;
   signerTitle: string;
+  /** Upper bound (px) for "fit" zoom when the parent column wraps PDF content width. */
+  maxFitWidth?: number;
 }
 
 type ZoomOption = "fit" | 0.75 | 1 | 1.25;
@@ -59,6 +61,7 @@ export function PdfPlacementCanvas({
   assetsById,
   signerName,
   signerTitle,
+  maxFitWidth,
 }: PdfPlacementCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -95,8 +98,12 @@ export function PdfPlacementCanvas({
     return () => cancelAnimationFrame(rafId);
   }, [selectedPlacementId]);
 
-  // Measure available container width for Fit mode
+  // Measure available container width for Fit mode (skipped when parent supplies maxFitWidth to avoid w-fit resize loops)
   useEffect(() => {
+    if (typeof maxFitWidth === "number" && maxFitWidth > 0) {
+      setContainerWidth(Math.max(280, maxFitWidth));
+      return;
+    }
     const el = containerRef.current;
     if (!el) return;
     const updateWidth = () => {
@@ -107,7 +114,7 @@ export function PdfPlacementCanvas({
     const observer = new ResizeObserver(updateWidth);
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [maxFitWidth]);
 
   // Load PDF document from File using pdfjs-dist
   useEffect(() => {
@@ -179,8 +186,11 @@ export function PdfPlacementCanvas({
         if (cancelled) return;
 
         const baseViewport = page.getViewport({ scale: 1 });
+        const maxFitScale = typeof maxFitWidth === "number" && maxFitWidth > 0 ? 1 : 2;
         const targetScale =
-          zoomMode === "fit" ? Math.max(0.45, Math.min(2, containerWidth / Math.max(1, baseViewport.width))) : zoomMode;
+          zoomMode === "fit"
+            ? Math.max(0.45, Math.min(maxFitScale, containerWidth / Math.max(1, baseViewport.width)))
+            : zoomMode;
 
         const viewport = page.getViewport({ scale: targetScale });
         const canvas = canvasRef.current;
@@ -232,7 +242,7 @@ export function PdfPlacementCanvas({
         renderTask.cancel();
       }
     };
-  }, [pdfDoc, pageCount, activePageIndex, zoomMode, containerWidth]);
+  }, [pdfDoc, pageCount, activePageIndex, zoomMode, containerWidth, maxFitWidth]);
 
   const currentPagePlacements = useMemo(
     () => placements.filter((p) => p.pageIndex === activePageIndex),
@@ -353,7 +363,7 @@ export function PdfPlacementCanvas({
   };
 
   return (
-    <div className="flex flex-col rounded-xl border border-border bg-card overflow-hidden">
+    <div className="flex max-w-full flex-col rounded-xl border border-border bg-card overflow-hidden">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-2">
         <div className="flex items-center gap-1.5">
@@ -605,7 +615,7 @@ export function PdfPlacementCanvas({
 
       {/* Page Switcher Strip */}
       {pageCount > 1 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto border-t border-border bg-muted/20 px-3 py-2">
+        <div className="flex w-full lg:w-0 lg:min-w-full items-center gap-1.5 overflow-x-auto border-t border-border bg-muted/20 px-3 py-2">
           <span className="text-[11px] font-medium text-muted-foreground shrink-0 mr-1">Pages:</span>
           {Array.from({ length: pageCount }, (_, idx) => {
             const count = placementCountsByPage.get(idx) ?? 0;

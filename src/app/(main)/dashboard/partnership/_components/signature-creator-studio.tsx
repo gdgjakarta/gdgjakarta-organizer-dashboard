@@ -874,16 +874,17 @@ export function SignatureCreatorStudio({
         </TabsContent>
       </Tabs>
 
-      <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2">
+      <div className="flex flex-wrap gap-2 pt-1">
         <Button
           type="button"
           size="sm"
           disabled={disabled || isExporting}
           onClick={() => void handlePlaceSignature()}
-          className="h-8 text-xs font-semibold gap-1.5"
+          title="Place signature on active PDF page"
+          className="h-9 flex-1 min-w-[155px] px-3 text-xs font-semibold gap-1.5 whitespace-nowrap"
         >
-          <Plus className="h-3.5 w-3.5" />
-          Place Signature on Page
+          <Plus className="h-3.5 w-3.5 shrink-0" />
+          Place Signature
         </Button>
         <Button
           type="button"
@@ -891,10 +892,11 @@ export function SignatureCreatorStudio({
           size="sm"
           disabled={disabled || isExporting}
           onClick={() => void handlePlaceStamp()}
-          className="h-8 text-xs font-medium gap-1.5"
+          title="Place signer & e-certificate stamp on active PDF page"
+          className="h-9 flex-1 min-w-[155px] px-3 text-xs font-medium gap-1.5 whitespace-nowrap"
         >
-          <Stamp className="h-3.5 w-3.5 text-primary" />
-          Place Signer &amp; E-Cert Stamp
+          <Stamp className="h-3.5 w-3.5 shrink-0 text-primary" />
+          Place E-Cert Stamp
         </Button>
       </div>
     </div>

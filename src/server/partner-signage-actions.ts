@@ -193,14 +193,54 @@ export async function sendPartnerSignedDocumentEmailAction(input: {
         : "SHA-256 Tamper-Evident Integrity Seal";
     const shaSnippet = doc.signed_sha256 ? `${doc.signed_sha256.slice(0, 16)}...${doc.signed_sha256.slice(-8)}` : "-";
 
+    const keepSafeInlineStyles = (styleVal: string): string => {
+      const kept: string[] = [];
+      for (const decl of styleVal.split(";")) {
+        const [rawProp, ...rawRest] = decl.split(":");
+        if (!rawProp || rawRest.length === 0) continue;
+        const prop = rawProp.trim().toLowerCase();
+        const val = rawRest.join(":").trim();
+        if (
+          (prop === "font-weight" && /^(?:bold|bolder|[6-9]00)$/i.test(val)) ||
+          (prop === "font-style" && /^italic$/i.test(val)) ||
+          (prop === "text-decoration" && /\bunderline\b/i.test(val))
+        ) {
+          kept.push(`${prop}:${val}`);
+        }
+      }
+      return kept.length > 0 ? ` style="${kept.join(";")}"` : "";
+    };
+
     const sanitizeEmailNoteHtml = (raw: string): string => {
-      const cleaned = raw
+      let cleaned = raw
         .replace(/<(script|iframe|object|embed|style|form|input|button)\b[^>]*>[\s\S]*?<\/\1>/gi, "")
         .replace(/<(script|iframe|object|embed|style|form|input|button)\b[^>]*\/?>/gi, "")
         .replace(/<\/?font\b[^>]*>/gi, "")
-        .replace(/\sstyle\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+        .replace(/\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi, (_, d, s, u) =>
+          keepSafeInlineStyles(d ?? s ?? u ?? ""),
+        )
         .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
         .replace(/javascript:/gi, "");
+
+      // Preserve blank lines (<div><br></div>, <p><br></p>, &nbsp;) that email clients otherwise collapse
+      cleaned = cleaned.replace(
+        /<(div|p)\b[^>]*>((?:\s|<br\s*\/?>|&nbsp;|\u00a0)+)<\/\1>/gi,
+        (match, _tag, inner: string) => {
+          if (!/(?:<br\s*\/?>|&nbsp;|\u00a0)/i.test(inner)) return match;
+          const brCount = (inner.match(/<br\s*\/?>/gi) || []).length;
+          const height = Math.max(1, brCount) * 14;
+          return `<div style="height:${height}px;line-height:${height}px;font-size:1px;">&nbsp;</div>`;
+        },
+      );
+
+      // Give <p> explicit inline bottom margin because email clients often reset default <p> margins to 0
+      cleaned = cleaned.replace(/<p\b([^>]*)>/gi, (_match, attrs: string) => {
+        if (/\sstyle\s*=\s*"/i.test(attrs)) {
+          return `<p${attrs.replace(/\sstyle\s*=\s*"/i, ' style="margin:0 0 12px 0;')}>`;
+        }
+        return `<p${attrs} style="margin:0 0 12px 0;">`;
+      });
+
       const hasBlockHtml = /<(?:p|div|ul|ol|li|br|table|h[1-6]|blockquote|hr)\b/i.test(cleaned);
       return hasBlockHtml ? cleaned : cleaned.replace(/\r?\n/g, "<br/>");
     };
