@@ -7,15 +7,21 @@ import dynamic from "next/dynamic";
 
 import {
   AlertTriangle,
+  Bold,
   Building2,
   CheckCircle2,
+  Code2,
   Copy,
   Download,
   ExternalLink,
+  Eye,
   FileCheck2,
   FilePlus2,
   FileText,
   History,
+  Italic,
+  Link2,
+  List,
   Loader2,
   Mail,
   Pencil,
@@ -26,6 +32,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Trash2,
+  Underline,
   UploadCloud,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -59,8 +66,10 @@ import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { formatFileSize } from "@/lib/r2/utils";
+import { sanitizeHtml } from "@/lib/utils";
 import {
   deletePartnerSignedDocumentAction,
   getPartnerSignedDocumentsAction,
@@ -155,7 +164,16 @@ export function SignDocumentsTab({
   const [emailRecipientInput, setEmailRecipientInput] = useState("");
   const [emailSubjectInput, setEmailSubjectInput] = useState("");
   const [emailMessageInput, setEmailMessageInput] = useState("");
+  const emailNoteEditorRef = useRef<HTMLDivElement | null>(null);
   const [isSendingEmail, startEmailTransition] = useTransition();
+
+  const applyEmailNoteCommand = (command: string, value?: string) => {
+    const el = emailNoteEditorRef.current;
+    if (!el) return;
+    el.focus();
+    document.execCommand(command, false, value);
+    setEmailMessageInput(el.innerHTML);
+  };
 
   const [deletingDoc, setDeletingDoc] = useState<PartnerSignedDocument | null>(null);
   const [isDeleting, startDeleteTransition] = useTransition();
@@ -1574,7 +1592,7 @@ export function SignDocumentsTab({
 
       {/* ── SEND EMAIL TO PARTNER DIALOG ── */}
       <Dialog open={Boolean(emailDialogDoc)} onOpenChange={(open) => !open && setEmailDialogDoc(null)}>
-        <DialogContent className="w-full max-w-lg overflow-hidden">
+        <DialogContent className="w-[95vw] sm:max-w-4xl overflow-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-primary" />
@@ -1615,17 +1633,116 @@ export function SignDocumentsTab({
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="send-email-message" className="text-xs font-medium">
-                  Custom Note (Optional, supports HTML)
-                </Label>
-                <Textarea
-                  id="send-email-message"
-                  rows={4}
-                  value={emailMessageInput}
-                  onChange={(e) => setEmailMessageInput(e.target.value)}
-                  placeholder="Optional message (plain text or HTML such as &lt;p&gt;, &lt;strong&gt;, &lt;ul&gt;, &lt;a&gt;)..."
-                  className="text-xs"
-                />
+                <Tabs
+                  defaultValue="write"
+                  onValueChange={(val) => {
+                    if (val === "write") {
+                      requestAnimationFrame(() => {
+                        if (emailNoteEditorRef.current) {
+                          emailNoteEditorRef.current.innerHTML = sanitizeHtml(emailMessageInput);
+                        }
+                      });
+                    }
+                  }}
+                  className="w-full gap-1.5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="send-email-message" className="text-xs font-medium">
+                      Custom Note (Optional)
+                    </Label>
+                    <TabsList className="h-7 p-0.5">
+                      <TabsTrigger value="write" className="h-6 px-2 text-[11px]">
+                        Format
+                      </TabsTrigger>
+                      <TabsTrigger value="raw" className="h-6 gap-1 px-2 text-[11px]">
+                        <Code2 className="h-3 w-3" />
+                        Raw HTML
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+
+                  <TabsContent value="write" className="mt-0 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-1 rounded-md border border-border bg-muted/30 p-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        title="Bold"
+                        className="h-6 w-6 p-0"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyEmailNoteCommand("bold")}
+                      >
+                        <Bold className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        title="Italic"
+                        className="h-6 w-6 p-0"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyEmailNoteCommand("italic")}
+                      >
+                        <Italic className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        title="Underline"
+                        className="h-6 w-6 p-0"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyEmailNoteCommand("underline")}
+                      >
+                        <Underline className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        title="Insert Link"
+                        className="h-6 w-6 p-0"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          const url = window.prompt("Enter link URL:", "https://");
+                          if (url?.trim()) applyEmailNoteCommand("createLink", url.trim());
+                        }}
+                      >
+                        <Link2 className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        title="Bullet List"
+                        className="h-6 w-6 p-0"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyEmailNoteCommand("insertUnorderedList")}
+                      >
+                        <List className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div
+                      ref={emailNoteEditorRef}
+                      id="send-email-message"
+                      contentEditable
+                      suppressContentEditableWarning
+                      onInput={(e) => setEmailMessageInput(e.currentTarget.innerHTML)}
+                      data-placeholder="Write a formatted note to include above the Download Signed PDF button..."
+                      className="min-h-[120px] max-h-[220px] overflow-y-auto rounded-md border border-input bg-transparent dark:bg-input/30 px-3 py-2 text-xs leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground [&_a]:text-primary [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-4 [&_ul]:list-disc [&_ul]:pl-4"
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="raw" className="mt-0">
+                    <Textarea
+                      rows={6}
+                      value={emailMessageInput}
+                      onChange={(e) => setEmailMessageInput(e.target.value)}
+                      placeholder="<p>Optional <strong>HTML</strong> message...</p>"
+                      className="font-mono text-xs"
+                    />
+                  </TabsContent>
+                </Tabs>
               </div>
 
               <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-muted/30 p-2.5 text-[11px] space-y-1">
