@@ -60,6 +60,7 @@ import {
   reorderChapterSponsorsAction,
   saveChapterSponsorAction,
   sendSponsorProposalEmailAction,
+  updateChapterSponsorConfigAction,
 } from "@/server/sponsor-actions";
 import type { ChapterSponsorConfig, FirestoreSponsor, SponsorCategory, SponsorProposalStatus } from "@/types/sponsor";
 
@@ -118,6 +119,12 @@ export function PartnersTab() {
 
   // Chapter sponsor confirmation config & share link
   const [chapterConfig, setChapterConfig] = useState<ChapterSponsorConfig | null>(null);
+  const [brandGuideUrl, setBrandGuideUrl] = useState("https://gdgjakarta.org/brand-guide");
+  const [isSavingBrandGuide, setIsSavingBrandGuide] = useState(false);
+  const [emailHeaderUrl, setEmailHeaderUrl] = useState(
+    "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png",
+  );
+  const [isSavingEmailHeader, setIsSavingEmailHeader] = useState(false);
 
   const loadSponsors = async () => {
     setIsLoading(true);
@@ -129,11 +136,62 @@ export function PartnersTab() {
       }
       if (cfgRes.success && cfgRes.config) {
         setChapterConfig(cfgRes.config);
+        setBrandGuideUrl(cfgRes.config.brand_guide_url || "https://gdgjakarta.org/brand-guide");
+        setEmailHeaderUrl(
+          cfgRes.config.email_header_url ||
+            "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png",
+        );
       }
     } catch {
       toast.error("Failed to load chapter sponsors.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSaveBrandGuideUrl = async () => {
+    const trimmed = brandGuideUrl.trim();
+    if (!trimmed) {
+      toast.error("Brand Guide URL cannot be empty.");
+      return;
+    }
+    setIsSavingBrandGuide(true);
+    try {
+      const res = await updateChapterSponsorConfigAction({ brand_guide_url: trimmed });
+      if (res.success && res.config) {
+        setChapterConfig(res.config);
+        setBrandGuideUrl(res.config.brand_guide_url || trimmed);
+        toast.success("Brand Guide URL updated.");
+      } else {
+        toast.error(res.error || "Failed to update Brand Guide URL.");
+      }
+    } catch {
+      toast.error("Failed to update Brand Guide URL.");
+    } finally {
+      setIsSavingBrandGuide(false);
+    }
+  };
+
+  const handleSaveEmailHeaderUrl = async () => {
+    const trimmed = emailHeaderUrl.trim();
+    if (!trimmed) {
+      toast.error("Email Header URL cannot be empty.");
+      return;
+    }
+    setIsSavingEmailHeader(true);
+    try {
+      const res = await updateChapterSponsorConfigAction({ email_header_url: trimmed });
+      if (res.success && res.config) {
+        setChapterConfig(res.config);
+        setEmailHeaderUrl(res.config.email_header_url || trimmed);
+        toast.success("Email Header URL updated.");
+      } else {
+        toast.error(res.error || "Failed to update Email Header URL.");
+      }
+    } catch {
+      toast.error("Failed to update Email Header URL.");
+    } finally {
+      setIsSavingEmailHeader(false);
     }
   };
 
@@ -496,6 +554,98 @@ export function PartnersTab() {
               >
                 <Copy className="mr-1.5 h-3.5 w-3.5" />
                 Copy Link
+              </Button>
+            </div>
+          </div>
+
+          {/* Brand Guide URL Row (Confirmation Email) */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 rounded-lg border border-border p-3 bg-muted/30">
+            <div className="flex-1 min-w-0 space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                GDG Jakarta Brand Guide URL (Confirmation Email)
+              </p>
+              <Input
+                type="url"
+                value={brandGuideUrl}
+                onChange={(e) => setBrandGuideUrl(e.target.value)}
+                placeholder="https://gdgjakarta.org/brand-guide"
+                className="h-8 text-xs font-mono bg-background"
+              />
+            </div>
+            <div className="flex items-center gap-2 sm:self-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                asChild
+                disabled={!brandGuideUrl.trim()}
+                className="text-xs h-8"
+              >
+                <a href={brandGuideUrl.trim() || "#"} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                  Open
+                </a>
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleSaveBrandGuideUrl}
+                disabled={
+                  isSavingBrandGuide ||
+                  !brandGuideUrl.trim() ||
+                  brandGuideUrl.trim() === (chapterConfig?.brand_guide_url || "https://gdgjakarta.org/brand-guide")
+                }
+                className="text-xs h-8"
+              >
+                {isSavingBrandGuide ? "Saving..." : "Save URL"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Email Header URL Row (Confirmation Email) */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 rounded-lg border border-border p-3 bg-muted/30">
+            <div className="flex-1 min-w-0 space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Email Header Image URL (Confirmation Email)
+              </p>
+              <Input
+                type="url"
+                value={emailHeaderUrl}
+                onChange={(e) => setEmailHeaderUrl(e.target.value)}
+                placeholder="https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png"
+                className="h-8 text-xs font-mono bg-background"
+              />
+            </div>
+            <div className="flex items-center gap-2 sm:self-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                asChild
+                disabled={!emailHeaderUrl.trim()}
+                className="text-xs h-8"
+              >
+                <a href={emailHeaderUrl.trim() || "#"} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                  Open
+                </a>
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleSaveEmailHeaderUrl}
+                disabled={
+                  isSavingEmailHeader ||
+                  !emailHeaderUrl.trim() ||
+                  emailHeaderUrl.trim() ===
+                    (chapterConfig?.email_header_url ||
+                      "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png")
+                }
+                className="text-xs h-8"
+              >
+                {isSavingEmailHeader ? "Saving..." : "Save URL"}
               </Button>
             </div>
           </div>

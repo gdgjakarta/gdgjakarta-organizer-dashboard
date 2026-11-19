@@ -714,6 +714,9 @@ export async function submitChapterSponsorConfirmationAction(
           defaultMeta?.subjectDefault || "Thank You for Supporting {{ $('event-params').item.json.eventName }}!";
 
         const configuredBrandGuideUrl = configRes.config.brand_guide_url || "https://gdgjakarta.org/brand-guide";
+        const configuredEmailHeaderUrl =
+          configRes.config.email_header_url ||
+          "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png";
         const confirmationShareUrl = `https://gdgjakarta.com/partnership/partner-confirmation?token=${token}`;
 
         const simData: TemplateSimulatedData = {
@@ -722,7 +725,7 @@ export async function submitChapterSponsorConfirmationAction(
             email: recipientEmail,
           },
           event: {
-            headerEmailUrl: "https://assets.gdgjakarta.org/gdg-jakarta/gdg-banner.png",
+            headerEmailUrl: configuredEmailHeaderUrl,
             eventName: "GDG Jakarta Community",
             eventCtaUrl: "https://gdgjakarta.com",
             eventChecklistItems: [

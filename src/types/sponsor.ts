@@ -28,6 +28,7 @@ export interface ChapterSponsorConfig {
   allow_company_url?: boolean;
   allowed_tiers?: string[];
   brand_guide_url?: string;
+  email_header_url?: string;
   updated_at?: string;
 }
 
