@@ -197,6 +197,8 @@ export async function sendPartnerSignedDocumentEmailAction(input: {
       const cleaned = raw
         .replace(/<(script|iframe|object|embed|style|form|input|button)\b[^>]*>[\s\S]*?<\/\1>/gi, "")
         .replace(/<(script|iframe|object|embed|style|form|input|button)\b[^>]*\/?>/gi, "")
+        .replace(/<\/?font\b[^>]*>/gi, "")
+        .replace(/\sstyle\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
         .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
         .replace(/javascript:/gi, "");
       const hasBlockHtml = /<(?:p|div|ul|ol|li|br|table|h[1-6]|blockquote|hr)\b/i.test(cleaned);
