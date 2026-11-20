@@ -4,6 +4,13 @@ import { revalidatePath } from "next/cache";
 
 import { createBevySponsor, getBevyEventSponsorsMapping, patchBevyEventSponsors } from "@/lib/bevy/client";
 import type { BevyEventSponsorMappingPayload } from "@/lib/bevy/types";
+import {
+  EMAIL_TEMPLATES_CONFIG,
+  getDefaultTemplateByKey,
+  getDefaultTemplateDataForType,
+  interpolateTemplateHtml,
+  interpolateTemplateSubject,
+} from "@/lib/events/email-templates";
 import { extractApiMessage } from "@/lib/utils";
 import type {
   EventSponsorConfig,
@@ -21,13 +28,6 @@ import {
   patchFirestoreDoc,
   queryFirestoreDocs,
 } from "./firestore-admin";
-import {
-  EMAIL_TEMPLATES_CONFIG,
-  getDefaultTemplateByKey,
-  getDefaultTemplateDataForType,
-  interpolateTemplateHtml,
-  interpolateTemplateSubject,
-} from "@/lib/events/email-templates";
 import { randomBytes } from "node:crypto";
 
 const generateToken = (prefix: string, bytes = 12) => `${prefix}_${randomBytes(bytes).toString("hex")}`;
@@ -252,7 +252,17 @@ export async function submitSponsorConfirmationAction(
       bevy_sponsor_id: existing?.bevy_sponsor_id,
     };
 
-    await patchFirestoreDoc("event_sponsor_confirmations", docId, confirmation as unknown as Record<string, unknown>);
+    const savedConfirmation = await patchFirestoreDoc(
+      "event_sponsor_confirmations",
+      docId,
+      confirmation as unknown as Record<string, unknown>,
+    );
+    if (!savedConfirmation) {
+      return {
+        success: false,
+        error: "Failed to save your sponsor confirmation. Please try again or contact the GDG Jakarta team.",
+      };
+    }
 
     // Also upsert into chapter_sponsors master collection
     const sponsorDocId = `sps_${data.company_name
@@ -260,7 +270,7 @@ export async function submitSponsorConfirmationAction(
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "_")
       .slice(0, 60)}`;
-    await patchFirestoreDoc("chapter_sponsors", sponsorDocId, {
+    const savedChapterSponsor = await patchFirestoreDoc("chapter_sponsors", sponsorDocId, {
       id: sponsorDocId,
       company: confirmation.company_name,
       company_legal_name: confirmation.company_legal_name,
@@ -277,6 +287,9 @@ export async function submitSponsorConfirmationAction(
       created_at: now,
       updated_at: now,
     });
+    if (!savedChapterSponsor) {
+      console.warn(`[submitSponsorConfirmationAction] Failed to upsert chapter_sponsors/${sponsorDocId}`);
+    }
 
     // Send automated Partner Confirmation Thank You Email
     const recipientEmail = confirmation.contact_email || data.email.trim();

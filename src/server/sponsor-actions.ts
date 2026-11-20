@@ -702,7 +702,13 @@ export async function submitChapterSponsorConfirmationAction(
       updated_at: now,
     };
 
-    await patchFirestoreDoc("chapter_sponsors", docId, sponsorData as unknown as Record<string, unknown>);
+    const saved = await patchFirestoreDoc("chapter_sponsors", docId, sponsorData as unknown as Record<string, unknown>);
+    if (!saved) {
+      return {
+        success: false,
+        error: "Failed to save your partner confirmation. Please try again or contact the GDG Jakarta team.",
+      };
+    }
 
     // Send automated Partner Confirmation Thank You Email (Chapter-wide / Non-event bound)
     const recipientEmail = sponsorData.contact_email || data.email?.trim();

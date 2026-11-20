@@ -2209,8 +2209,34 @@ service cloud.firestore {
       // Get, List: Publicly accessible for partner showcases, chapter landing page sponsors, and directory view.
       allow get, list: if true;
 
-      // Create, Update, Delete: Restricted to team members (Organizers & Staff).
-      allow create, update, delete: if hasTeamAccess();
+      // Create: Team members (Organizers & Staff), or public partner confirmation submission with allowed sponsor fields.
+      allow create: if hasTeamAccess() || (
+        request.resource.data.keys().hasOnly([
+          'id', 'company', 'company_legal_name', 'company_address',
+          'url', 'description', 'logo', 'tier', 'status',
+          'contact_name', 'contact_title', 'contact_email', 'contact_phone',
+          'is_active', 'display_order', 'bevy_id', 'created_at', 'updated_at'
+        ])
+        && request.resource.data.company is string
+        && request.resource.data.company.size() > 0
+        && request.resource.data.company.size() <= 300
+      );
+
+      // Update: Team members (Organizers & Staff), or public partner confirmation self-service update on allowed sponsor fields.
+      allow update: if hasTeamAccess() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'id', 'company', 'company_legal_name', 'company_address',
+          'url', 'description', 'logo', 'tier', 'status',
+          'contact_name', 'contact_title', 'contact_email', 'contact_phone',
+          'is_active', 'display_order', 'bevy_id', 'created_at', 'updated_at'
+        ])
+        && request.resource.data.company is string
+        && request.resource.data.company.size() > 0
+        && request.resource.data.company.size() <= 300
+      );
+
+      // Delete: Strictly restricted to team members (Organizers & Staff).
+      allow delete: if hasTeamAccess();
     }
 
     // -------------------------------------------------------------
