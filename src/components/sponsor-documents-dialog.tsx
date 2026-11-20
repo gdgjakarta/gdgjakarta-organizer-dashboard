@@ -641,13 +641,13 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                               </Button>
                               <Button
                                 type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 px-2 text-xs gap-1"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                title="Send Document via Email"
                                 onClick={() => handleOpenSendEmailModal(doc)}
                               >
-                                <Send className="h-3 w-3" />
-                                Email
+                                <Send className="h-3.5 w-3.5" />
                               </Button>
                               <Button
                                 type="button"
