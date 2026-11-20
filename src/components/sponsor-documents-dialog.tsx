@@ -1278,7 +1278,7 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
 
       {/* Send Document Email Dialog */}
       <Dialog open={!!sendingEmailDoc} onOpenChange={(v) => !v && setSendingEmailDoc(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:w-fit sm:min-w-[32rem] sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold">
               <Mail className="h-4 w-4 text-primary" />
