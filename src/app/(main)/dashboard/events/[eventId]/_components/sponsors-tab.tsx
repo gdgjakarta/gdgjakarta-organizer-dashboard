@@ -124,6 +124,8 @@ export function SponsorsTab({ event }: SponsorsTabProps) {
   const [isProposalDialogOpen, setIsProposalDialogOpen] = useState(false);
   const [proposalCompany, setProposalCompany] = useState("");
   const [proposalEmail, setProposalEmail] = useState("");
+  const [proposalCc, setProposalCc] = useState("");
+  const [proposalBcc, setProposalBcc] = useState("");
   const [proposalTier, setProposalTier] = useState<SponsorCategory>("community");
   const [proposalDeckUrl, setProposalDeckUrl] = useState("");
   const [selectedProposalSponsorId, setSelectedProposalSponsorId] = useState<string>("custom");
@@ -185,10 +187,29 @@ export function SponsorsTab({ event }: SponsorsTabProps) {
     return `${origin}/events/${event.id}/partner-confirmation?token=${config.share_token}`;
   }, [config, event.id]);
 
+  const [isRotatingToken, setIsRotatingToken] = useState(false);
+
   const handleCopyLink = () => {
     if (!shareLink) return;
     navigator.clipboard.writeText(shareLink);
     toast.success("Public Sponsor Confirmation link copied to clipboard!");
+  };
+
+  const handleRotateToken = async () => {
+    setIsRotatingToken(true);
+    try {
+      const res = await regenerateSponsorShareTokenAction(event.id);
+      if (res.success && res.share_token) {
+        setConfig((prev) => (prev ? { ...prev, share_token: res.share_token! } : prev));
+        toast.success("Confirmation token rotated. Previous link is now invalid.");
+      } else {
+        toast.error(res.error || "Failed to rotate token.");
+      }
+    } catch {
+      toast.error("Failed to rotate token.");
+    } finally {
+      setIsRotatingToken(false);
+    }
   };
 
   // Bevy 1-Click Sync
@@ -225,6 +246,8 @@ export function SponsorsTab({ event }: SponsorsTabProps) {
           eventId: event.id,
           companyName: proposalCompany.trim(),
           recipientEmail: proposalEmail.trim(),
+          cc: proposalCc.trim() || undefined,
+          bcc: proposalBcc.trim() || undefined,
           sponsorTier: proposalTier,
           proposalDeckUrl: proposalDeckUrl.trim(),
         });
@@ -234,6 +257,8 @@ export function SponsorsTab({ event }: SponsorsTabProps) {
           setIsProposalDialogOpen(false);
           setProposalCompany("");
           setProposalEmail("");
+          setProposalCc("");
+          setProposalBcc("");
           setProposalDeckUrl("");
           setSelectedProposalSponsorId("custom");
         } else {
@@ -516,6 +541,17 @@ export function SponsorsTab({ event }: SponsorsTabProps) {
               >
                 <Copy className="mr-1.5 h-3.5 w-3.5" />
                 Copy Link
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRotateToken}
+                disabled={!shareLink || isRotatingToken}
+                className="text-xs"
+              >
+                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isRotatingToken ? "animate-spin" : ""}`} />
+                {isRotatingToken ? "Rotating..." : "Rotate Token"}
               </Button>
               <Button
                 type="button"
@@ -1187,14 +1223,36 @@ export function SponsorsTab({ event }: SponsorsTabProps) {
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">Recipient Work Email *</Label>
+              <Label className="text-xs font-medium">Recipient Work Email (To) *</Label>
               <Input
-                type="email"
-                placeholder="partner@company.com"
+                type="text"
+                placeholder="partner@company.com, team@company.com"
                 value={proposalEmail}
                 onChange={(e) => setProposalEmail(e.target.value)}
                 required
               />
+              <p className="text-[11px] text-muted-foreground">Separate multiple emails with commas.</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">CC (Optional)</Label>
+                <Input
+                  type="text"
+                  placeholder="cc1@company.com, cc2@company.com"
+                  value={proposalCc}
+                  onChange={(e) => setProposalCc(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">BCC (Optional)</Label>
+                <Input
+                  type="text"
+                  placeholder="bcc@gdgjakarta.org"
+                  value={proposalBcc}
+                  onChange={(e) => setProposalBcc(e.target.value)}
+                />
+              </div>
             </div>
 
             <div className="space-y-1.5">

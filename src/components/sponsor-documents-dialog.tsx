@@ -96,6 +96,8 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
   // Send Email Modal State
   const [sendingEmailDoc, setSendingEmailDoc] = useState<SponsorDocument | null>(null);
   const [recipientEmail, setRecipientEmail] = useState("");
+  const [ccEmail, setCcEmail] = useState("");
+  const [bccEmail, setBccEmail] = useState("");
   const [customSubject, setCustomSubject] = useState("");
   const [customMessage, setCustomMessage] = useState("");
   const [isSendingEmail, startEmailTransition] = useTransition();
@@ -374,6 +376,8 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
     const label = DOC_TYPE_LABELS[doc.doc_type];
     setCustomSubject(`${label} [${doc.doc_number}] — ${doc.event_title ? `${doc.event_title} | ` : ""}GDG Jakarta`);
     setCustomMessage("");
+    setCcEmail("");
+    setBccEmail("");
   };
 
   const handleConfirmSendEmail = (e: React.FormEvent) => {
@@ -391,6 +395,8 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
           recipientEmail.trim(),
           customSubject.trim(),
           customMessage.trim(),
+          ccEmail.trim() || undefined,
+          bccEmail.trim() || undefined,
         );
 
         if (res.success && res.document) {
@@ -1215,15 +1221,39 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
 
           <form onSubmit={handleConfirmSendEmail} className="space-y-3 py-2">
             <div className="space-y-1">
-              <Label className="text-xs">Recipient Email *</Label>
+              <Label className="text-xs">Recipient Email (To) *</Label>
               <Input
-                type="email"
+                type="text"
                 required
                 value={recipientEmail}
                 onChange={(e) => setRecipientEmail(e.target.value)}
-                placeholder="partner@company.com"
+                placeholder="partner@company.com, finance@company.com"
                 className="h-8 text-xs"
               />
+              <p className="text-[11px] text-muted-foreground">Separate multiple emails with commas.</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs">CC (Optional)</Label>
+                <Input
+                  type="text"
+                  value={ccEmail}
+                  onChange={(e) => setCcEmail(e.target.value)}
+                  placeholder="cc1@company.com, cc2@company.com"
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">BCC (Optional)</Label>
+                <Input
+                  type="text"
+                  value={bccEmail}
+                  onChange={(e) => setBccEmail(e.target.value)}
+                  placeholder="bcc@gdgjakarta.org"
+                  className="h-8 text-xs"
+                />
+              </div>
             </div>
 
             <div className="space-y-1">

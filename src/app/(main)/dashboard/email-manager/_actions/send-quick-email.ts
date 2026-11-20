@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 
+import { validateEmailRecipients } from "@/lib/email-recipients";
 import { convertTemplateToCleanTokens, splitFullName } from "@/lib/events/email-templates";
 import { extractApiMessage } from "@/lib/utils";
 import { sendEmailWebhookAction } from "@/server/email-template-actions";
@@ -9,7 +10,40 @@ import { sendEmailWebhookAction } from "@/server/email-template-actions";
 const quickEmailSchema = z.object({
   eventId: z.string().min(1, "Target event is required"),
   eventTitle: z.string().optional(),
-  recipientEmail: z.string().email("A valid recipient email address is required"),
+  recipientEmail: z
+    .union([z.string(), z.array(z.string())])
+    .transform((val, ctx) => {
+      const res = validateEmailRecipients(val, { required: true, label: "Recipient email" });
+      if (!res.valid) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: res.error || "A valid recipient email address is required" });
+        return z.NEVER;
+      }
+      return res.formatted;
+    }),
+  cc: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .nullable()
+    .transform((val, ctx) => {
+      const res = validateEmailRecipients(val, { required: false, label: "CC" });
+      if (!res.valid) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: res.error || "Invalid CC email address" });
+        return z.NEVER;
+      }
+      return res.formatted || undefined;
+    }),
+  bcc: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .nullable()
+    .transform((val, ctx) => {
+      const res = validateEmailRecipients(val, { required: false, label: "BCC" });
+      if (!res.valid) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: res.error || "Invalid BCC email address" });
+        return z.NEVER;
+      }
+      return res.formatted || undefined;
+    }),
   recipientName: z.string().optional(),
   subject: z.string().min(1, "Subject is required"),
   headerUrl: z.string().optional(),
@@ -33,7 +67,7 @@ const quickEmailSchema = z.object({
     .optional(),
 });
 
-export type QuickEmailInput = z.infer<typeof quickEmailSchema>;
+export type QuickEmailInput = z.input<typeof quickEmailSchema>;
 
 export async function sendQuickEmail(input: QuickEmailInput) {
   const parsed = quickEmailSchema.safeParse(input);
@@ -159,6 +193,8 @@ export async function sendQuickEmail(input: QuickEmailInput) {
       first_name: firstName,
       last_name: lastName,
       email: data.recipientEmail,
+      cc: data.cc,
+      bcc: data.bcc,
       subjectEmail: cleanSubject,
       bodyEmail: cleanBody,
     });

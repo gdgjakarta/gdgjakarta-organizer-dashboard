@@ -64,6 +64,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -164,6 +165,8 @@ export function SignDocumentsTab({
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [emailDialogDoc, setEmailDialogDoc] = useState<PartnerSignedDocument | null>(null);
   const [emailRecipientInput, setEmailRecipientInput] = useState("");
+  const [emailCcInput, setEmailCcInput] = useState("");
+  const [emailBccInput, setEmailBccInput] = useState("");
   const [emailSubjectInput, setEmailSubjectInput] = useState("");
   const [emailMessageInput, setEmailMessageInput] = useState("");
   const emailNoteEditorRef = useRef<HTMLDivElement | null>(null);
@@ -563,6 +566,8 @@ export function SignDocumentsTab({
   const openSendEmailModal = (doc: PartnerSignedDocument) => {
     setEmailDialogDoc(doc);
     setEmailRecipientInput(doc.contact_email || doc.email_recipient || "");
+    setEmailCcInput("");
+    setEmailBccInput("");
     setEmailSubjectInput(`Signed Document: ${doc.document_title} — ${doc.company_name} | GDG Jakarta`);
     setEmailMessageInput("");
   };
@@ -579,6 +584,8 @@ export function SignDocumentsTab({
       const res = await sendPartnerSignedDocumentEmailAction({
         docId: emailDialogDoc.id,
         recipientEmail: emailRecipientInput.trim(),
+        cc: emailCcInput.trim() || undefined,
+        bcc: emailBccInput.trim() || undefined,
         customSubject: emailSubjectInput.trim() || undefined,
         customMessage: emailMessageInput.trim() || undefined,
       });
@@ -646,7 +653,7 @@ export function SignDocumentsTab({
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-base font-bold text-foreground">Partner PDF Signage &amp; E-Certificate</h2>
 
-            {certStatus && (
+            {certStatus ? (
               <Popover>
                 <PopoverTrigger asChild>
                   <button type="button" className="cursor-pointer focus:outline-hidden">
@@ -717,6 +724,8 @@ export function SignDocumentsTab({
                   )}
                 </PopoverContent>
               </Popover>
+            ) : (
+              <Skeleton className="h-[22px] w-36 rounded-full" />
             )}
           </div>
           <p className="text-xs text-muted-foreground">
@@ -744,7 +753,12 @@ export function SignDocumentsTab({
             className="gap-1.5 text-xs"
           >
             <History className="h-3.5 w-3.5" />
-            History ({signedDocs.length})
+            History
+            {isLoadingData ? (
+              <Skeleton className="h-3.5 w-6 rounded-sm" />
+            ) : (
+              <span>({signedDocs.length})</span>
+            )}
           </Button>
         </div>
       </div>
@@ -1149,7 +1163,12 @@ export function SignDocumentsTab({
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
                 <FileCheck2 className="h-4 w-4 text-primary" />
-                Signed Partner Documents ({signedDocs.length})
+                Signed Partner Documents
+                {isLoadingData ? (
+                  <Skeleton className="h-4 w-8 rounded-sm" />
+                ) : (
+                  <span>({signedDocs.length})</span>
+                )}
               </CardTitle>
               <CardDescription className="text-xs">
                 All certified PDFs stored in Cloudflare R2 (`assets.gdgjakarta.org`) with verification links.
@@ -1193,9 +1212,17 @@ export function SignDocumentsTab({
         </CardHeader>
         <CardContent>
           {isLoadingData ? (
-            <div className="flex items-center justify-center py-12 text-xs text-muted-foreground gap-2">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-              Loading signed partner documents...
+            <div className="space-y-2.5 py-2">
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <div key={idx} className="flex items-center justify-between gap-4 rounded-md border p-3">
+                  <div className="space-y-1.5 flex-1">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                  <Skeleton className="h-8 w-24" />
+                </div>
+              ))}
             </div>
           ) : filteredDocs.length === 0 ? (
             <div className="py-12 px-4 text-center rounded-lg border border-dashed border-border">
@@ -1639,17 +1666,47 @@ export function SignDocumentsTab({
             <form onSubmit={handleSendEmail} className="min-w-0 space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="send-email-to" className="text-xs font-medium">
-                  Recipient Email <span className="text-destructive">*</span>
+                  Recipient Email (To) <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="send-email-to"
-                  type="email"
+                  type="text"
                   required
                   value={emailRecipientInput}
                   onChange={(e) => setEmailRecipientInput(e.target.value)}
-                  placeholder="partner@company.com"
+                  placeholder="partner@company.com, legal@company.com"
                   className="text-xs"
                 />
+                <p className="text-[11px] text-muted-foreground">Separate multiple emails with commas.</p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="send-email-cc" className="text-xs font-medium">
+                    CC <span className="font-normal text-muted-foreground">(Optional)</span>
+                  </Label>
+                  <Input
+                    id="send-email-cc"
+                    type="text"
+                    value={emailCcInput}
+                    onChange={(e) => setEmailCcInput(e.target.value)}
+                    placeholder="cc1@company.com, cc2@company.com"
+                    className="text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="send-email-bcc" className="text-xs font-medium">
+                    BCC <span className="font-normal text-muted-foreground">(Optional)</span>
+                  </Label>
+                  <Input
+                    id="send-email-bcc"
+                    type="text"
+                    value={emailBccInput}
+                    onChange={(e) => setEmailBccInput(e.target.value)}
+                    placeholder="bcc@gdgjakarta.org"
+                    className="text-xs"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1.5">

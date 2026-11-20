@@ -30,6 +30,7 @@ import type {
 } from "@/types/sponsor";
 
 import { isAuthorizedOrganizerSession } from "./auth-guard";
+import { validateEmailRecipients } from "@/lib/email-recipients";
 import { sendEmailDirectInternal } from "./email-template-actions";
 import {
   deleteFirestoreDoc,
@@ -316,10 +317,21 @@ export async function deleteChapterSponsorAction(
     await deleteFirestoreDoc("chapter_sponsors", sponsorId);
 
     if (bevyId) {
-      await deleteBevySponsor(bevyId);
+      const bevyRes = await deleteBevySponsor(bevyId);
+      if (!bevyRes.success) {
+        revalidatePath("/dashboard/partnership");
+        revalidatePath("/partnership");
+        revalidatePath("/");
+        return {
+          success: false,
+          error: bevyRes.error || "Removed from dashboard, but failed to remove from Bevy.",
+        };
+      }
     }
 
     revalidatePath("/dashboard/partnership");
+    revalidatePath("/partnership");
+    revalidatePath("/");
     return { success: true };
   } catch (err) {
     return { success: false, error: extractApiMessage(err, "Failed to delete sponsor.") };
@@ -334,6 +346,8 @@ export async function sendSponsorProposalEmailAction(input: {
   eventId: string | number;
   companyName: string;
   recipientEmail: string;
+  cc?: string;
+  bcc?: string;
   recipientName?: string;
   sponsorTier?: SponsorCategory;
   proposalDeckUrl?: string;
@@ -356,6 +370,19 @@ export async function sendSponsorProposalEmailAction(input: {
       ? `https://gdgjakarta.com/events/${event.id}/partner-confirmation?token=${event.sponsor_config.share_token}`
       : `https://gdgjakarta.com/events/${event.id}/partner-confirmation`;
 
+    const toValidation = validateEmailRecipients(input.recipientEmail, { required: true, label: "Recipient email" });
+    if (!toValidation.valid) {
+      return { success: false, error: toValidation.error || "Valid recipient email is required." };
+    }
+    const ccValidation = validateEmailRecipients(input.cc, { required: false, label: "CC" });
+    if (!ccValidation.valid) {
+      return { success: false, error: ccValidation.error || "Invalid CC email address." };
+    }
+    const bccValidation = validateEmailRecipients(input.bcc, { required: false, label: "BCC" });
+    if (!bccValidation.valid) {
+      return { success: false, error: bccValidation.error || "Invalid BCC email address." };
+    }
+
     // 1. Persist proposal session
     const proposalSession: SponsorProposalSession = {
       id: proposalToken,
@@ -363,7 +390,7 @@ export async function sendSponsorProposalEmailAction(input: {
       event_id: String(event.id),
       event_title: event.title,
       company_name: input.companyName,
-      recipient_email: input.recipientEmail.trim().toLowerCase(),
+      recipient_email: toValidation.formatted,
       recipient_name: input.recipientName || input.companyName,
       status: "proposal_sent",
       deck_url: input.proposalDeckUrl || "",
@@ -411,7 +438,9 @@ export async function sendSponsorProposalEmailAction(input: {
     const sendResult = await sendEmailDirectInternal({
       first_name: firstName || "Partner",
       last_name: lastName,
-      email: input.recipientEmail.trim().toLowerCase(),
+      email: toValidation.formatted,
+      cc: ccValidation.formatted || undefined,
+      bcc: bccValidation.formatted || undefined,
       subjectEmail: subject,
       bodyEmail: interpolatedHtml,
     });

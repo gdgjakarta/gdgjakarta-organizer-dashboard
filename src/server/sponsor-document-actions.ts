@@ -13,6 +13,7 @@ import type {
 } from "@/types/sponsor";
 
 import { isAuthorizedOrganizerSession } from "./auth-guard";
+import { validateEmailRecipients } from "@/lib/email-recipients";
 import { sendEmailDirectInternal } from "./email-template-actions";
 import { deleteFirestoreDoc, getFirestoreDoc, patchFirestoreDoc, queryFirestoreDocs } from "./firestore-admin";
 import { randomBytes } from "node:crypto";
@@ -632,6 +633,8 @@ export async function sendSponsorDocumentEmailAction(
   recipientEmail?: string,
   customSubject?: string,
   customMessage?: string,
+  cc?: string,
+  bcc?: string,
 ): Promise<{
   success: boolean;
   document?: SponsorDocument;
@@ -649,10 +652,22 @@ export async function sendSponsorDocumentEmailAction(
     }
     const doc = rawDoc as unknown as SponsorDocument;
 
-    const targetEmail = (recipientEmail || doc.contact_email || "").trim().toLowerCase();
-    if (!targetEmail) {
-      return { success: false, error: "Recipient email is required." };
+    const toValidation = validateEmailRecipients(recipientEmail || doc.contact_email || "", {
+      required: true,
+      label: "Recipient email",
+    });
+    if (!toValidation.valid) {
+      return { success: false, error: toValidation.error || "Recipient email is required." };
     }
+    const ccValidation = validateEmailRecipients(cc, { required: false, label: "CC" });
+    if (!ccValidation.valid) {
+      return { success: false, error: ccValidation.error || "Invalid CC email address." };
+    }
+    const bccValidation = validateEmailRecipients(bcc, { required: false, label: "BCC" });
+    if (!bccValidation.valid) {
+      return { success: false, error: bccValidation.error || "Invalid BCC email address." };
+    }
+    const targetEmail = toValidation.formatted;
 
     const docTypeLabel =
       doc.doc_type === "invoice"
@@ -777,6 +792,8 @@ export async function sendSponsorDocumentEmailAction(
       first_name: firstName || "Partner",
       last_name: lastName,
       email: targetEmail,
+      cc: ccValidation.formatted || undefined,
+      bcc: bccValidation.formatted || undefined,
       subjectEmail: subject,
       bodyEmail: htmlBody,
     });

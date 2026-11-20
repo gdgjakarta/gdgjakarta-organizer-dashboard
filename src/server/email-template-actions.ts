@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 
+import { validateEmailRecipients } from "@/lib/email-recipients";
 import {
   adjustBodyEmailForApprovedWebhook,
   buildRenderedEmailForAttendee,
@@ -14,25 +15,52 @@ import { extractApiMessage } from "@/lib/utils";
 
 import { isAuthorizedOrganizerOrSelfEmail, isAuthorizedOrganizerSession } from "./auth-guard";
 
+const emailListInputSchema = z.union([z.string(), z.array(z.string())]);
+
+const requiredEmailListSchema = emailListInputSchema.transform((val, ctx) => {
+  const res = validateEmailRecipients(val, { required: true, label: "Recipient email" });
+  if (!res.valid) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: res.error || "Valid recipient email is required" });
+    return z.NEVER;
+  }
+  return res.formatted;
+});
+
+const optionalEmailListSchema = emailListInputSchema
+  .optional()
+  .nullable()
+  .transform((val, ctx) => {
+    const res = validateEmailRecipients(val, { required: false, label: "Email" });
+    if (!res.valid) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: res.error || "Invalid email address" });
+      return z.NEVER;
+    }
+    return res.formatted || undefined;
+  });
+
 const sendEmailSchema = z.object({
   first_name: z.string().min(1, "First name is required"),
   last_name: z.string().min(1, "Last name is required"),
-  email: z.string().email("Valid recipient email is required"),
+  email: requiredEmailListSchema,
+  cc: optionalEmailListSchema,
+  bcc: optionalEmailListSchema,
   subjectEmail: z.string().min(1, "Email subject is required"),
   bodyEmail: z.string().min(1, "Email body HTML is required"),
 });
 
-export type SendEmailInput = z.infer<typeof sendEmailSchema>;
+export type SendEmailInput = z.input<typeof sendEmailSchema>;
 
 const sendInterestEmailSchema = z.object({
   first_name: z.string().min(1, "First name is required"),
   last_name: z.string().optional().default(""),
-  email: z.string().email("Valid recipient email is required"),
+  email: requiredEmailListSchema,
+  cc: optionalEmailListSchema,
+  bcc: optionalEmailListSchema,
   subjectEmail: z.string().min(1, "Email subject is required"),
   bodyEmail: z.string().min(1, "Email body HTML is required"),
 });
 
-export type SendInterestEmailInput = z.infer<typeof sendInterestEmailSchema>;
+export type SendInterestEmailInput = z.input<typeof sendInterestEmailSchema>;
 
 export interface EmailDispatchResult {
   success: boolean;
@@ -92,13 +120,20 @@ export async function sendEmailDirectInternal(data: SendEmailInput): Promise<Ema
       headers["x-api-key"] = apiKey;
     }
 
-    const payload = {
+    const payload: Record<string, string> = {
       first_name: parsed.data.first_name,
       last_name: parsed.data.last_name,
       email: parsed.data.email,
       subjectEmail: parsed.data.subjectEmail,
       bodyEmail: parsed.data.bodyEmail,
     };
+
+    if (parsed.data.cc) {
+      payload.cc = parsed.data.cc;
+    }
+    if (parsed.data.bcc) {
+      payload.bcc = parsed.data.bcc;
+    }
 
     const response = await fetch(webhookUrl, {
       method: "POST",
@@ -173,7 +208,17 @@ export async function sendEmailDirectInternal(data: SendEmailInput): Promise<Ema
 }
 
 export async function sendEmailWebhookAction(data: SendEmailInput): Promise<EmailDispatchResult> {
-  if (!(await isAuthorizedOrganizerOrSelfEmail(data.email))) {
+  const toCheck = validateEmailRecipients(data.email, { required: true, label: "Recipient email" });
+  const ccCheck = validateEmailRecipients(data.cc, { required: false, label: "CC" });
+  const bccCheck = validateEmailRecipients(data.bcc, { required: false, label: "BCC" });
+
+  // Non-organizers may only send to their own single email address without CC/BCC
+  const requiresOrganizer = toCheck.emails.length !== 1 || ccCheck.emails.length > 0 || bccCheck.emails.length > 0;
+  const authorized = requiresOrganizer
+    ? await isAuthorizedOrganizerSession()
+    : await isAuthorizedOrganizerOrSelfEmail(toCheck.emails[0]);
+
+  if (!authorized) {
     return { success: false, error: "Unauthorized: Organizer session required." };
   }
   return sendEmailDirectInternal(data);
@@ -189,6 +234,8 @@ export async function sendInterestEmailWebhookAction(data: SendInterestEmailInpu
     first_name: data.first_name.trim(),
     last_name: safeLastName,
     email: data.email,
+    cc: data.cc,
+    bcc: data.bcc,
     subjectEmail: data.subjectEmail,
     bodyEmail: data.bodyEmail,
   });
@@ -196,7 +243,9 @@ export async function sendInterestEmailWebhookAction(data: SendInterestEmailInpu
 
 const sendTemplateEmailRequestSchema = z.object({
   eventId: z.string().min(1),
-  recipientEmail: z.string().email("Valid email is required"),
+  recipientEmail: requiredEmailListSchema,
+  cc: optionalEmailListSchema,
+  bcc: optionalEmailListSchema,
   recipientName: z.string().min(1, "Recipient name is required"),
   subjectEmail: z.string().min(1, "Subject is required"),
   bodyEmail: z.string().min(1, "Body HTML is required"),
@@ -214,7 +263,7 @@ const sendTemplateEmailRequestSchema = z.object({
   overrideCheckinDeadline: z.string().optional(),
 });
 
-export type SendTemplateEmailRequestInput = z.infer<typeof sendTemplateEmailRequestSchema>;
+export type SendTemplateEmailRequestInput = z.input<typeof sendTemplateEmailRequestSchema>;
 
 /**
  * Server Action: Dispatches constructed template email directly via request.
@@ -244,12 +293,15 @@ export async function sendTemplateEmailRequestAction(
     parsed.data.templateKey === "paid_waitlisted" ||
     parsed.data.templateKey === "cancelled" ||
     parsed.data.templateKey === "cancelled_attendee" ||
+    parsed.data.templateKey === "speaker_thank_you" ||
     parsed.data.templateKey.startsWith("rejected")
   ) {
     return await sendEmailWebhookAction({
       first_name: safeFirstName,
       last_name: safeLastName,
       email: parsed.data.recipientEmail,
+      cc: parsed.data.cc,
+      bcc: parsed.data.bcc,
       subjectEmail: parsed.data.subjectEmail,
       bodyEmail: parsed.data.bodyEmail,
     });

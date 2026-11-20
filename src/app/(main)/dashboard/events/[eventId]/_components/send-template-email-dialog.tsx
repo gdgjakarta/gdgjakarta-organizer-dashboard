@@ -69,6 +69,8 @@ export function SendTemplateEmailDialog({
   const [firstName, setFirstName] = useState("Jane");
   const [lastName, setLastName] = useState("Doe");
   const [recipientEmail, setRecipientEmail] = useState("jane.doe@example.com");
+  const [ccEmail, setCcEmail] = useState("");
+  const [bccEmail, setBccEmail] = useState("");
   const [customSubject, setCustomSubject] = useState("");
   const [cancellationReason, setCancellationReason] = useState(
     "Incomplete registration profile or duplicate submission.",
@@ -188,6 +190,8 @@ export function SendTemplateEmailDialog({
         const res = await sendTemplateEmailRequestAction({
           eventId: String(event.id),
           recipientEmail,
+          cc: ccEmail.trim() || undefined,
+          bcc: bccEmail.trim() || undefined,
           recipientName: fullName,
           subjectEmail: computedSubject,
           bodyEmail: computedBody,
@@ -348,12 +352,34 @@ export function SendTemplateEmailDialog({
               </div>
 
               <div className="space-y-1 sm:col-span-2">
-                <Label className="text-[11px]">Recipient Email (email)</Label>
+                <Label className="text-[11px]">Recipient Email (To — comma-separated for multiple)</Label>
                 <Input
-                  type="email"
+                  type="text"
                   value={recipientEmail}
                   onChange={(e) => setRecipientEmail(e.target.value)}
-                  placeholder="jane.doe@example.com"
+                  placeholder="jane.doe@example.com, team@example.com"
+                  className="h-8 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[11px]">CC (Optional)</Label>
+                <Input
+                  type="text"
+                  value={ccEmail}
+                  onChange={(e) => setCcEmail(e.target.value)}
+                  placeholder="cc1@example.com, cc2@example.com"
+                  className="h-8 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[11px]">BCC (Optional)</Label>
+                <Input
+                  type="text"
+                  value={bccEmail}
+                  onChange={(e) => setBccEmail(e.target.value)}
+                  placeholder="bcc@gdgjakarta.org"
                   className="h-8 text-xs"
                 />
               </div>

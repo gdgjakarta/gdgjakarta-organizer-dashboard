@@ -106,6 +106,8 @@ const formSchema = z
     eventId: z.string().min(1, { message: "Event is required." }),
     recipientSource: z.enum(["audience", "spreadsheet", "single"]),
     recipientEmail: z.string().optional(),
+    cc: z.string().optional(),
+    bcc: z.string().optional(),
     recipientName: z.string().optional(),
     audienceType: z.string().optional(),
     spreadsheetUrl: z.string().optional(),
@@ -315,6 +317,8 @@ export function EmailBlastForm({
       eventId: selectedEvent?.id || "",
       recipientSource: "audience",
       recipientEmail: "",
+      cc: "",
+      bcc: "",
       recipientName: "",
       audienceType: "ticket_all",
       spreadsheetUrl: "",
@@ -1133,6 +1137,8 @@ export function EmailBlastForm({
           eventId: data.eventId,
           eventTitle: eventPlaceholders?.EventName || eventTitle,
           recipientEmail: data.recipientEmail || "",
+          cc: data.cc?.trim() || undefined,
+          bcc: data.bcc?.trim() || undefined,
           recipientName: data.recipientName,
           subject: data.subject,
           headerUrl: data.headerUrl || eventPlaceholders?.EventBannerUrl,
@@ -1610,17 +1616,20 @@ export function EmailBlastForm({
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
                         <FieldLabel htmlFor="recipientEmail" className="text-xs font-semibold">
-                          Recipient Email Address <span className="text-destructive">*</span>
+                          Recipient Email (To) <span className="text-destructive">*</span>
                         </FieldLabel>
                         <Input
                           id="recipientEmail"
-                          type="email"
-                          placeholder="e.g. attendee@example.com"
+                          type="text"
+                          placeholder="e.g. attendee1@example.com, attendee2@example.com"
                           {...register("recipientEmail")}
                           disabled={isSubmitting}
                           aria-invalid={!!errors.recipientEmail}
                           className="h-9"
                         />
+                        <FieldDescription className="text-[11px]">
+                          Separate multiple emails with commas.
+                        </FieldDescription>
                         {errors.recipientEmail && <FieldError>{errors.recipientEmail.message}</FieldError>}
                       </div>
 
@@ -1638,6 +1647,34 @@ export function EmailBlastForm({
                         <FieldDescription className="text-[11px]">
                           Used to personalize [[Name]], [[FirstName]], and [[LastName]].
                         </FieldDescription>
+                      </div>
+
+                      <div className="space-y-1">
+                        <FieldLabel htmlFor="quickEmailCc" className="text-xs font-semibold">
+                          CC (Optional)
+                        </FieldLabel>
+                        <Input
+                          id="quickEmailCc"
+                          type="text"
+                          placeholder="e.g. cc1@example.com, cc2@example.com"
+                          {...register("cc")}
+                          disabled={isSubmitting}
+                          className="h-9"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <FieldLabel htmlFor="quickEmailBcc" className="text-xs font-semibold">
+                          BCC (Optional)
+                        </FieldLabel>
+                        <Input
+                          id="quickEmailBcc"
+                          type="text"
+                          placeholder="e.g. bcc@gdgjakarta.org"
+                          {...register("bcc")}
+                          disabled={isSubmitting}
+                          className="h-9"
+                        />
                       </div>
                     </div>
 

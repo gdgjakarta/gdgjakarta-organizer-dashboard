@@ -12,6 +12,7 @@ import type {
 } from "@/types/partner-signage";
 
 import { isAuthorizedExecutiveOrganizerSession } from "./auth-guard";
+import { validateEmailRecipients } from "@/lib/email-recipients";
 import { sendEmailDirectInternal } from "./email-template-actions";
 import { deleteFirestoreDoc, getFirestoreDoc, patchFirestoreDoc, queryFirestoreDocs } from "./firestore-admin";
 
@@ -141,6 +142,8 @@ export async function getPublicPartnerSignedDocumentByTokenAction(token: string)
 export async function sendPartnerSignedDocumentEmailAction(input: {
   docId: string;
   recipientEmail: string;
+  cc?: string;
+  bcc?: string;
   customSubject?: string;
   customMessage?: string;
 }): Promise<{
@@ -164,10 +167,22 @@ export async function sendPartnerSignedDocumentEmailAction(input: {
     }
     const doc = rawDoc as unknown as PartnerSignedDocument;
 
-    const targetEmail = (input.recipientEmail || doc.contact_email || "").trim().toLowerCase();
-    if (!targetEmail || targetEmail.length > 150 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
-      return { success: false, error: "Valid recipient email (<= 150 chars) is required." };
+    const toValidation = validateEmailRecipients(input.recipientEmail || doc.contact_email || "", {
+      required: true,
+      label: "Recipient email",
+    });
+    if (!toValidation.valid) {
+      return { success: false, error: toValidation.error || "Valid recipient email is required." };
     }
+    const ccValidation = validateEmailRecipients(input.cc, { required: false, label: "CC" });
+    if (!ccValidation.valid) {
+      return { success: false, error: ccValidation.error || "Invalid CC email address." };
+    }
+    const bccValidation = validateEmailRecipients(input.bcc, { required: false, label: "BCC" });
+    if (!bccValidation.valid) {
+      return { success: false, error: bccValidation.error || "Invalid BCC email address." };
+    }
+    const targetEmail = toValidation.formatted;
 
     const verifyUrl = `https://gdgjakarta.com/partnership/signed-documents/${doc.token}`;
     const subject =
@@ -357,6 +372,8 @@ export async function sendPartnerSignedDocumentEmailAction(input: {
       first_name: firstName || "Partner",
       last_name: lastName,
       email: targetEmail,
+      cc: ccValidation.formatted || undefined,
+      bcc: bccValidation.formatted || undefined,
       subjectEmail: subject,
       bodyEmail: htmlBody,
     });
