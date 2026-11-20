@@ -212,7 +212,7 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
       event_title: sponsorContext.eventTitle || "GDG Jakarta",
       event_date: sponsorContext.eventDate || "November 2026",
       event_location: sponsorContext.eventLocation || "Jakarta, Indonesia",
-      event_website: sponsorContext.eventWebsite || "https://gdgjakarta.com",
+      event_website: sponsorContext.eventWebsite || "https://gdgjakarta.org/",
       sponsor_id: sponsorContext.sponsorId,
       company_name: sponsorContext.companyName,
       company_legal_name: sponsorContext.companyLegalName || sponsorContext.companyName,
