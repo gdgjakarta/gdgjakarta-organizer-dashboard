@@ -13,6 +13,7 @@ import {
   Loader2,
   Mail,
   Pencil,
+  PenTool,
   Plus,
   Printer,
   Save,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { SignatureCreatorStudio } from "@/app/(main)/dashboard/partnership/_components/signature-creator-studio";
 import { SponsorDocumentPreview } from "@/components/sponsor-document-preview";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -92,6 +94,9 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
   const [viewMode, setViewMode] = useState<"list" | "editor">("list");
   const [editingDoc, setEditingDoc] = useState<SponsorDocument | null>(null);
   const [isSaving, startSaveTransition] = useTransition();
+
+  // Sign Document Modal State
+  const [isSignDialogOpen, setIsSignDialogOpen] = useState(false);
 
   // Send Email Modal State
   const [sendingEmailDoc, setSendingEmailDoc] = useState<SponsorDocument | null>(null);
@@ -604,6 +609,19 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                                 variant="ghost"
                                 size="icon"
                                 className="h-8 w-8"
+                                title={doc.organizer_signature_url ? "Update Organizer Signature" : "Sign Document"}
+                                onClick={() => {
+                                  handleEditExisting(doc);
+                                  setIsSignDialogOpen(true);
+                                }}
+                              >
+                                <PenTool className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
                                 title="Copy Public Shareable Link"
                                 onClick={() => handleCopyShareLink(doc)}
                               >
@@ -706,6 +724,17 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                       </Button>
                     </>
                   )}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsSignDialogOpen(true)}
+                    className="h-8 text-xs gap-1.5"
+                  >
+                    <PenTool className="h-3.5 w-3.5" />
+                    {editingDoc.organizer_signature_url ? "Update Signature" : "Sign Document"}
+                  </Button>
 
                   <Button type="submit" size="sm" disabled={isSaving} className="h-8 text-xs gap-1.5 font-semibold">
                     {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
@@ -1338,6 +1367,86 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sign Document Dialog */}
+      <Dialog open={isSignDialogOpen} onOpenChange={setIsSignDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold">
+              <PenTool className="h-4 w-4 text-primary" />
+              Sign {editingDoc ? DOC_TYPE_LABELS[editingDoc.doc_type] : "Document"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Apply the Lead Organizer signature to this document. Changes appear immediately in the live A4 preview.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingDoc && (
+            <div className="space-y-4 py-1">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Organizer Signer Name</Label>
+                  <Input
+                    value={editingDoc.organizer_signer_name || ""}
+                    onChange={(e) => setEditingDoc({ ...editingDoc, organizer_signer_name: e.target.value })}
+                    placeholder="Fachridan Tio M."
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Organizer Signer Title</Label>
+                  <Input
+                    value={editingDoc.organizer_signer_title || ""}
+                    onChange={(e) => setEditingDoc({ ...editingDoc, organizer_signer_title: e.target.value })}
+                    placeholder="GDG Jakarta Organizer"
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+
+              {editingDoc.organizer_signature_url && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="rounded border border-border bg-white px-2 py-1 shrink-0">
+                      <img
+                        src={editingDoc.organizer_signature_url}
+                        alt="Current organizer signature"
+                        className="h-10 max-w-[140px] object-contain"
+                      />
+                    </div>
+                    <span className="text-xs text-muted-foreground">Current signature applied</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-destructive hover:text-destructive shrink-0"
+                    onClick={() => {
+                      setEditingDoc({ ...editingDoc, organizer_signature_url: "" });
+                      toast.info("Signature removed. Click Save Document to persist.");
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1" />
+                    Remove
+                  </Button>
+                </div>
+              )}
+
+              <SignatureCreatorStudio
+                defaultFullName={editingDoc.organizer_signer_name || templatesConfig?.quotation_signer_name || ""}
+                savedTemplateSignatureUrl={templatesConfig?.organizer_signature_url}
+                primaryActionLabel="Apply Signature to Document"
+                hideStampButton
+                onAddPlacement={(asset) => {
+                  setEditingDoc({ ...editingDoc, organizer_signature_url: asset.dataUrl });
+                  setIsSignDialogOpen(false);
+                  toast.success("Signature applied to document. Click Save Document to persist.");
+                }}
+              />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </>

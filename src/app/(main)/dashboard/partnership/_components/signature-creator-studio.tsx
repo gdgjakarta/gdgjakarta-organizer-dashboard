@@ -28,7 +28,9 @@ interface SignatureCreatorStudioProps {
   defaultFullName: string;
   savedTemplateSignatureUrl?: string;
   onAddPlacement: (asset: CreatedSignatureAsset) => void;
-  onAddTextStamp: (asset?: CreatedSignatureAsset) => void;
+  onAddTextStamp?: (asset?: CreatedSignatureAsset) => void;
+  primaryActionLabel?: string;
+  hideStampButton?: boolean;
   disabled?: boolean;
 }
 
@@ -226,6 +228,8 @@ export function SignatureCreatorStudio({
   savedTemplateSignatureUrl,
   onAddPlacement,
   onAddTextStamp,
+  primaryActionLabel = "Place Signature",
+  hideStampButton = false,
   disabled = false,
 }: SignatureCreatorStudioProps) {
   const [activeMode, setActiveMode] = useState<"initials" | "draw" | "upload">("initials");
@@ -573,18 +577,18 @@ export function SignatureCreatorStudio({
       }
 
       if (!sourceCanvas) {
-        onAddTextStamp(undefined);
+        onAddTextStamp?.(undefined);
         return;
       }
 
       const exported = await trimCanvasToPng(sourceCanvas, 8);
       if (!exported) {
-        onAddTextStamp(undefined);
+        onAddTextStamp?.(undefined);
         return;
       }
 
       const assetId = `sig_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-      onAddTextStamp({
+      onAddTextStamp?.({
         id: assetId,
         mode,
         kind: "signature",
@@ -880,24 +884,26 @@ export function SignatureCreatorStudio({
           size="sm"
           disabled={disabled || isExporting}
           onClick={() => void handlePlaceSignature()}
-          title="Place signature on active PDF page"
+          title={primaryActionLabel}
           className="h-9 flex-1 min-w-[155px] px-3 text-xs font-semibold gap-1.5 whitespace-nowrap"
         >
           <Plus className="h-3.5 w-3.5 shrink-0" />
-          Place Signature
+          {primaryActionLabel}
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled || isExporting}
-          onClick={() => void handlePlaceStamp()}
-          title="Place signer & e-certificate stamp on active PDF page"
-          className="h-9 flex-1 min-w-[155px] px-3 text-xs font-medium gap-1.5 whitespace-nowrap"
-        >
-          <Stamp className="h-3.5 w-3.5 shrink-0 text-primary" />
-          Place E-Cert Stamp
-        </Button>
+        {!hideStampButton && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled || isExporting}
+            onClick={() => void handlePlaceStamp()}
+            title="Place signer & e-certificate stamp on active PDF page"
+            className="h-9 flex-1 min-w-[155px] px-3 text-xs font-medium gap-1.5 whitespace-nowrap"
+          >
+            <Stamp className="h-3.5 w-3.5 shrink-0 text-primary" />
+            Place E-Cert Stamp
+          </Button>
+        )}
       </div>
     </div>
   );
