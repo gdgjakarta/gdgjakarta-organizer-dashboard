@@ -158,7 +158,8 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
   const loaClause2 = doc.loa_overrides?.loa_clause_2_text || cfg.loa_clause_2_text;
   const loaClause5 = doc.loa_overrides?.loa_clause_5_text || cfg.loa_clause_5_text;
   const loaTermPayment = doc.loa_overrides?.loa_term_payment_method || cfg.loa_term_payment_method;
-  const loaTermWorkshop = doc.loa_overrides?.loa_term_workshop || cfg.loa_term_workshop;
+  const loaTermWorkshop =
+    doc.loa_overrides?.loa_term_workshop !== undefined ? doc.loa_overrides.loa_term_workshop : cfg.loa_term_workshop;
   const loaTermDuration = doc.loa_overrides?.loa_term_duration || cfg.loa_term_duration;
   const loaTermTermination = doc.loa_overrides?.loa_term_termination || cfg.loa_term_termination;
   const loaDisclaimer = doc.loa_overrides?.loa_disclaimer || cfg.loa_disclaimer;
@@ -679,18 +680,21 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
               <div className="mb-1">For the Sponsorship Terms, we will expect:</div>
               <ol className="list-[lower-alpha] pl-5 space-y-1 text-zinc-800">
                 <li>
-                  <span className="font-semibold">Payment Method:</span> {loaTermPayment}
+                  <span className="font-semibold">Payment Method:</span>{" "}
+                  {interpolateLoaTokens(loaTermPayment, loaTokens)}
                 </li>
                 {loaTermWorkshop && (
                   <li>
-                    <span className="font-semibold">Workshop Session:</span> {loaTermWorkshop}
+                    <span className="font-semibold">Workshop Session:</span>{" "}
+                    {interpolateLoaTokens(loaTermWorkshop, loaTokens)}
                   </li>
                 )}
                 <li>
-                  <span className="font-semibold">Term:</span> {loaTermDuration}
+                  <span className="font-semibold">Term:</span> {interpolateLoaTokens(loaTermDuration, loaTokens)}
                 </li>
                 <li>
-                  <span className="font-semibold">Termination:</span> {loaTermTermination}
+                  <span className="font-semibold">Termination:</span>{" "}
+                  {interpolateLoaTokens(loaTermTermination, loaTokens)}
                 </li>
               </ol>
             </li>
@@ -721,7 +725,9 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
           <hr className="border-zinc-400 my-3" />
 
           {/* Disclaimer */}
-          <p className="text-xs italic text-zinc-700 leading-relaxed">{loaDisclaimer}</p>
+          <p className="text-xs italic text-zinc-700 leading-relaxed">
+            {interpolateLoaTokens(loaDisclaimer, loaTokens)}
+          </p>
 
           {/* Dual Signature Block */}
           <div className="grid grid-cols-2 gap-10 pt-3">

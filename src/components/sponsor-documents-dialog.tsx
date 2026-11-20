@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 
 import {
   ArrowLeft,
@@ -111,14 +111,17 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
   const [newDeliverableText, setNewDeliverableText] = useState("");
   const [newOrganizerCommitmentText, setNewOrganizerCommitmentText] = useState("");
 
-  const loadDocumentsAndConfig = async () => {
-    if (!sponsorContext) return;
+  const sponsorId = sponsorContext?.sponsorId;
+  const sponsorEventId = sponsorContext?.eventId;
+
+  const loadDocumentsAndConfig = useCallback(async () => {
+    if (!sponsorId) return;
     setIsLoading(true);
     try {
       const [docsRes, cfgRes] = await Promise.all([
         getSponsorDocumentsAction({
-          sponsorId: sponsorContext.sponsorId,
-          eventId: sponsorContext.eventId ? String(sponsorContext.eventId) : undefined,
+          sponsorId,
+          eventId: sponsorEventId ? String(sponsorEventId) : undefined,
         }),
         getSponsorDocumentTemplatesConfigAction(),
       ]);
@@ -136,15 +139,15 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [sponsorId, sponsorEventId]);
 
   useEffect(() => {
-    if (open && sponsorContext) {
+    if (open && sponsorId) {
       setViewMode("list");
       setEditingDoc(null);
-      loadDocumentsAndConfig();
+      void loadDocumentsAndConfig();
     }
-  }, [open, sponsorContext?.sponsorId, sponsorContext?.eventId]);
+  }, [open, sponsorId, loadDocumentsAndConfig]);
 
   const handleStartCreate = async (docType: SponsorDocumentType) => {
     if (!sponsorContext) return;
@@ -346,7 +349,7 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
       const res = await deleteSponsorDocumentAction(doc.id);
       if (res.success) {
         toast.success("Document deleted.");
-        loadDocumentsAndConfig();
+        await loadDocumentsAndConfig();
       } else {
         toast.error(res.error || "Failed to delete document.");
       }
@@ -412,7 +415,7 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
           if (editingDoc && editingDoc.id === res.document.id) {
             setEditingDoc(res.document);
           }
-          loadDocumentsAndConfig();
+          await loadDocumentsAndConfig();
         } else {
           toast.error(res.error || "Failed to send document email.");
         }
@@ -592,8 +595,8 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                               <span className="text-xs text-muted-foreground">Not sent</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                          <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -1227,6 +1230,109 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                           </Button>
                         </div>
                       </div>
+                    )}
+
+                    {editingDoc.doc_type === "loa" && (
+                      <details className="pt-2 border-t border-border group">
+                        <summary className="cursor-pointer select-none text-xs font-semibold text-foreground flex items-center justify-between py-1">
+                          <span>Customize LOA Clauses &amp; Terms (Optional)</span>
+                          <span className="text-[10px] font-normal text-muted-foreground">
+                            Leave blank to use global template
+                          </span>
+                        </summary>
+                        <div className="space-y-2.5 pt-2">
+                          <p className="text-[11px] text-muted-foreground">
+                            Supported tokens:{" "}
+                            <code className="font-mono text-[10px]">
+                              {
+                                "{{eventName}} {{eventDate}} {{sponsorTier}} {{totalAmount}} {{paymentTermDays}} {{companyName}}"
+                              }
+                            </code>
+                          </p>
+
+                          <div className="space-y-1">
+                            <Label className="text-xs">Payment Term ({"{{paymentTermDays}}"})</Label>
+                            <Input
+                              value={editingDoc.payment_term_days || ""}
+                              onChange={(e) => setEditingDoc({ ...editingDoc, payment_term_days: e.target.value })}
+                              placeholder={templatesConfig?.loa_payment_term_days || "45 days of the invoice date"}
+                              className="h-8 text-xs"
+                            />
+                          </div>
+
+                          {(
+                            [
+                              { key: "loa_intro_text", label: "Intro Paragraph", rows: 2 },
+                              { key: "loa_clause_1_text", label: "Clause 1 — Agreement Scope", rows: 2 },
+                              { key: "loa_clause_2_text", label: "Clause 2 — Fee & Payment", rows: 2 },
+                              { key: "loa_clause_5_text", label: "Clause 5 — Completion Report", rows: 2 },
+                              { key: "loa_term_payment_method", label: "Clause 6a — Payment Method", rows: 2 },
+                              { key: "loa_term_duration", label: "Clause 6c — Term / Duration", rows: 2 },
+                              { key: "loa_term_termination", label: "Clause 6d — Termination", rows: 2 },
+                              { key: "loa_disclaimer", label: "Disclaimer", rows: 2 },
+                            ] as const
+                          ).map(({ key, label, rows }) => (
+                            <div key={key} className="space-y-1">
+                              <Label className="text-xs">{label}</Label>
+                              <Textarea
+                                rows={rows}
+                                value={editingDoc.loa_overrides?.[key] || ""}
+                                onChange={(e) => {
+                                  const next = { ...(editingDoc.loa_overrides || {}) };
+                                  if (e.target.value) {
+                                    next[key] = e.target.value;
+                                  } else {
+                                    delete next[key];
+                                  }
+                                  setEditingDoc({ ...editingDoc, loa_overrides: next });
+                                }}
+                                placeholder={templatesConfig?.[key] || ""}
+                                className="text-xs"
+                              />
+                            </div>
+                          ))}
+
+                          <div className="space-y-1.5 pt-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <Label className="text-xs">Clause 6b — Workshop Session</Label>
+                              <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={editingDoc.loa_overrides?.loa_term_workshop === ""}
+                                  onChange={(e) => {
+                                    const next = { ...(editingDoc.loa_overrides || {}) };
+                                    if (e.target.checked) {
+                                      next.loa_term_workshop = "";
+                                    } else {
+                                      delete next.loa_term_workshop;
+                                    }
+                                    setEditingDoc({ ...editingDoc, loa_overrides: next });
+                                  }}
+                                  className="h-3.5 w-3.5 rounded border-border accent-primary"
+                                />
+                                Hide Workshop clause
+                              </label>
+                            </div>
+                            {editingDoc.loa_overrides?.loa_term_workshop !== "" && (
+                              <Textarea
+                                rows={2}
+                                value={editingDoc.loa_overrides?.loa_term_workshop || ""}
+                                onChange={(e) => {
+                                  const next = { ...(editingDoc.loa_overrides || {}) };
+                                  if (e.target.value) {
+                                    next.loa_term_workshop = e.target.value;
+                                  } else {
+                                    delete next.loa_term_workshop;
+                                  }
+                                  setEditingDoc({ ...editingDoc, loa_overrides: next });
+                                }}
+                                placeholder={templatesConfig?.loa_term_workshop || ""}
+                                className="text-xs"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </details>
                     )}
 
                     {editingDoc.doc_type === "mou" && (
