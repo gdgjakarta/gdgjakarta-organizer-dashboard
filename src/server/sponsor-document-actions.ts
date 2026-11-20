@@ -452,6 +452,7 @@ export async function saveSponsorDocumentAction(
       token,
       doc_type: docInput.doc_type,
       doc_number: docNumber,
+      custom_title: docInput.custom_title !== undefined ? docInput.custom_title.trim() : (existing?.custom_title ?? ""),
       status: docInput.status || existing?.status || "draft",
       event_id: docInput.event_id !== undefined ? docInput.event_id : (existing?.event_id ?? null),
       event_title: docInput.event_title ?? existing?.event_title ?? "",

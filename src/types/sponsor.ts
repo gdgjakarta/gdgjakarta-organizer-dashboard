@@ -172,6 +172,7 @@ export interface SponsorDocument {
   token: string; // opaque 32-char hex token for /partnership/documents/[token]
   doc_type: SponsorDocumentType;
   doc_number: string;
+  custom_title?: string;
   status: SponsorDocumentStatus;
   event_id?: string | null;
   event_title?: string;

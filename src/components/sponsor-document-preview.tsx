@@ -236,7 +236,9 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
 
             {/* Centered Title */}
             <div className="text-center py-2">
-              <h1 className="text-2xl font-bold tracking-wide uppercase text-zinc-900">Invoice</h1>
+              <h1 className="text-2xl font-bold tracking-wide uppercase text-zinc-900">
+                {doc.custom_title?.trim() || "Invoice"}
+              </h1>
             </div>
 
             {/* 2-Column Metadata */}
@@ -410,7 +412,9 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
             {/* Centered Title + Number + Date */}
             <div className="space-y-1">
               <div className="text-center">
-                <h1 className="text-2xl font-bold uppercase tracking-wide text-zinc-900">Quotation</h1>
+                <h1 className="text-2xl font-bold uppercase tracking-wide text-zinc-900">
+                  {doc.custom_title?.trim() || "Quotation"}
+                </h1>
                 <div className="text-xs font-mono font-semibold text-zinc-700 mt-0.5">Number: {doc.doc_number}</div>
               </div>
               <div className="text-right text-xs font-medium text-zinc-800 pt-2">Date: {doc.document_date}</div>
@@ -609,7 +613,9 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
 
           {/* Heading */}
           <div className="text-center py-1">
-            <h1 className="text-lg font-bold uppercase tracking-wide text-zinc-900">SPONSORSHIP LETTER OF AGREEMENT</h1>
+            <h1 className="text-lg font-bold uppercase tracking-wide text-zinc-900">
+              {doc.custom_title?.trim() || "SPONSORSHIP LETTER OF AGREEMENT"}
+            </h1>
             {doc.doc_number && <div className="text-[11px] font-mono text-zinc-600 mt-0.5">Ref: {doc.doc_number}</div>}
           </div>
 
@@ -813,7 +819,7 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
           {/* Heading */}
           <div className="text-center py-1">
             <h1 className="text-lg font-bold uppercase tracking-wide text-zinc-900">
-              PARTNERSHIP MEMORANDUM OF UNDERSTANDING (MOU)
+              {doc.custom_title?.trim() || "PARTNERSHIP MEMORANDUM OF UNDERSTANDING (MOU)"}
             </h1>
             {doc.doc_number && <div className="text-[11px] font-mono text-zinc-600 mt-0.5">Ref: {doc.doc_number}</div>}
           </div>

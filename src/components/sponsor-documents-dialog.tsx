@@ -789,6 +789,22 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                       </div>
                     </div>
 
+                    <div className="space-y-1">
+                      <Label className="text-xs">Custom Document Title (Optional)</Label>
+                      <Input
+                        value={editingDoc.custom_title || ""}
+                        onChange={(e) => setEditingDoc({ ...editingDoc, custom_title: e.target.value })}
+                        placeholder={
+                          editingDoc.doc_type === "loa"
+                            ? "Default: SPONSORSHIP LETTER OF AGREEMENT"
+                            : editingDoc.doc_type === "mou"
+                              ? "Default: PARTNERSHIP MEMORANDUM OF UNDERSTANDING (MOU)"
+                              : `Default: ${DOC_TYPE_LABELS[editingDoc.doc_type]}`
+                        }
+                        className="h-8 text-xs"
+                      />
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <Label className="text-xs">Sponsorship Tier</Label>
@@ -1181,6 +1197,32 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                             Add
                           </Button>
                         </div>
+                      </div>
+                    )}
+
+                    {editingDoc.doc_type === "mou" && (
+                      <div className="space-y-1 pt-2 border-t border-border">
+                        <Label className="text-xs font-semibold">
+                          MOU Clause 6 — Financial / General Understanding Override (Optional)
+                        </Label>
+                        <Textarea
+                          value={editingDoc.mou_overrides?.mou_clause_6_non_financial || ""}
+                          onChange={(e) =>
+                            setEditingDoc({
+                              ...editingDoc,
+                              mou_overrides: {
+                                ...(editingDoc.mou_overrides || {}),
+                                mou_clause_6_non_financial: e.target.value,
+                              },
+                            })
+                          }
+                          placeholder={
+                            templatesConfig?.mou_clause_6_non_financial ||
+                            "Leave blank for default non-monetary clause, or enter paid fee & bank transfer terms..."
+                          }
+                          rows={3}
+                          className="text-xs"
+                        />
                       </div>
                     )}
                   </div>
