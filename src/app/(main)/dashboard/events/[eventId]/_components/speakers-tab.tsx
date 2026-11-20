@@ -1,8 +1,11 @@
 "use client";
 
+import { SpeakerAppreciationPanel } from "./speaker-appreciation-panel";
+
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import {
+  Award,
   Calendar,
   CheckCircle2,
   Clock,
@@ -343,7 +346,9 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
   const [confirmations, setConfirmations] = useState<EventSpeakerConfirmation[]>([]);
   const [loadingConfirmations, setLoadingConfirmations] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeSubTab, setActiveSubTab] = useState<"roster" | "handbook" | "invitation_email" | "settings">("roster");
+  const [activeSubTab, setActiveSubTab] = useState<
+    "roster" | "handbook" | "invitation_email" | "appreciation" | "settings"
+  >("roster");
 
   // Handbook editor state
   const [handbookContent, setHandbookContent] = useState(config.handbook_content);
@@ -1592,6 +1597,10 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
               <Mail className="size-4" />
               Invitation Email
             </TabsTrigger>
+            <TabsTrigger value="appreciation" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <Award className="size-4" />
+              Appreciation Certificates
+            </TabsTrigger>
             <TabsTrigger value="settings" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
               <Calendar className="size-4" />
               Settings
@@ -1991,6 +2000,10 @@ export function SpeakersTab({ eventId, event }: SpeakersTabProps) {
         </TabsContent>
 
         {/* 3. SPEAKER INVITATION EMAIL TEMPLATE */}
+        <TabsContent value="appreciation" className="space-y-4 pt-4">
+          <SpeakerAppreciationPanel event={event} confirmations={confirmations} />
+        </TabsContent>
+
         <TabsContent value="invitation_email" className="space-y-4 pt-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>

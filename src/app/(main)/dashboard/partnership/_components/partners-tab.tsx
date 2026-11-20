@@ -207,10 +207,29 @@ export function PartnersTab({ onSignPartnerPdf }: PartnersTabProps = {}) {
     return `${origin}/partnership/partner-confirmation?token=${chapterConfig.share_token}`;
   }, [chapterConfig]);
 
+  const [isRotatingToken, setIsRotatingToken] = useState(false);
+
   const handleCopyLink = () => {
     if (!shareLink) return;
     navigator.clipboard.writeText(shareLink);
     toast.success("Public Sponsor Confirmation link copied to clipboard!");
+  };
+
+  const handleRotateToken = async () => {
+    setIsRotatingToken(true);
+    try {
+      const res = await regenerateChapterSponsorShareTokenAction();
+      if (res.success && res.share_token) {
+        setChapterConfig((prev) => (prev ? { ...prev, share_token: res.share_token! } : prev));
+        toast.success("Confirmation token rotated. Previous link is now invalid.");
+      } else {
+        toast.error(res.error || "Failed to rotate token.");
+      }
+    } catch {
+      toast.error("Failed to rotate token.");
+    } finally {
+      setIsRotatingToken(false);
+    }
   };
 
   useEffect(() => {
@@ -556,17 +575,30 @@ export function PartnersTab({ onSignPartnerPdf }: PartnersTabProps = {}) {
               {isLoading ? (
                 <Skeleton className="h-8 w-24" />
               ) : (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleCopyLink}
-                  disabled={!shareLink}
-                  className="text-xs"
-                >
-                  <Copy className="mr-1.5 h-3.5 w-3.5" />
-                  Copy Link
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleCopyLink}
+                    disabled={!shareLink}
+                    className="text-xs"
+                  >
+                    <Copy className="mr-1.5 h-3.5 w-3.5" />
+                    Copy Link
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRotateToken}
+                    disabled={!shareLink || isRotatingToken}
+                    className="text-xs"
+                  >
+                    <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isRotatingToken ? "animate-spin" : ""}`} />
+                    {isRotatingToken ? "Rotating..." : "Rotate Token"}
+                  </Button>
+                </>
               )}
             </div>
           </div>

@@ -1,0 +1,333 @@
+{
+  "name": "Send Certificate Email API",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "api/send-certificate-email",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cert-mail-webhook",
+      "name": "Webhook API",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [-1200, 320],
+      "webhookId": "gdg-jkt-send-certificate-email-api",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OhKNMRKIAMZomRhC",
+          "name": "GDG Jakarta API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "val-email",
+              "leftValue": "={{ $json.body.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "val-subject",
+              "leftValue": "={{ $json.body.subjectEmail }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "val-body",
+              "leftValue": "={{ $json.body.bodyEmail }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "cert-mail-validate",
+      "name": "Validate Payload",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-960, 320]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": false,\n  \"message\": \"Required fields (email, subjectEmail, bodyEmail) cannot be empty\"\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "cert-mail-invalid",
+      "name": "Response: Invalid Payload",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [-720, 540]
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "executionId",
+              "value": "={{ $execution.id }}"
+            },
+            {
+              "key": "email",
+              "value": "={{ $json.body.email }}"
+            },
+            {
+              "key": "hasAttachment",
+              "value": "={{ Boolean($json.body.attachmentUrl) }}"
+            }
+          ]
+        }
+      },
+      "id": "cert-mail-log",
+      "name": "Log Execution Data",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [-720, 240]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "has-r2-attachment",
+              "leftValue": "={{ $json.body.attachmentUrl || '' }}",
+              "rightValue": "https://assets.gdgjakarta.org/",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "cert-mail-has-attachment",
+      "name": "Has Certificate Attachment?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-480, 240]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Webhook API').item.json.body.attachmentUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "attachment"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "cert-mail-download-pdf",
+      "name": "Download Certificate PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-200, 120],
+      "retryOnFail": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst requestedName = $('Webhook API').first().json.body.attachmentFileName || 'Certificate-GDG-Jakarta.pdf';\nconst safeName = String(requestedName).replace(/[^a-zA-Z0-9._ -]/g, '').trim() || 'Certificate-GDG-Jakarta.pdf';\nconst finalName = safeName.toLowerCase().endsWith('.pdf') ? safeName : `${safeName}.pdf`;\n\nif (item.binary && item.binary.attachment) {\n  item.binary.attachment.fileName = finalName;\n  item.binary.attachment.mimeType = 'application/pdf';\n}\n\nreturn [item];"
+      },
+      "id": "cert-mail-normalize-name",
+      "name": "Normalize Attachment Filename",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [40, 120]
+    },
+    {
+      "parameters": {
+        "fromEmail": "info@gdgjakarta.org",
+        "toEmail": "={{ $('Webhook API').item.json.body.email }}",
+        "subject": "={{ $('Webhook API').item.json.body.subjectEmail }}",
+        "html": "={{ $('Webhook API').item.json.body.bodyEmail }}",
+        "options": {
+          "appendAttribution": false,
+          "fileAttachments": "attachment"
+        }
+      },
+      "id": "cert-mail-send-attached",
+      "name": "Send Email with Attachment",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [280, 120],
+      "retryOnFail": true,
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "smtp": {
+          "id": "vXvzJ712DNsZfnX8",
+          "name": "SMTP Relay Account - info@gdgjakarta.org"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "info@gdgjakarta.org",
+        "toEmail": "={{ $('Webhook API').item.json.body.email }}",
+        "subject": "={{ $('Webhook API').item.json.body.subjectEmail }}",
+        "html": "={{ $('Webhook API').item.json.body.bodyEmail }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "cert-mail-send-plain",
+      "name": "Send Email (No Attachment)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [40, 360],
+      "retryOnFail": true,
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "smtp": {
+          "id": "vXvzJ712DNsZfnX8",
+          "name": "SMTP Relay Account - info@gdgjakarta.org"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": true,\n  \"message\": \"Certificate email sent successfully.\"\n}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "x-execution-id",
+                "value": "={{ $execution.id }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "cert-mail-success",
+      "name": "Response: Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [560, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"message\": {{ ($json.error && $json.error.message ? $json.error.message : 'Failed to send certificate email').toJsonString() }}\n}",
+        "options": {
+          "responseCode": 500,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "x-execution-id",
+                "value": "={{ $execution.id }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "cert-mail-error",
+      "name": "Response: Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [560, 420]
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ $json.error || 'Certificate email dispatch failed' }}"
+      },
+      "id": "cert-mail-stop",
+      "name": "Stop and Error",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [800, 420]
+    }
+  ],
+  "connections": {
+    "Webhook API": {
+      "main": [[{ "node": "Validate Payload", "type": "main", "index": 0 }]]
+    },
+    "Validate Payload": {
+      "main": [
+        [{ "node": "Log Execution Data", "type": "main", "index": 0 }],
+        [{ "node": "Response: Invalid Payload", "type": "main", "index": 0 }]
+      ]
+    },
+    "Log Execution Data": {
+      "main": [[{ "node": "Has Certificate Attachment?", "type": "main", "index": 0 }]]
+    },
+    "Has Certificate Attachment?": {
+      "main": [
+        [{ "node": "Download Certificate PDF", "type": "main", "index": 0 }],
+        [{ "node": "Send Email (No Attachment)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Download Certificate PDF": {
+      "main": [
+        [{ "node": "Normalize Attachment Filename", "type": "main", "index": 0 }],
+        [{ "node": "Response: Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Normalize Attachment Filename": {
+      "main": [[{ "node": "Send Email with Attachment", "type": "main", "index": 0 }]]
+    },
+    "Send Email with Attachment": {
+      "main": [
+        [{ "node": "Response: Success", "type": "main", "index": 0 }],
+        [{ "node": "Response: Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Email (No Attachment)": {
+      "main": [
+        [{ "node": "Response: Success", "type": "main", "index": 0 }],
+        [{ "node": "Response: Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Response: Error": {
+      "main": [[{ "node": "Stop and Error", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

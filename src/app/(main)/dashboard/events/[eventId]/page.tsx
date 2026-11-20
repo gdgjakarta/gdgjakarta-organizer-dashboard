@@ -237,6 +237,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               merchandise: firestoreDoc.merchandise ?? event.merchandise,
               bundles: firestoreDoc.bundles ?? event.bundles,
               printer_config: firestoreDoc.printer_config ?? event.printer_config,
+              certificate_config: firestoreDoc.certificate_config ?? event.certificate_config,
               google_maps_url: firestoreDoc.google_maps_url ?? event.google_maps_url,
               venue_map_url: firestoreDoc.venue_map_url ?? event.venue_map_url,
               video_url: event.video_url || firestoreDoc.video_url,

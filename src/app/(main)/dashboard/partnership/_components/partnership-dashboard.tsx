@@ -201,6 +201,30 @@ export function PartnershipDashboard({ initialEvents = [] }: PartnershipDashboar
     }
   };
 
+  const [liveBevyMetrics, setLiveBevyMetrics] = useState<{
+    formattedMembers: string;
+    formattedEvents: string;
+    formattedTeam: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+    fetchBevyChapterLiveMetricsAction()
+      .then((res) => {
+        if (!isCancelled && res.success && res.data) {
+          setLiveBevyMetrics({
+            formattedMembers: res.data.formattedMembers,
+            formattedEvents: res.data.formattedEvents,
+            formattedTeam: res.data.formattedTeam,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
   // Auto-load event detail context when initial or loaded content has an eventId
   useEffect(() => {
     if (!content.devfest.eventId) return;
@@ -544,6 +568,11 @@ export function PartnershipDashboard({ initialEvents = [] }: PartnershipDashboar
                       try {
                         const res = await fetchBevyChapterLiveMetricsAction();
                         if (res.success && res.data) {
+                          setLiveBevyMetrics({
+                            formattedMembers: res.data.formattedMembers,
+                            formattedEvents: res.data.formattedEvents,
+                            formattedTeam: res.data.formattedTeam,
+                          });
                           const updated = content.hero.stats.map((s) => {
                             if (
                               s.autoSyncMetric === "members" ||
@@ -614,6 +643,15 @@ export function PartnershipDashboard({ initialEvents = [] }: PartnershipDashboar
                         <Label className="text-[11px] text-muted-foreground">Stat Value (Override)</Label>
                         <Input
                           value={stat.value}
+                          placeholder={
+                            stat.autoSyncMetric === "members"
+                              ? liveBevyMetrics?.formattedMembers || "e.g. 12,000+"
+                              : stat.autoSyncMetric === "events"
+                                ? liveBevyMetrics?.formattedEvents || "e.g. 150+"
+                                : stat.autoSyncMetric === "team"
+                                  ? liveBevyMetrics?.formattedTeam || "e.g. 20+"
+                                  : "e.g. 100%"
+                          }
                           onChange={(e) => {
                             const updated = [...content.hero.stats];
                             updated[idx] = { ...stat, value: e.target.value };

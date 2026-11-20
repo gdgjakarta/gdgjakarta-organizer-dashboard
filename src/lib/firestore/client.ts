@@ -3702,6 +3702,7 @@ const ALLOWED_EVENT_DOC_KEYS = new Set<string>([
   "presentation_slides",
   "email_templates",
   "printer_config",
+  "certificate_config",
   "synced_from_bevy_at",
   "created_at",
   "updated_at",

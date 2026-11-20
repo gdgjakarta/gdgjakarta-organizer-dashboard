@@ -116,6 +116,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       event_proposal: event.email_templates?.event_proposal ?? getDefaultTemplateByKey("event_proposal"),
       partner_confirmation:
         event.email_templates?.partner_confirmation ?? getDefaultTemplateByKey("partner_confirmation"),
+      speaker_thank_you: event.email_templates?.speaker_thank_you ?? getDefaultTemplateByKey("speaker_thank_you"),
     };
   });
 
@@ -144,6 +145,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       event_proposal: event.email_templates?.event_proposal ?? getDefaultTemplateByKey("event_proposal"),
       partner_confirmation:
         event.email_templates?.partner_confirmation ?? getDefaultTemplateByKey("partner_confirmation"),
+      speaker_thank_you: event.email_templates?.speaker_thank_you ?? getDefaultTemplateByKey("speaker_thank_you"),
     };
   });
 
@@ -265,6 +267,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               event_proposal: docData.email_templates.event_proposal ?? getDefaultTemplateByKey("event_proposal"),
               partner_confirmation:
                 docData.email_templates.partner_confirmation ?? getDefaultTemplateByKey("partner_confirmation"),
+              speaker_thank_you:
+                docData.email_templates.speaker_thank_you ?? getDefaultTemplateByKey("speaker_thank_you"),
             };
             setTemplates(loaded);
             setSavedTemplates(loaded);
@@ -304,7 +308,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       templates.cancelled_attendee !== savedTemplates.cancelled_attendee ||
       templates.speaker_invitation !== savedTemplates.speaker_invitation ||
       templates.event_proposal !== savedTemplates.event_proposal ||
-      templates.partner_confirmation !== savedTemplates.partner_confirmation;
+      templates.partner_confirmation !== savedTemplates.partner_confirmation ||
+      templates.speaker_thank_you !== savedTemplates.speaker_thank_you;
 
     const dataChanged = JSON.stringify(templatesData) !== JSON.stringify(savedTemplatesData);
 
@@ -401,6 +406,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       speaker_invitation: getDefaultTemplateByKey("speaker_invitation"),
       event_proposal: getDefaultTemplateByKey("event_proposal"),
       partner_confirmation: getDefaultTemplateByKey("partner_confirmation"),
+      speaker_thank_you: getDefaultTemplateByKey("speaker_thank_you"),
     };
     setTemplates(allDefaults);
 
@@ -426,6 +432,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       speaker_invitation: getDefaultTemplateByKey("speaker_invitation"),
       event_proposal: getDefaultTemplateByKey("event_proposal"),
       partner_confirmation: getDefaultTemplateByKey("partner_confirmation"),
+      speaker_thank_you: getDefaultTemplateByKey("speaker_thank_you"),
     };
     const cleanData = getAllCleanDefaultTemplatesData(event);
     setTemplates(allDefaults);
@@ -448,6 +455,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           speaker_invitation: allDefaults.speaker_invitation,
           event_proposal: allDefaults.event_proposal,
           partner_confirmation: allDefaults.partner_confirmation,
+          speaker_thank_you: allDefaults.speaker_thank_you,
           template_data: {
             headerEmailUrl: cleanData[activeKey].event.headerEmailUrl,
             eventName: cleanData[activeKey].event.eventName,
@@ -643,6 +651,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           speaker_invitation: templates.speaker_invitation,
           event_proposal: templates.event_proposal,
           partner_confirmation: templates.partner_confirmation,
+          speaker_thank_you: templates.speaker_thank_you,
           // Legacy template_data fallback for existing listeners
           template_data: {
             headerEmailUrl: templatesData[activeKey].event.headerEmailUrl,

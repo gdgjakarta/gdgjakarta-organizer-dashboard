@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  Award,
   Building2,
   Calendar,
   CreditCard,
@@ -38,6 +39,7 @@ import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { AgendaTab } from "./agenda-tab";
 import { BreakoutSessionsTab } from "./breakout-sessions-tab";
+import { CertificatesTab } from "./certificates-tab";
 import { BundlesTab } from "./bundles-tab";
 import { CustomFormTab } from "./custom-form-tab";
 import { EmailTemplatesTab } from "./email-templates-tab";
@@ -522,6 +524,15 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
                 <Printer className="size-4" />
                 Badge Printer
               </TabsTrigger>
+              <TabsTrigger
+                id="tab-trigger-certificates"
+                data-value="certificates"
+                value="certificates"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
+                <Award className="size-4" />
+                Certificates
+              </TabsTrigger>
             </>
           )}
         </TabsList>
@@ -614,6 +625,10 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
 
           <TabsContent value="printer" className="space-y-4">
             <EventPrinterTab event={activeEvent} registrations={activeRegistrations} />
+          </TabsContent>
+
+          <TabsContent value="certificates" className="space-y-4">
+            <CertificatesTab event={activeEvent} registrations={activeRegistrations} />
           </TabsContent>
         </>
       )}

@@ -347,7 +347,81 @@ export type EmailTemplateKey =
   | "paid_waitlisted"
   | "speaker_invitation"
   | "event_proposal"
-  | "partner_confirmation";
+  | "partner_confirmation"
+  | "speaker_thank_you";
+
+// --- Attendance & Speaker Certificates ---
+export type CertificateEngine = "google_slides" | "google_drawing";
+export type CertificateType = "attendance" | "speaker";
+
+/** Text/QR stamped onto a cached Google Drawing PDF background. Coordinates are 0..1 fractions of page size (origin top-left). */
+export interface CertificateOverlayField {
+  key: string; // placeholder key, e.g. "recipientName", or "qrCode"
+  x: number;
+  y: number;
+  width: number;
+  font_size: number; // points
+  align: "left" | "center" | "right";
+  bold?: boolean;
+  color?: string; // #rrggbb
+}
+
+export interface EventCertificateTemplateConfig {
+  enabled: boolean;
+  engine: CertificateEngine;
+  template_url?: string | null;
+  template_file_id?: string | null;
+  temp_folder_id?: string | null;
+  overlay_fields?: CertificateOverlayField[];
+  background_pdf_url?: string | null; // cached Drawing PDF in R2
+  background_pdf_key?: string | null;
+  background_synced_at?: string | null;
+  signer_name?: string | null;
+  signer_title?: string | null;
+}
+
+export interface EventCertificateConfig {
+  attendance?: EventCertificateTemplateConfig & {
+    release_mode?: "auto_on_event_end" | "manual_release";
+    release_at_millis?: number | null; // auto = event end_date
+    released_at?: string | null; // organizer "Release Now"
+    released_by_email?: string | null;
+    paused?: boolean;
+  };
+  speaker?: EventCertificateTemplateConfig;
+  updated_at?: string;
+}
+
+export interface EventCertificateRecord {
+  id: string; // cert_<32hex>
+  token: string; // same as id
+  certificate_code?: string; // e.g. GDGJKT-2026-A8F3K2
+  certificate_type: CertificateType;
+  event_id: string;
+  event_title: string;
+  event_date?: string;
+  registration_id?: string | null;
+  speaker_confirmation_id?: string | null;
+  member_id?: string | null;
+  recipient_name: string;
+  recipient_email?: string; // never exposed publicly
+  presenter_role?: string | null;
+  talk_title?: string | null;
+  engine: CertificateEngine;
+  pdf_url: string;
+  pdf_key: string;
+  sha256: string;
+  ecert_status?: "signed_p12" | "hash_only";
+  status: "active" | "revoked";
+  issued_at: string;
+  issued_at_millis: number;
+  revoked_at?: string | null;
+  email_status?: "sent" | "not_sent" | "failed" | "pending";
+  email_sent_at?: string | null;
+  email_sent_count?: number;
+  email_error?: string | null;
+  updated_at: string;
+}
 
 export interface EventEmailTemplateData {
   headerEmailUrl?: string;
@@ -377,6 +451,12 @@ export interface EventEmailTemplateData {
   talkTitle?: string;
   speakerHandbookUrl?: string;
   presenterRole?: string;
+  certificateUrl?: string;
+  certificateCode?: string;
+  photoAlbumUrl?: string;
+  photoAlbumTitle?: string;
+  highlightVideoUrl?: string;
+  highlightVideoTitle?: string;
 }
 
 export interface SpeakerSlideTemplate {
@@ -613,6 +693,8 @@ export interface EventEmailTemplates {
   speaker_invitation_subject?: string;
   event_proposal_subject?: string;
   partner_confirmation_subject?: string;
+  speaker_thank_you?: string;
+  speaker_thank_you_subject?: string;
 
   // Saved event template data configuration (legacy fallback)
   template_data?: EventEmailTemplateData;
@@ -773,6 +855,9 @@ export interface FirestoreEvent {
 
   // Event Thermal Printer & Label Template Configuration
   printer_config?: Partial<import("@/lib/printers/types").PrinterConfig>;
+
+  // Attendance & Speaker Certificate Configuration
+  certificate_config?: EventCertificateConfig;
 
   // Short.io Generated Links
   short_url?: string;

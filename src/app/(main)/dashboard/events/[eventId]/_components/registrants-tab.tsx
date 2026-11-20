@@ -1153,7 +1153,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   event_title: eventTitle,
                   member_id: String(att.user_id || att.id),
                   member_name: fullName,
-                  member_email: att.email || `bevy_${att.id}@gdgjakarta.org`,
+                  member_email: (att.email || `bevy_${att.id}@gdgjakarta.org`).toLowerCase().trim(),
                   member_phone: bevyPhone,
                   status: "approved",
                   ticket_tier: att.ticket_title || "Bevy Ticket",

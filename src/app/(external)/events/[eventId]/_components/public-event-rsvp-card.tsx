@@ -23,6 +23,7 @@ import { toast } from "sonner";
 
 import googleFavicon from "@/app/Google_Favicon.webp";
 import { EventRegistrationModal } from "@/components/event-registration-modal";
+import { AttendanceCertificateActions } from "@/components/events/attendance-certificate-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -366,6 +367,14 @@ export function PublicEventRsvpCard({
           {/* Primary Action Button */}
           {isPast ? (
             <div className="space-y-2">
+              {firestoreEvent && (
+                <AttendanceCertificateActions
+                  event={firestoreEvent}
+                  registration={existingRegistration}
+                  variant="inline"
+                  className="w-full [&>button]:flex-1"
+                />
+              )}
               <Button disabled className="w-full font-medium" size="lg">
                 Registration Closed
               </Button>
@@ -705,9 +714,18 @@ export function PublicEventRsvpCard({
                   );
                 }
                 return (
-                  <Button disabled size="sm">
-                    Closed
-                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    {firestoreEvent && (
+                      <AttendanceCertificateActions
+                        event={firestoreEvent}
+                        registration={existingRegistration}
+                        variant="compact"
+                      />
+                    )}
+                    <Button disabled size="sm">
+                      Closed
+                    </Button>
+                  </div>
                 );
               }
 

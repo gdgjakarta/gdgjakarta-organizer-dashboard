@@ -819,3 +819,73 @@ export async function signPartnerPdfBuffer(params: SignPartnerPdfParams): Promis
     ecertMetadata,
   };
 }
+
+/**
+ * Cryptographically signs any raw PDF buffer using the Cloudflare Worker PKCS#7 X.509 secrets
+ * (`PDF_SIGNING_P12_BASE64` + `PDF_SIGNING_P12_PASSPHRASE`), falling back gracefully to `hash_only` if unconfigured.
+ */
+export async function signRawPdfBytesWithEnvP12(
+  pdfBytes: Uint8Array,
+  options: {
+    reason: string;
+    signerName?: string;
+    contactInfo?: string;
+    location?: string;
+  },
+): Promise<{
+  pdfBytes: Uint8Array;
+  sha256: string;
+  ecertStatus: "signed_p12" | "hash_only";
+  ecertMetadata?: SigningCertificateMetadata;
+}> {
+  const signedAtIso = new Date().toISOString();
+  const parsedP12 = resolveP12FromEnvOrOverride();
+  const canSignWithP12 = Boolean(parsedP12 && parsedP12.status.configured && !parsedP12.status.isExpired);
+
+  if (!canSignWithP12 || !parsedP12) {
+    const sha256 = createHash("sha256").update(pdfBytes).digest("hex");
+    return { pdfBytes, sha256, ecertStatus: "hash_only" };
+  }
+
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  const reason = options.reason || "Official Event Certificate — GDG Jakarta";
+  const location = options.location || "Jakarta, Indonesia";
+
+  pdflibAddPlaceholder({
+    pdfDoc,
+    reason: toWinAnsiSafe(reason),
+    contactInfo: toWinAnsiSafe(options.contactInfo || "info@gdgjakarta.org"),
+    name: toWinAnsiSafe(options.signerName || "GDG Jakarta"),
+    location: toWinAnsiSafe(location),
+    signingTime: new Date(signedAtIso),
+    signatureLength: 16384,
+    appName: "GDG Jakarta Organizer Dashboard",
+  });
+
+  const pdfWithPlaceholder = await pdfDoc.save({ useObjectStreams: false });
+  const signer = new P12Signer(parsedP12.p12Buffer, {
+    passphrase: parsedP12.passphrase,
+  });
+  const signPdf = new SignPdf();
+  const signedBuffer = await signPdf.sign(Buffer.from(pdfWithPlaceholder), signer, new Date(signedAtIso));
+  const finalBytes = new Uint8Array(signedBuffer);
+  const sha256 = createHash("sha256").update(finalBytes).digest("hex");
+
+  return {
+    pdfBytes: finalBytes,
+    sha256,
+    ecertStatus: "signed_p12",
+    ecertMetadata: {
+      subject_cn: parsedP12.status.subjectCn || "Google Developer Group Jakarta",
+      organization: parsedP12.status.organization,
+      issuer_cn: parsedP12.status.issuerCn || "Google Developer Group Jakarta",
+      serial_number: parsedP12.status.serialNumber || "",
+      fingerprint_sha256: parsedP12.status.fingerprintSha256 || "",
+      valid_from: parsedP12.status.validFrom || signedAtIso,
+      valid_to: parsedP12.status.validTo || signedAtIso,
+      is_self_signed: parsedP12.status.isSelfSigned,
+      reason,
+      location,
+    },
+  };
+}

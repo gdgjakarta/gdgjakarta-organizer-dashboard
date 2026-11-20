@@ -41,6 +41,7 @@ import { EventCardImage } from "@/components/event-card-image";
 import { EventRegistrationModal } from "@/components/event-registration-modal";
 import { RefundRequestDialog } from "@/components/refund/refund-request-dialog";
 import { RefundStatusDialog } from "@/components/refund/refund-status-dialog";
+import { AttendanceCertificateActions } from "@/components/events/attendance-certificate-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -941,6 +942,9 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
             </EventRegistrationModal>
           </div>
         )}
+
+        {/* Attendance Event Certificate (Post Wrap-Up, Main Event Check-In) */}
+        <AttendanceCertificateActions event={event} registration={registration} variant="card" />
 
         {/* Merchandise Delivery Claim or Refund for Uncollected Merchandise */}
         {isPast &&

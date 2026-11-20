@@ -788,7 +788,100 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
       sampleValue: "Co-Branding Guidelines & Next Steps",
     },
   ],
+  speaker_thank_you: [
+    {
+      tag: "{{ $('event-params').item.json.eventName }}",
+      label: "Event Name",
+      description: "Name of the GDG Jakarta event",
+      sampleValue: "Google I/O Extended Jakarta 2026",
+    },
+    {
+      tag: "{{ $('loop-send-email').item.json['Full Name'] }}",
+      label: "Speaker Full Name",
+      description: "Speaker display name",
+      sampleValue: "Veronica Putri A.",
+    },
+    {
+      tag: "{{ $('event-params').item.json.presenterRole }}",
+      label: "Presenter Role",
+      description: "Speaker role (Speaker, Mentor, Moderator, etc.)",
+      sampleValue: "Speaker",
+    },
+    {
+      tag: "{{ $('event-params').item.json.talkTitle }}",
+      label: "Talk / Session Title",
+      description: "Title of the speaker's session",
+      sampleValue: "Building AI Agents with Gemini",
+    },
+    {
+      tag: "{{ $('event-params').item.json.certificateUrl }}",
+      label: "Verified Certificate URL",
+      description: "Public verification & download link on gdgjakarta.com",
+      sampleValue: "https://gdgjakarta.com/certificates/cert_sample",
+    },
+    {
+      tag: "{{ $('event-params').item.json.eventHighlightsHtml }}",
+      label: "Event Highlights Block (Conditional)",
+      description: "Auto-rendered photo album & highlight video buttons (omitted when empty)",
+      sampleValue: "Event Highlights",
+    },
+  ],
 };
+
+export const DEFAULT_SPEAKER_THANK_YOU_EMAIL_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thank You &amp; Certificate of Appreciation</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#202124;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f4f6f8;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+          <tr>
+            <td style="padding:0;">
+              <img src="{{ $('event-params').item.json.headerEmailUrl }}" alt="{{ $('event-params').item.json.eventName }}" style="display:block;width:100%;height:auto;max-height:220px;object-fit:cover;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 28px 24px 28px;">
+              <p style="margin:0 0 12px 0;font-size:13px;font-weight:600;color:#1a73e8;text-transform:uppercase;letter-spacing:0.06em;">Certificate of Appreciation</p>
+              <h1 style="margin:0 0 16px 0;font-size:24px;line-height:1.3;color:#202124;">Thank You, {{ $('loop-send-email').item.json['Full Name'] }}! 🎉</h1>
+              <p style="margin:0 0 16px 0;font-size:15px;line-height:1.65;color:#3c4043;">
+                On behalf of <strong>GDG Jakarta</strong>, we extend our heartfelt gratitude for contributing as a <strong>{{ $('event-params').item.json.presenterRole }}</strong> at <strong>{{ $('event-params').item.json.eventName }}</strong>.
+              </p>
+              <p style="margin:0 0 20px 0;font-size:15px;line-height:1.65;color:#3c4043;">
+                Your session, <strong>"{{ $('event-params').item.json.talkTitle }}"</strong>, inspired our community and made this event truly memorable. Your official <strong>Certificate of Appreciation (PDF)</strong> is attached to this email, and you can also view, download, or add it directly to your LinkedIn profile using the button below.
+              </p>
+              <table role="presentation" cellspacing="0" cellpadding="0" style="margin:24px 0;">
+                <tr>
+                  <td style="border-radius:10px;background-color:#1a73e8;">
+                    <a href="{{ $('event-params').item.json.certificateUrl }}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:13px 24px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">View &amp; Share Certificate</a>
+                  </td>
+                </tr>
+              </table>
+              {{ $('event-params').item.json.eventHighlightsHtml }}
+              <p style="margin:24px 0 0 0;font-size:14px;line-height:1.6;color:#5f6368;">
+                We look forward to collaborating with you again at future GDG Jakarta events!
+              </p>
+              <p style="margin:12px 0 0 0;font-size:14px;font-weight:600;color:#202124;">
+                Warm regards,<br />GDG Jakarta Organizer Team
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 28px;background-color:#f8f9fa;border-top:1px solid #e5e7eb;text-align:center;font-size:12px;color:#5f6368;">
+              Google Developer Group Jakarta &bull; <a href="https://gdgjakarta.com" style="color:#1a73e8;text-decoration:none;">gdgjakarta.com</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 
 export const EMAIL_TEMPLATES_CONFIG: EmailTemplateMeta[] = [
   {
@@ -972,6 +1065,19 @@ export const EMAIL_TEMPLATES_CONFIG: EmailTemplateMeta[] = [
     isCuratedOnly: false,
     variables: EMAIL_TEMPLATE_VARIABLES.partner_confirmation,
   },
+  {
+    key: "speaker_thank_you",
+    name: "Speaker Thank You & Certificate of Appreciation",
+    badge: "Speaker • Post-Event",
+    subjectDefault: "Thank You for Speaking at {{ $('event-params').item.json.eventName }} — Certificate of Appreciation",
+    description:
+      "Sent manually or in bulk by organizers after the event. Attaches the speaker's Certificate of Appreciation PDF, links to the public verification page, and includes Event Highlights (photo album & highlight video) when configured.",
+    n8nNode: "send-certificate-email",
+    triggerDescription: "Triggered manually or in bulk from the Speakers tab",
+    defaultHtml: DEFAULT_SPEAKER_THANK_YOU_EMAIL_HTML,
+    isCuratedOnly: false,
+    variables: EMAIL_TEMPLATE_VARIABLES.speaker_thank_you,
+  },
 ];
 
 export const CUSTOM_DEFAULT_TEMPLATES_KEY = "gdg_custom_default_email_templates";
@@ -1057,6 +1163,8 @@ export function getFactoryDefaultTemplateByKey(key: EmailTemplateKey): string {
       return DEFAULT_EVENT_PROPOSAL_EMAIL_HTML;
     case "partner_confirmation":
       return DEFAULT_PARTNER_CONFIRMATION_EMAIL_HTML;
+    case "speaker_thank_you":
+      return DEFAULT_SPEAKER_THANK_YOU_EMAIL_HTML;
     default:
       return "";
   }
@@ -1112,6 +1220,12 @@ export interface TemplateSimulatedData {
   brandGuideUrl?: string;
   sponsorTier?: string;
   companyName?: string;
+  certificateUrl?: string;
+  certificateCode?: string;
+  photoAlbumUrl?: string;
+  photoAlbumTitle?: string;
+  highlightVideoUrl?: string;
+  highlightVideoTitle?: string;
 }
 
 export const DEFAULT_INTEREST_CHECKLIST_ITEMS: string[] = [
@@ -1218,7 +1332,46 @@ export const DEFAULT_CHECKLIST_ITEMS_BY_TYPE: Record<EmailTemplateKey, string[]>
     "Agreement & Deliverables Coordination: Our partnership team will reach out regarding your Letter of Agreement (LOA) or MOU and promotional timeline.",
     "Update Anytime: If you need to update your logo or billing details, click the Review Submission link above and use Load My Response.",
   ],
+  speaker_thank_you: [
+    "Your Certificate of Appreciation PDF is attached to this email.",
+    "Use the View & Share Certificate button to add it directly to LinkedIn.",
+  ],
 };
+
+export function renderEventHighlightsHtml(params: {
+  photoAlbumUrl?: string | null;
+  photoAlbumTitle?: string | null;
+  highlightVideoUrl?: string | null;
+  highlightVideoTitle?: string | null;
+}): string {
+  const albumUrl = (params.photoAlbumUrl || "").trim();
+  const videoUrl = (params.highlightVideoUrl || "").trim();
+  if (!albumUrl && !videoUrl) {
+    return "";
+  }
+
+  const escapeAttr = (v: string) =>
+    v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const buttons: string[] = [];
+  if (albumUrl) {
+    const label = escapeAttr((params.photoAlbumTitle || "").trim() || "View Event Photo Album");
+    buttons.push(
+      `<a href="${escapeAttr(albumUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin:0 8px 8px 0;padding:10px 16px;background-color:#ffffff;border:1px solid #dadce0;border-radius:8px;color:#1a73e8;font-size:13px;font-weight:600;text-decoration:none;">📸 ${label}</a>`,
+    );
+  }
+  if (videoUrl) {
+    const label = escapeAttr((params.highlightVideoTitle || "").trim() || "Watch Highlight Video");
+    buttons.push(
+      `<a href="${escapeAttr(videoUrl)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin:0 8px 8px 0;padding:10px 16px;background-color:#ffffff;border:1px solid #dadce0;border-radius:8px;color:#1a73e8;font-size:13px;font-weight:600;text-decoration:none;">🎬 ${label}</a>`,
+    );
+  }
+
+  return `<div style="margin:20px 0;padding:18px 20px;background-color:#f8f9fa;border:1px solid #e5e7eb;border-radius:12px;">
+    <p style="margin:0 0 12px 0;font-size:14px;font-weight:600;color:#202124;">✨ Event Highlights</p>
+    <div>${buttons.join("")}</div>
+  </div>`;
+}
 
 export const DEFAULT_CHECKLIST_ITEMS: string[] = DEFAULT_ACCEPTED_CHECKLIST_ITEMS;
 
@@ -1755,6 +1908,12 @@ export function getCleanDefaultTemplateDataForType(
       customData?.brandGuideUrl ?? event.sponsor_config?.brand_guide_url ?? "https://gdgjakarta.org/brand-guide",
     sponsorTier: customData?.sponsorTier ?? "Gold Partner",
     companyName: customData?.companyName ?? "Partner Organization",
+    certificateUrl: customData?.certificateUrl ?? "https://gdgjakarta.com/certificates/cert_sample",
+    certificateCode: customData?.certificateCode ?? "GDGJKT-2026-SAMPLE",
+    photoAlbumUrl: event.photo_album_url ?? customData?.photoAlbumUrl ?? "",
+    photoAlbumTitle: event.photo_album_title ?? customData?.photoAlbumTitle ?? "",
+    highlightVideoUrl: event.highlight_video_url ?? event.video_url ?? customData?.highlightVideoUrl ?? "",
+    highlightVideoTitle: event.highlight_video_title ?? customData?.highlightVideoTitle ?? "",
   };
 }
 
@@ -1776,6 +1935,7 @@ export function getAllCleanDefaultTemplatesData(
     speaker_invitation: getCleanDefaultTemplateDataForType("speaker_invitation", event),
     event_proposal: getCleanDefaultTemplateDataForType("event_proposal", event),
     partner_confirmation: getCleanDefaultTemplateDataForType("partner_confirmation", event),
+    speaker_thank_you: getCleanDefaultTemplateDataForType("speaker_thank_you", event),
   };
 }
 
@@ -1874,6 +2034,14 @@ export function getDefaultTemplateDataForType(key: EmailTemplateKey, event: Fire
     brandGuideUrl: savedData.brandGuideUrl ?? cleanDefaults.brandGuideUrl,
     sponsorTier: savedData.sponsorTier ?? cleanDefaults.sponsorTier,
     companyName: savedData.companyName ?? cleanDefaults.companyName,
+    certificateUrl: savedData.certificateUrl ?? cleanDefaults.certificateUrl,
+    certificateCode: savedData.certificateCode ?? cleanDefaults.certificateCode,
+    photoAlbumUrl: event.photo_album_url ?? savedData.photoAlbumUrl ?? cleanDefaults.photoAlbumUrl,
+    photoAlbumTitle: event.photo_album_title ?? savedData.photoAlbumTitle ?? cleanDefaults.photoAlbumTitle,
+    highlightVideoUrl:
+      event.highlight_video_url ?? event.video_url ?? savedData.highlightVideoUrl ?? cleanDefaults.highlightVideoUrl,
+    highlightVideoTitle:
+      event.highlight_video_title ?? savedData.highlightVideoTitle ?? cleanDefaults.highlightVideoTitle,
   };
 }
 
@@ -1893,6 +2061,7 @@ export function getAllDefaultTemplatesData(event: FirestoreEvent): Record<EmailT
     speaker_invitation: getDefaultTemplateDataForType("speaker_invitation", event),
     event_proposal: getDefaultTemplateDataForType("event_proposal", event),
     partner_confirmation: getDefaultTemplateDataForType("partner_confirmation", event),
+    speaker_thank_you: getDefaultTemplateDataForType("speaker_thank_you", event),
   };
 }
 
@@ -2181,6 +2350,22 @@ export function interpolateTemplateHtml(
   rendered = rendered.replaceAll("[[Name]]", attendee.name);
   rendered = rendered.replaceAll("[[Email]]", attendee.email);
 
+  const certificateUrl = data.certificateUrl ?? "https://gdgjakarta.com/certificates/cert_sample";
+  const certificateCode = data.certificateCode ?? "";
+  const eventHighlightsHtml = renderEventHighlightsHtml({
+    photoAlbumUrl: data.photoAlbumUrl,
+    photoAlbumTitle: data.photoAlbumTitle,
+    highlightVideoUrl: data.highlightVideoUrl,
+    highlightVideoTitle: data.highlightVideoTitle,
+  });
+
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.certificateUrl }}", certificateUrl);
+  rendered = rendered.replaceAll("{{certificateUrl}}", certificateUrl);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.certificateCode }}", certificateCode);
+  rendered = rendered.replaceAll("{{certificateCode}}", certificateCode);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.eventHighlightsHtml }}", eventHighlightsHtml);
+  rendered = rendered.replaceAll("{{eventHighlightsHtml}}", eventHighlightsHtml);
+
   if (rendered.includes("details-box") || rendered.includes("ticket-card")) {
     rendered = ensureVenueButtonAndFooterInHtml(rendered);
   }
@@ -2360,6 +2545,8 @@ export function buildRenderedEmailForAttendee({
   confirmationUrl,
   sponsorTier,
   companyName,
+  certificateUrl,
+  certificateCode,
 }: {
   templateKey: EmailTemplateKey;
   attendee: { name: string; email: string };
@@ -2380,6 +2567,12 @@ export function buildRenderedEmailForAttendee({
   brandGuideUrl?: string;
   sponsorTier?: string;
   companyName?: string;
+  certificateUrl?: string;
+  certificateCode?: string;
+  photoAlbumUrl?: string;
+  photoAlbumTitle?: string;
+  highlightVideoUrl?: string;
+  highlightVideoTitle?: string;
 }): {
   firstName: string;
   lastName: string;
@@ -2412,6 +2605,11 @@ export function buildRenderedEmailForAttendee({
     venue: eventRecord.venue,
     url: eventRecord.url,
     static_url: eventRecord.static_url,
+    photo_album_url: eventRecord.photo_album_url,
+    photo_album_title: eventRecord.photo_album_title,
+    highlight_video_url: eventRecord.highlight_video_url,
+    highlight_video_title: eventRecord.highlight_video_title,
+    video_url: eventRecord.video_url,
   };
 
   const simulatedData = getDefaultTemplateDataForType(templateKey, fullEvent);
@@ -2439,6 +2637,8 @@ export function buildRenderedEmailForAttendee({
   if (confirmationUrl) simulatedData.confirmationUrl = confirmationUrl;
   if (sponsorTier) simulatedData.sponsorTier = sponsorTier;
   if (companyName) simulatedData.companyName = companyName;
+  if (certificateUrl) simulatedData.certificateUrl = certificateUrl;
+  if (certificateCode) simulatedData.certificateCode = certificateCode;
 
   // Get raw template HTML
   const rawHtml =

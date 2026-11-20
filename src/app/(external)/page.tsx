@@ -33,12 +33,14 @@ export const metadata: Metadata = {
     url: "/",
     siteName: APP_CONFIG.name,
     type: "website",
+    images: ["/og-image.jpg"],
   },
   twitter: {
     card: "summary_large_image",
     title: "GDG Jakarta | Google Developer Groups Community Chapter",
     description:
       "Connect, learn, and grow with the Google Developer Groups Jakarta community. Discover meetups, tech workshops, hackathons, and speaker sessions in Jakarta.",
+    images: ["/og-image.jpg"],
   },
 };
 

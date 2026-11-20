@@ -35,6 +35,7 @@ import { EventCardImage } from "@/components/event-card-image";
 import { EventRegistrationModal } from "@/components/event-registration-modal";
 import { RefundRequestDialog } from "@/components/refund/refund-request-dialog";
 import { RefundStatusDialog } from "@/components/refund/refund-status-dialog";
+import { AttendanceCertificateActions } from "@/components/events/attendance-certificate-actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -908,6 +909,9 @@ export function EventCardItem({
                   }
                 />
               )}
+
+              {/* Attendance Event Certificate (Post Wrap-Up, Main Event Check-In) */}
+              <AttendanceCertificateActions event={effectiveEvent} registration={reg} variant="compact" />
 
               {/* Refund Request / Status Button (Pre-event for tickets, or for active requests) */}
               {(() => {

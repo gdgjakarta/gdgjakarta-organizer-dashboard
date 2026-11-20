@@ -1,0 +1,433 @@
+{
+  "name": "Generate Certificate API",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "api/generate-certificate",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cert-gen-webhook",
+      "name": "Webhook API",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [-1200, 300],
+      "webhookId": "gdg-jkt-generate-certificate-api",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OhKNMRKIAMZomRhC",
+          "name": "GDG Jakarta API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "validate-template-id",
+              "leftValue": "={{ $json.body.templateFileId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "cert-gen-validate",
+      "name": "Validate Payload",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-960, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"success\": false,\n  \"message\": \"templateFileId is required\"\n}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "cert-gen-invalid",
+      "name": "Response: Invalid Payload",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [-720, 520]
+    },
+    {
+      "parameters": {
+        "dataToSave": {
+          "values": [
+            {
+              "key": "executionId",
+              "value": "={{ $execution.id }}"
+            },
+            {
+              "key": "mode",
+              "value": "={{ $json.body.mode || 'google_slides' }}"
+            },
+            {
+              "key": "templateFileId",
+              "value": "={{ $json.body.templateFileId }}"
+            }
+          ]
+        }
+      },
+      "id": "cert-gen-log",
+      "name": "Log Execution Data",
+      "type": "n8n-nodes-base.executionData",
+      "typeVersion": 1.1,
+      "position": [-720, 220]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "route-drawing-export",
+              "leftValue": "={{ $json.body.mode }}",
+              "rightValue": "export_drawing_pdf",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "cert-gen-route-mode",
+      "name": "Is Drawing Export Mode?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-480, 220]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Webhook API').item.json.body.templateFileId }}/export?mimeType=application/pdf",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdf"
+            }
+          },
+          "timeout": 25000
+        }
+      },
+      "id": "cert-gen-export-drawing",
+      "name": "Export Drawing PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-200, 40],
+      "retryOnFail": true,
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "dQuvWh9mXirxb1zn",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Webhook API').item.json.body.templateFileId }}/copy?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: ($('Webhook API').item.json.body.outputFileName || 'certificate-temp') + '-' + Date.now(), ...( $('Webhook API').item.json.body.tempFolderId ? { parents: [$('Webhook API').item.json.body.tempFolderId] } : {} ) }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "cert-gen-copy-slide",
+      "name": "Copy Slides Template",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-200, 340],
+      "retryOnFail": true,
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "dQuvWh9mXirxb1zn",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const copyId = $input.first().json.id;\nconst replacements = $('Webhook API').first().json.body.replacements || {};\nconst requests = [];\n\nfor (const [key, value] of Object.entries(replacements)) {\n  if (value === undefined || value === null) continue;\n  requests.push({\n    replaceAllText: {\n      containsText: {\n        text: String(key),\n        matchCase: false,\n      },\n      replaceText: String(value),\n    },\n  });\n}\n\nreturn [{ json: { copyId, requests } }];"
+      },
+      "id": "cert-gen-build-batch",
+      "name": "Build Slides batchUpdate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [40, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://slides.googleapis.com/v1/presentations/{{ $json.copyId }}:batchUpdate",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleSlidesOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ requests: $json.requests }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "cert-gen-replace-text",
+      "name": "Replace Slide Placeholders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [280, 340],
+      "retryOnFail": true,
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "googleSlidesOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SLIDES_CREDENTIAL_ID",
+          "name": "Google Slides account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Build Slides batchUpdate').item.json.copyId }}/export?mimeType=application/pdf",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdf"
+            }
+          },
+          "timeout": 25000
+        }
+      },
+      "id": "cert-gen-export-slide-pdf",
+      "name": "Export Slide PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 340],
+      "retryOnFail": true,
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "dQuvWh9mXirxb1zn",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Build Slides batchUpdate').item.json.copyId }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "cert-gen-delete-temp",
+      "name": "Delete Temp Copy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 340],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "dQuvWh9mXirxb1zn",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const exportItem = $('Export Slide PDF').first();\nreturn [{ json: { success: true }, binary: exportItem.binary }];"
+      },
+      "id": "cert-gen-restore-binary",
+      "name": "Restore Exported PDF Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [980, 340]
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "responseDataSource": "set",
+        "inputFieldName": "pdf",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/pdf"
+              },
+              {
+                "name": "x-execution-id",
+                "value": "={{ $execution.id }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "cert-gen-respond-pdf",
+      "name": "Response: PDF Binary",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1220, 220]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Build Slides batchUpdate').item.json.copyId }}?supportsAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "cert-gen-cleanup-error",
+      "name": "Delete Temp Copy (On Error)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 560],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "dQuvWh9mXirxb1zn",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": false,\n  \"message\": {{ ($json.error && $json.error.message ? $json.error.message : 'Failed to generate certificate PDF').toJsonString() }}\n}",
+        "options": {
+          "responseCode": 500,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "x-execution-id",
+                "value": "={{ $execution.id }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "cert-gen-respond-error",
+      "name": "Response: Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1020, 560]
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ $json.error || 'Certificate generation failed' }}"
+      },
+      "id": "cert-gen-stop-error",
+      "name": "Stop and Error",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [1260, 560]
+    }
+  ],
+  "connections": {
+    "Webhook API": {
+      "main": [[{ "node": "Validate Payload", "type": "main", "index": 0 }]]
+    },
+    "Validate Payload": {
+      "main": [
+        [{ "node": "Log Execution Data", "type": "main", "index": 0 }],
+        [{ "node": "Response: Invalid Payload", "type": "main", "index": 0 }]
+      ]
+    },
+    "Log Execution Data": {
+      "main": [[{ "node": "Is Drawing Export Mode?", "type": "main", "index": 0 }]]
+    },
+    "Is Drawing Export Mode?": {
+      "main": [
+        [{ "node": "Export Drawing PDF", "type": "main", "index": 0 }],
+        [{ "node": "Copy Slides Template", "type": "main", "index": 0 }]
+      ]
+    },
+    "Export Drawing PDF": {
+      "main": [
+        [{ "node": "Response: PDF Binary", "type": "main", "index": 0 }],
+        [{ "node": "Response: Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Copy Slides Template": {
+      "main": [
+        [{ "node": "Build Slides batchUpdate", "type": "main", "index": 0 }],
+        [{ "node": "Response: Error", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Slides batchUpdate": {
+      "main": [[{ "node": "Replace Slide Placeholders", "type": "main", "index": 0 }]]
+    },
+    "Replace Slide Placeholders": {
+      "main": [
+        [{ "node": "Export Slide PDF", "type": "main", "index": 0 }],
+        [{ "node": "Delete Temp Copy (On Error)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Export Slide PDF": {
+      "main": [
+        [{ "node": "Delete Temp Copy", "type": "main", "index": 0 }],
+        [{ "node": "Delete Temp Copy (On Error)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Delete Temp Copy": {
+      "main": [[{ "node": "Restore Exported PDF Binary", "type": "main", "index": 0 }]]
+    },
+    "Restore Exported PDF Binary": {
+      "main": [[{ "node": "Response: PDF Binary", "type": "main", "index": 0 }]]
+    },
+    "Delete Temp Copy (On Error)": {
+      "main": [[{ "node": "Response: Error", "type": "main", "index": 0 }]]
+    },
+    "Response: Error": {
+      "main": [[{ "node": "Stop and Error", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
