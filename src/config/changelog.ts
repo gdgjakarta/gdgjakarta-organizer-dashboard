@@ -16,10 +16,282 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.57",
+    releaseDate: "2026-11-23",
+    title: "Manual Print Badge Trigger on Registrants & Application Dossier",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Added 1-click Print Badge icon button and menu action on every row in the Registrants list, plus a Print Badge button in the Application Dossier header.",
+      },
+    ],
+  },
+  {
+    version: "1.0.56",
+    releaseDate: "2026-11-23",
+    title: "Print Queue Organizer Attribution, Live Indicator & Manual Refresh",
+    items: [
+      {
+        category: "Added",
+        text: "Added Triggered by column in the Real-Time Print Queue automatically recording the organizer's name and email on every enqueued print job.",
+      },
+      {
+        category: "Added",
+        text: "Added pulsing Live status indicator with last-updated timestamp and a manual Refresh button to the Print Queue header.",
+      },
+    ],
+  },
+  {
+    version: "1.0.55",
+    releaseDate: "2026-11-23",
+    title: "Printer Template Quick-Pick TypeScript Fix",
+    items: [
+      {
+        category: "Fixed",
+        text: "Widened ticket_type before fallback trim in ConfigurePrinterTemplateDataDialog for strict TypeScript production builds.",
+      },
+    ],
+  },
+  {
+    version: "1.0.54",
+    releaseDate: "2026-11-23",
+    title: "Editable Responsive Shipping Labels, BLE Portrait Rotation & Queue Pagination",
+    badge: "Major",
+    items: [
+      {
+        category: "Added",
+        text: "Added editable Shipping Labels HTML/CSS tab with token bar, live preview, Maps QR toggle, Save Current as Default, and automatic rescaling across all paper presets and orientations.",
+      },
+      {
+        category: "Added",
+        text: "Added Print Queue pagination (10 / 25 / 50 per page across 200 latest jobs), transactional Cancel Queued action, Speaker Thank-You Award icon, and Bevy capacity sync on event creation.",
+      },
+      {
+        category: "Improved",
+        text: "Updated GDG Print Station.app to v2.5.0 with 90° clockwise portrait rotation on 50×30mm rolls, fixed TSPL polarity and WKWebView sizing, centered Notch HUD pills, and published to R2.",
+      },
+      {
+        category: "Improved",
+        text: "Polished Shipping Label typography and overflow fitting, redesigned the Printers header toolbar into a single row, and balanced the delivery status dialog action buttons.",
+      },
+    ],
+  },
+  {
+    version: "1.0.53",
+    releaseDate: "2026-11-23",
+    title: "Direct Bluetooth Thermal Printing (CT221B BLE) & MOU Clause Overrides",
+    badge: "Major",
+    items: [
+      {
+        category: "Added",
+        text: "Added native CoreBluetooth BLE and Web Bluetooth TSPL printing for Clabel CT221B with configurable darkness and label gap settings.",
+      },
+      {
+        category: "Added",
+        text: "Added per-document MOU clause overrides for partner agreements.",
+      },
+      {
+        category: "Fixed",
+        text: "Sent relative logo paths to Bevy with explicit sync failure reporting, and fixed Web Bluetooth BufferSource typing.",
+      },
+    ],
+  },
+  {
+    version: "1.0.52",
+    releaseDate: "2026-11-23",
+    title: "Consolidated Partner Document Creation Dropdown",
+    items: [
+      {
+        category: "Improved",
+        text: "Consolidated Invoice, Quotation, LOA, and MOU creation buttons into a single dropdown menu in SponsorDocumentsDialog.",
+      },
+    ],
+  },
+  {
+    version: "1.0.51",
+    releaseDate: "2026-11-20",
+    title: "Per-Document LOA Clause Overrides & Workshop Toggle",
+    items: [
+      {
+        category: "Added",
+        text: "Added dynamic per-document LOA clause overrides and an optional workshop clause toggle when generating Letters of Agreement.",
+      },
+    ],
+  },
+  {
+    version: "1.0.50",
+    releaseDate: "2026-11-20",
+    title: "Cloudflare Workers Bundle Size Optimization",
+    items: [
+      {
+        category: "Fixed",
+        text: "Disabled sourcemap upload in wrangler.jsonc to stay below the 60 MiB Workers deployment limit.",
+      },
+    ],
+  },
+  {
+    version: "1.0.49",
+    releaseDate: "2026-11-20",
+    title: "PDF Fontkit Dependency Fix",
+    items: [
+      {
+        category: "Fixed",
+        text: "Added @pdf-lib/fontkit to package.json dependencies for production PDF generation builds.",
+      },
+    ],
+  },
+  {
+    version: "1.0.48",
+    releaseDate: "2026-11-20",
+    title: "Partner Email Dialog Wrapping Fix",
+    items: [
+      {
+        category: "Fixed",
+        text: "Fixed content wrapping inside the Send Document via Email dialog.",
+      },
+    ],
+  },
+  {
+    version: "1.0.47",
+    releaseDate: "2026-11-20",
+    title: "Default Partnership Website Update",
+    items: [
+      {
+        category: "Changed",
+        text: "Set default event website to https://gdgjakarta.org/ in partnership document templates.",
+      },
+    ],
+  },
+  {
+    version: "1.0.46",
+    releaseDate: "2026-11-20",
+    title: "Compact Sponsor Document Email Action",
+    items: [
+      {
+        category: "Improved",
+        text: "Changed the sponsor document email trigger to a compact icon button.",
+      },
+    ],
+  },
+  {
+    version: "1.0.45",
+    releaseDate: "2026-11-20",
+    title: "Attendance & Speaker Appreciation Certificates with PKCS#7 Signing",
+    badge: "Major",
+    items: [
+      {
+        category: "Added",
+        text: "Added Attendance & Speaker Appreciation event certificates with PKCS#7 digital signing, R2 hosting, and n8n email workflows.",
+      },
+      {
+        category: "Added",
+        text: "Added direct Sign Document action, custom document titles, MOU Clause 6 overrides, and CC/BCC multi-recipient email API support.",
+      },
+    ],
+  },
+  {
+    version: "1.0.44",
+    releaseDate: "2026-11-20",
+    title: "Public Partner Confirmation Firestore Write Fix",
+    items: [
+      {
+        category: "Fixed",
+        text: "Allowed public chapter_sponsors confirmation writes and surfaced Firestore write failures cleanly.",
+      },
+    ],
+  },
+  {
+    version: "1.0.43",
+    releaseDate: "2026-11-19",
+    title: "Partnership Tab Loading Skeletons",
+    items: [
+      {
+        category: "Improved",
+        text: "Added skeleton shimmer states while loading brand guide URLs, email headers, and confirmation links in the Partnership tab.",
+      },
+    ],
+  },
+  {
+    version: "1.0.42",
+    releaseDate: "2026-11-19",
+    title: "Email Note Spacing & PDF Signing Canvas Refinement",
+    items: [
+      {
+        category: "Fixed",
+        text: "Preserved line spacing and emphasis in partner email custom notes and refined the PDF signing canvas layout.",
+      },
+    ],
+  },
+  {
+    version: "1.0.41",
+    releaseDate: "2026-11-19",
+    title: "Partner Email Custom Note Font Sanitization",
+    items: [
+      {
+        category: "Fixed",
+        text: "Stripped pasted inline font styles from partner email custom note HTML.",
+      },
+    ],
+  },
+  {
+    version: "1.0.40",
+    releaseDate: "2026-11-19",
+    title: "Rich-Text Note Editor for Partner Emails",
+    items: [
+      {
+        category: "Added",
+        text: "Added a rich-text HTML note editor to the Partner Email dialog.",
+      },
+    ],
+  },
+  {
+    version: "1.0.39",
+    releaseDate: "2026-11-19",
+    title: "Partner PDF Signage & X.509 E-Certificate Verification Portal",
+    badge: "Major",
+    items: [
+      {
+        category: "Added",
+        text: "Launched the Sign Partner PDFs studio with visual signature placement, optional A4 audit trail page, PKCS#7 X.509 signing, R2 storage, and public verification portal.",
+      },
+    ],
+  },
+  {
+    version: "1.0.38",
+    releaseDate: "2026-11-19",
+    title: "Brand Guide URL Setting for Chapter Sponsors",
+    items: [
+      {
+        category: "Added",
+        text: "Added a configurable Brand Guide URL setting and quick-open button for non-event sponsors.",
+      },
+    ],
+  },
+  {
+    version: "1.0.37",
+    releaseDate: "2026-11-19",
+    title: "Partner & Sponsor Management Suite, Async Check-in Rate & Delivery Tracking Fixes",
+    badge: "Major",
+    items: [
+      {
+        category: "Added",
+        text: "Launched Partner & Sponsor Management with Bevy chapter/event sync, 16:9 poster logo cropper, tokenized Invoice/Quotation/LOA/MOU PDF generator, and public confirmation portals.",
+      },
+      {
+        category: "Added",
+        text: "Added async check-in rate hydration column for curation mode on the Registrants list.",
+      },
+      {
+        category: "Fixed",
+        text: "Fixed merchandise delivery courier mapping, tracking history display, and dialog action buttons.",
+      },
+    ],
+  },
+  {
     version: "1.0.36",
     releaseDate: "2026-11-16",
     title: "Live Member Detail Check-in Rate on Registrants Tab",
-    badge: "Latest",
     items: [
       {
         category: "Improved",

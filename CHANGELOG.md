@@ -7,6 +7,172 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.57] - 2026-11-23
+
+### Added
+- **Manual Print Badge Trigger on Registrants & Dossier**: Added a 1-click **Print Badge** icon button and dropdown action on every row in the Registrants tab, plus a **Print Badge** button in the Application Dossier header, creating a fresh Print Queue job regardless of the auto-print-on-check-in setting.
+
+---
+
+## [1.0.56] - 2026-11-23
+
+### Added
+- **Print Queue Organizer Attribution (`Triggered by`)**: Automatically stamps `auth.currentUser` name and email on every enqueued print job and displays a **Triggered by** column in the Real-Time Print Queue table.
+- **Live Queue Indicator & Manual Refresh**: Added a pulsing `● Live · Updated HH:mm:ss` badge and a **Refresh** button (`fetchRecentPrintQueue`) in the Real-Time Print Queue header.
+
+---
+
+## [1.0.55] - 2026-11-23
+
+### Fixed
+- **Printer Template Quick-Pick TypeScript Build**: Widened `ticket_type` before fallback `.trim()` in `ConfigurePrinterTemplateDataDialog` for strict TypeScript production builds.
+
+---
+
+## [1.0.54] - 2026-11-23
+
+### Added
+- **Editable Shipping Labels Dashboard Tab**: Added a Monaco HTML/CSS editor, click-to-insert token bar (`[[contactLine]]`, `[[mapsQr]]`, etc.), live thermal preview with Maps QR toggle, and **Save Current as Default** / **Reset to Saved Default** / **Restore Built-In** actions.
+- **Responsive Shipping Label Presets**: Added `buildShippingLabelCoreCss` and `syncShippingTemplateDimensions` so shipping labels automatically rescale across `40×30mm`, `50×30mm`, `60×40mm`, portrait, and custom roll sizes.
+- **Print Queue Pagination & Cancel Queued Action**: Raised live queue history to 200 jobs with `10 / 25 / 50` per-page pagination, removed the static `(30)` tab count, and added transactional `cancelQueuedPrintJob` (`×`) buttons.
+- **Speaker Thank-You Icon & Capacity Sync**: Added an amber `Award` icon for `speaker_thank_you` email templates and synced `max_attendees` from Bevy `total_capacity` on event creation.
+
+### Improved
+- **CT221B Portrait Rotation & Native App `v2.5.0`**: Added 90° clockwise portrait rotation onto `50×30mm` physical rolls, fixed TSPL polarity and `WKWebView` CSS px sizing, centered Notch HUD pills, and uploaded signed `v2.5.0` macOS `.dmg` / `.zip` / `install-macos.sh` to Cloudflare R2.
+- **Shipping Label & Delivery UI Polish**: Full-width single-line recipient name with initials fallback, single-line `WA • email` auto-shrink, overflow-safe `Note:` / `Items` spacing, compact single-row Printers header toolbar, and full-width + 2-column action buttons in `MerchandiseDeliveryStatusDialog`.
+- **Template Quick-Pick Data Accuracy**: Populated actual registrant role, company, email, ticket type, ref code, and attendee ID in `ConfigurePrinterTemplateDataDialog`.
+
+---
+
+## [1.0.53] - 2026-11-23
+
+### Added
+- **Direct Bluetooth Thermal Printing (CT221B BLE + TSPL)**: Added CoreBluetooth BLE support in `GDG Print Station.app v2.5.0`, pure TSPL raster encoder (`tspl-ct221b.ts`), Chromium Web Bluetooth fallback (`web-bluetooth-ct221b.ts`), and Bluetooth darkness/gap configuration.
+- **Per-Document MOU Clause Overrides**: Allowed customizing MOU clauses per sponsor document.
+
+### Fixed
+- **Bevy Sponsor Logo Sync & Web Bluetooth BufferSource**: Sent relative logo paths to Bevy while surfacing sponsor sync errors, and fixed `Uint8Array` chunk typing for TypeScript 5.7+ builds.
+
+---
+
+## [1.0.52] - 2026-11-23
+
+### Improved
+- **Partnership Document Creation Menu**: Consolidated Invoice, Quotation, LOA, and MOU creation buttons into a single dropdown menu inside `SponsorDocumentsDialog`.
+
+---
+
+## [1.0.51] - 2026-11-20
+
+### Added
+- **Per-Document LOA Clause Overrides & Workshop Toggle**: Added customizable LOA clause overrides and an optional workshop clause toggle when generating partner Letters of Agreement.
+
+---
+
+## [1.0.50] - 2026-11-20
+
+### Fixed
+- **Cloudflare Worker Bundle Size**: Disabled sourcemap uploads in `wrangler.jsonc` to stay comfortably under the 60 MiB Workers upload limit.
+
+---
+
+## [1.0.49] - 2026-11-20
+
+### Fixed
+- **PDF Fontkit Dependency**: Added `@pdf-lib/fontkit` explicitly to `package.json` for production builds.
+
+---
+
+## [1.0.48] - 2026-11-20
+
+### Fixed
+- **Partner Email Dialog Wrapping**: Fixed text and attachment wrapping inside the Send Document via Email dialog.
+
+---
+
+## [1.0.47] - 2026-11-20
+
+### Changed
+- **Default Partnership Website**: Set default event website in partnership document templates to `https://gdgjakarta.org/`.
+
+---
+
+## [1.0.46] - 2026-11-20
+
+### Improved
+- **Compact Sponsor Document Actions**: Switched the sponsor document email action to a compact icon button.
+
+---
+
+## [1.0.45] - 2026-11-20
+
+### Added
+- **Attendance & Speaker Appreciation Certificates**: Launched end-to-end event certificate generation with PKCS#7 digital signing, Cloudflare R2 storage, public verification, and n8n email dispatch workflows.
+- **Sponsor Document Signing & Custom Titles**: Added direct Sign Document action, custom document title support, and MOU Clause 6 overrides.
+- **Multi-Recipient Email API**: Added CC, BCC, and multi-recipient support to the `send-email` API.
+
+---
+
+## [1.0.44] - 2026-11-20
+
+### Fixed
+- **Public Partner Confirmation Writes**: Updated Firestore rules and error handling to permit public `chapter_sponsors` confirmation writes and surface write failures cleanly.
+
+---
+
+## [1.0.43] - 2026-11-19
+
+### Improved
+- **Partnership Loading Skeletons**: Added shimmer skeleton states while loading Brand Guide URLs, email headers, and confirmation URLs in the Partnership tab.
+
+---
+
+## [1.0.42] - 2026-11-19
+
+### Fixed
+- **Email Custom Note Formatting & Signing Canvas**: Preserved line spacing and emphasis in partner email custom notes and refined the PDF signing canvas layout.
+
+---
+
+## [1.0.41] - 2026-11-19
+
+### Fixed
+- **Email Custom Note Font Normalization**: Stripped pasted inline font styles from partner email custom note HTML so emails render consistently.
+
+---
+
+## [1.0.40] - 2026-11-19
+
+### Added
+- **Rich-Text HTML Note Editor**: Added a rich-text note editor to the Partner Email dialog.
+
+---
+
+## [1.0.39] - 2026-11-19
+
+### Added
+- **Partner PDF Signage & X.509 E-Certificate Portal**: Added the **Sign Partner PDFs** studio (`pdfjs-dist` page viewer, typed/drawn/uploaded signatures, drag & resize placements, optional A4 audit trail page, PKCS#7 X.509 signing with SHA-256 fallback, R2 hosting, and public verification at `/partnership/signed-documents/[token]`).
+
+---
+
+## [1.0.38] - 2026-11-19
+
+### Added
+- **Brand Guide URL Setting**: Added a configurable Brand Guide URL setting and quick-open button for non-event chapter sponsors.
+
+---
+
+## [1.0.37] - 2026-11-19
+
+### Added
+- **Partner & Sponsor Management Suite**: Launched `/dashboard/partnership` with Bevy chapter/event direct sync, 16:9 poster logo cropper, tokenized Invoice/Quotation/LOA/MOU PDF generator, thank-you email dispatch, and public partner confirmation portals.
+- **Async Check-in Rate Column**: Added non-blocking async check-in rate hydration for curation mode on the Registrants tab.
+
+### Fixed
+- **Merchandise Delivery Tracking**: Fixed courier name mapping, tracking history display, and delivery status dialog action layout.
+
+---
+
 ## [1.0.36] - 2026-11-16
 
 ### Improved
