@@ -109,14 +109,15 @@ export function ConfigurePrinterTemplateDataDialog({
       reg.session_title?.trim() || pickAnswer("session_title", "Session", "session", "session_track") || "";
 
     let resolvedTicketType = "";
-    if (reg.ticket_type === "free" || reg.ticket_price === 0) {
+    const rawTicketType: string | undefined = reg.ticket_type;
+    if (rawTicketType === "free" || reg.ticket_price === 0) {
       resolvedTicketType = "Free RSVP";
-    } else if (reg.ticket_type === "commitment_fee") {
+    } else if (rawTicketType === "commitment_fee") {
       resolvedTicketType = "Commitment Fee";
-    } else if (reg.ticket_type === "paid" || (typeof reg.ticket_price === "number" && reg.ticket_price > 0)) {
+    } else if (rawTicketType === "paid" || (typeof reg.ticket_price === "number" && reg.ticket_price > 0)) {
       resolvedTicketType = "Paid Pass";
-    } else if (typeof reg.ticket_type === "string" && reg.ticket_type.trim()) {
-      resolvedTicketType = reg.ticket_type.trim();
+    } else if (typeof rawTicketType === "string" && rawTicketType.trim()) {
+      resolvedTicketType = rawTicketType.trim();
     }
 
     const resolvedTicketName =
