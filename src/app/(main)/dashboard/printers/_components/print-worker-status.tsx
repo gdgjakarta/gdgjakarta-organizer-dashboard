@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Apple, RefreshCw, Sparkles, Usb } from "lucide-react";
+import { AlertTriangle, Apple, Battery, Bluetooth, RefreshCw, Sparkles, Usb } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,12 +23,20 @@ interface PrintWorkerStatusProps {
 
 function appStatusLabel(health: PrintWorkerHealth): string {
   if (health.printers.length === 1) return health.printers[0].name ?? "1 printer";
-  const ready = health.printers.filter((printer) => printer.available && printer.usbConnected !== false).length;
+  const ready = health.printers.filter((printer) => {
+    const linkOk =
+      printer.transport === "bluetooth" ? printer.bluetoothConnected !== false : printer.usbConnected !== false;
+    return printer.available && linkOk;
+  }).length;
   return `${ready}/${health.printers.length} printers`;
 }
 
 function printerBadge(printer: PrintWorkerPrinter): { label: string; className: string } {
-  if (printer.usbConnected === false) {
+  if (printer.transport === "bluetooth") {
+    if (printer.bluetoothConnected === false) {
+      return { label: "BT Disconnected", className: "bg-rose-500/10 text-rose-700 dark:text-rose-300" };
+    }
+  } else if (printer.usbConnected === false) {
     return { label: "USB Unplugged", className: "bg-rose-500/10 text-rose-700 dark:text-rose-300" };
   }
   if (!printer.available) {
@@ -148,7 +156,20 @@ export function PrintWorkerStatus({ health, isChecking, onRecheck, onOpenSetupGu
                 {health.printers.map((printer) => (
                   <li key={printer.name ?? "default"} className="rounded-md border p-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate font-medium">{printer.name ?? "System default"}</span>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        {printer.transport === "bluetooth" ? (
+                          <Bluetooth className="size-3 shrink-0 text-blue-500" />
+                        ) : (
+                          <Usb className="size-3 shrink-0 text-muted-foreground" />
+                        )}
+                        <span className="truncate font-medium">{printer.name ?? "System default"}</span>
+                        {typeof printer.batteryPercent === "number" && (
+                          <Badge variant="outline" className="gap-0.5 px-1 py-0 font-mono text-[9px]">
+                            <Battery className="size-2.5" />
+                            {printer.batteryPercent}%
+                          </Badge>
+                        )}
+                      </span>
                       <span
                         className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-[10px]", printerBadge(printer).className)}
                       >
@@ -165,7 +186,11 @@ export function PrintWorkerStatus({ health, isChecking, onRecheck, onOpenSetupGu
                     </div>
                     {printer.uri && (
                       <div className="mt-0.5 flex items-center gap-1 truncate font-mono text-[10px] text-muted-foreground/80">
-                        <Usb className="size-2.5 shrink-0" />
+                        {printer.transport === "bluetooth" ? (
+                          <Bluetooth className="size-2.5 shrink-0 text-blue-500" />
+                        ) : (
+                          <Usb className="size-2.5 shrink-0" />
+                        )}
                         <span className="truncate">{printer.uri}</span>
                       </div>
                     )}

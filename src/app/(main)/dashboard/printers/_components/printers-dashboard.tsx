@@ -6,6 +6,7 @@ import {
   Activity,
   AlertCircle,
   AlertTriangle,
+  Bluetooth,
   Calendar,
   CheckCircle2,
   Clock,
@@ -60,6 +61,7 @@ import {
   type PrinterConfig,
   type PrintJob,
 } from "@/lib/printers/types";
+import { printViaWebBluetooth } from "@/lib/printers/web-bluetooth-ct221b";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { InstallPrintWorkerDialog } from "./install-print-worker-dialog";
@@ -483,6 +485,10 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     recheckWorker,
     stations,
     queueError,
+    webBluetoothSupported,
+    webBluetoothPrinters,
+    connectWebBluetoothPrinter,
+    disconnectWebBluetoothPrinter,
   } = usePrintStation({
     isStationRunning,
     userEmail: user?.email,
@@ -491,9 +497,13 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     widthMm: config.paper_width_mm,
     heightMm: config.paper_height_mm,
     orientation: config.orientation,
+    bluetoothDensity: config.bluetooth_density,
+    bluetoothGapMm: config.bluetooth_gap_mm,
     printInBrowser,
     recentJobs,
   });
+
+  const hasConnectedWebBluetooth = webBluetoothPrinters.some((p) => p.connected && p.device.gatt?.connected);
 
   // Prints right now on this laptop, outside the queue (test print while the station is off). Returns the printer used.
   const executeSilentPrint = React.useCallback(
@@ -504,18 +514,34 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
           widthMm: config.paper_width_mm,
           heightMm: config.paper_height_mm,
           attendeeName: attendeeName || activeSampleData.name,
+          density: config.bluetooth_density,
+          gapMm: config.bluetooth_gap_mm,
         });
         return result.printer;
+      }
+      const activeWebBle = webBluetoothPrinters.find((p) => p.connected && p.device.gatt?.connected);
+      if (activeWebBle) {
+        await printViaWebBluetooth(activeWebBle, {
+          html: buildDocument(renderedBodyHtml),
+          widthMm: config.paper_width_mm,
+          heightMm: config.paper_height_mm,
+          density: config.bluetooth_density,
+          gapMm: config.bluetooth_gap_mm,
+        });
+        return `${activeWebBle.name} (Web BLE)`;
       }
       await printInBrowser(renderedBodyHtml);
       return BROWSER_PRINTER_NAME;
     },
     [
       workerHealthRef,
+      webBluetoothPrinters,
       buildDocument,
       printInBrowser,
       config.paper_width_mm,
       config.paper_height_mm,
+      config.bluetooth_density,
+      config.bluetooth_gap_mm,
       activeSampleData.name,
     ],
   );
@@ -577,6 +603,8 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
       config.paper_height_mm !== savedConfig.paper_height_mm ||
       config.orientation !== savedConfig.orientation ||
       config.auto_print_on_checkin !== savedConfig.auto_print_on_checkin ||
+      (config.bluetooth_density ?? 8) !== (savedConfig.bluetooth_density ?? 8) ||
+      (config.bluetooth_gap_mm ?? 2) !== (savedConfig.bluetooth_gap_mm ?? 2) ||
       config.template_html !== savedConfig.template_html ||
       (config.selected_event_id || "") !== (savedConfig.selected_event_id || "") ||
       JSON.stringify(config.sample_data ?? null) !== JSON.stringify(savedConfig.sample_data ?? null)
@@ -627,8 +655,10 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
   };
 
   const handleToggleStationRunning = React.useCallback(() => {
-    if (!isStationRunning && !workerHealth) {
-      toast.warning(`Open ${PRINT_STATION_APP_NAME} on this Mac first so badges print without browser dialogs.`);
+    if (!isStationRunning && !workerHealth && !hasConnectedWebBluetooth) {
+      toast.warning(
+        `Open ${PRINT_STATION_APP_NAME} or pair a Bluetooth CT221B printer first so badges print without browser dialogs.`,
+      );
       setIsSetupDialogOpen(true);
       return;
     }
@@ -641,7 +671,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
       }
       return next;
     });
-  }, [isStationRunning, workerHealth, stationName, setIsStationRunning]);
+  }, [isStationRunning, workerHealth, hasConnectedWebBluetooth, stationName, setIsStationRunning]);
 
   // Run Test Print
   const handleTestPrint = async () => {
@@ -763,11 +793,18 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
             onRecheck={() => void recheckWorker()}
             open={isSetupDialogOpen}
             onOpenChange={setIsSetupDialogOpen}
+            webBluetoothSupported={webBluetoothSupported}
+            webBluetoothPrinters={webBluetoothPrinters}
+            onConnectWebBluetooth={connectWebBluetoothPrinter}
+            onDisconnectWebBluetooth={disconnectWebBluetoothPrinter}
+            onTestPrint={handleTestPrint}
           />
 
           <Button
             size="sm"
-            variant={isStationRunning ? "destructive" : workerHealth ? "default" : "outline"}
+            variant={
+              isStationRunning ? "destructive" : workerHealth || hasConnectedWebBluetooth ? "default" : "outline"
+            }
             onClick={handleToggleStationRunning}
             className="gap-1.5"
           >
@@ -802,7 +839,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         </div>
       )}
 
-      {isStationRunning && !workerHealth && (
+      {isStationRunning && !workerHealth && !hasConnectedWebBluetooth && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3.5 py-2.5 text-amber-800 text-xs dark:text-amber-300">
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-4 shrink-0" />
@@ -1069,6 +1106,42 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                       max={150}
                       value={config.paper_height_mm}
                       onChange={(e) => handleDimensionChange("height", Number(e.target.value) || 30)}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 border-t pt-3">
+                  <div className="space-y-1.5">
+                    <Label className="flex items-center gap-1.5 text-xs font-medium">
+                      <Bluetooth className="size-3 text-blue-500" />
+                      BT Darkness (1–15)
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={15}
+                      value={config.bluetooth_density ?? 8}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          bluetooth_density: Math.max(1, Math.min(15, Number(e.target.value) || 8)),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">BT Label Gap (mm)</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={10}
+                      value={config.bluetooth_gap_mm ?? 2}
+                      onChange={(e) =>
+                        setConfig((prev) => ({
+                          ...prev,
+                          bluetooth_gap_mm: Math.max(0, Math.min(10, Number(e.target.value) || 2)),
+                        }))
+                      }
                     />
                   </div>
                 </div>

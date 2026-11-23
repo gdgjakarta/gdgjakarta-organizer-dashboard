@@ -1329,29 +1329,56 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                     )}
 
                     {editingDoc.doc_type === "mou" && (
-                      <div className="space-y-1 pt-2 border-t border-border">
-                        <Label className="text-xs font-semibold">
-                          MOU Clause 6 — Financial / General Understanding Override (Optional)
-                        </Label>
-                        <Textarea
-                          value={editingDoc.mou_overrides?.mou_clause_6_non_financial || ""}
-                          onChange={(e) =>
-                            setEditingDoc({
-                              ...editingDoc,
-                              mou_overrides: {
-                                ...(editingDoc.mou_overrides || {}),
-                                mou_clause_6_non_financial: e.target.value,
+                      <details open className="pt-2 border-t border-border group">
+                        <summary className="cursor-pointer select-none text-xs font-semibold text-foreground flex items-center justify-between py-1">
+                          <span>Customize MOU Clauses &amp; Terms (Optional)</span>
+                          <span className="text-[10px] font-normal text-muted-foreground">
+                            Leave blank to use global template
+                          </span>
+                        </summary>
+                        <div className="space-y-2.5 pt-2">
+                          <p className="text-[11px] text-muted-foreground">
+                            Supported tokens:{" "}
+                            <code className="font-mono text-[10px]">
+                              {"{{eventName}} {{eventDate}} {{eventLocation}} {{sponsorTier}} {{companyName}}"}
+                            </code>
+                          </p>
+
+                          {(
+                            [
+                              { key: "mou_intro_text", label: "Intro Paragraph", rows: 2 },
+                              { key: "mou_clause_1_purpose", label: "Clause 1 — Purpose & Scope", rows: 2 },
+                              { key: "mou_clause_4_logo_ip", label: "Clause 4 — Brand Assets & IP", rows: 2 },
+                              { key: "mou_clause_5_term", label: "Clause 5 — Term & Validity", rows: 2 },
+                              {
+                                key: "mou_clause_6_non_financial",
+                                label: "Clause 6 — General Understanding & Amendments",
+                                rows: 3,
                               },
-                            })
-                          }
-                          placeholder={
-                            templatesConfig?.mou_clause_6_non_financial ||
-                            "Leave blank for default non-monetary clause, or enter paid fee & bank transfer terms..."
-                          }
-                          rows={3}
-                          className="text-xs"
-                        />
-                      </div>
+                              { key: "mou_disclaimer", label: "Disclaimer", rows: 2 },
+                            ] as const
+                          ).map(({ key, label, rows }) => (
+                            <div key={key} className="space-y-1">
+                              <Label className="text-xs">{label}</Label>
+                              <Textarea
+                                rows={rows}
+                                value={editingDoc.mou_overrides?.[key] || ""}
+                                onChange={(e) => {
+                                  const next = { ...(editingDoc.mou_overrides || {}) };
+                                  if (e.target.value) {
+                                    next[key] = e.target.value;
+                                  } else {
+                                    delete next[key];
+                                  }
+                                  setEditingDoc({ ...editingDoc, mou_overrides: next });
+                                }}
+                                placeholder={templatesConfig?.[key] || ""}
+                                className="text-xs"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </details>
                     )}
                   </div>
                 </div>

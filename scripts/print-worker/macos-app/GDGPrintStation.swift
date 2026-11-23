@@ -1,9 +1,10 @@
 import AppKit
+import CoreBluetooth
 import Foundation
 import Network
 import WebKit
 
-let WORKER_VERSION = "2.4.0"
+let WORKER_VERSION = "2.5.0"
 let DEFAULT_PORT: UInt16 = 17777
 let DEFAULT_ORIGINS = [
     "https://gdgjakarta.com",
@@ -15,12 +16,19 @@ let DEFAULT_ORIGINS = [
 
 // MARK: - Configuration & Persistence
 
+struct SavedBluetoothPrinter: Codable, Equatable {
+    var id: String
+    var name: String
+    var enabled: Bool
+}
+
 struct WorkerConfig: Codable {
     var printers: [String]
     var port: Int
     var allowedOrigins: [String]
     var chromePath: String?
     var userConfiguredPrinters: Bool?
+    var bluetoothPrinters: [SavedBluetoothPrinter]?
 }
 
 final class ConfigStore {
@@ -44,7 +52,8 @@ final class ConfigStore {
                 port: (1024...65535).contains(decoded.port) ? decoded.port : Int(DEFAULT_PORT),
                 allowedOrigins: Array(mergedOrigins).sorted(),
                 chromePath: decoded.chromePath,
-                userConfiguredPrinters: decoded.userConfiguredPrinters
+                userConfiguredPrinters: decoded.userConfiguredPrinters,
+                bluetoothPrinters: decoded.bluetoothPrinters ?? []
             )
         }
         return WorkerConfig(
@@ -52,7 +61,8 @@ final class ConfigStore {
             port: Int(DEFAULT_PORT),
             allowedOrigins: DEFAULT_ORIGINS,
             chromePath: nil,
-            userConfiguredPrinters: false
+            userConfiguredPrinters: false,
+            bluetoothPrinters: []
         )
     }
 
@@ -439,6 +449,80 @@ final class LabelPdfRenderer: NSObject, WKNavigationDelegate {
         }
     }
 
+    /// Renders HTML directly into a 203 DPI (8 dots/mm) packed 1-bit monochrome bitmap for Clabel CT221B TSPL printing.
+    func renderHtmlToMonoBitmap(html: String, widthMm: Double, heightMm: Double) async throws -> Data {
+        let widthInt = max(10, min(60, Int(widthMm.rounded())))
+        let heightInt = max(10, min(120, Int(heightMm.rounded())))
+        let widthPx = widthInt * 8
+        let heightPx = heightInt * 8
+        let widthPt = CGFloat(Double(widthInt) * 72.0 / 25.4)
+        let heightPt = CGFloat(Double(heightInt) * 72.0 / 25.4)
+        let wv = ensureWebView(widthPt: widthPt, heightPt: heightPt)
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            self.continuation = cont
+            wv.loadHTMLString(html, baseURL: URL(string: "https://gdgjakarta.com"))
+        }
+
+        try? await Task.sleep(nanoseconds: 110_000_000)
+
+        let snapConfig = WKSnapshotConfiguration()
+        snapConfig.rect = CGRect(x: 0, y: 0, width: widthPt, height: heightPt)
+        snapConfig.snapshotWidth = NSNumber(value: widthPx)
+
+        let nsImage: NSImage = try await withCheckedThrowingContinuation { (imgCont: CheckedContinuation<NSImage, Error>) in
+            wv.takeSnapshot(with: snapConfig) { image, error in
+                if let error = error {
+                    imgCont.resume(throwing: error)
+                } else if let image = image {
+                    imgCont.resume(returning: image)
+                } else {
+                    imgCont.resume(throwing: NSError(domain: "GDGPrintStation", code: 500, userInfo: [NSLocalizedDescriptionKey: "WebKit snapshot returned nil image."]))
+                }
+            }
+        }
+
+        var proposedRect = NSRect(x: 0, y: 0, width: widthPx, height: heightPx)
+        guard let cgImage = nsImage.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else {
+            throw NSError(domain: "GDGPrintStation", code: 500, userInfo: [NSLocalizedDescriptionKey: "Could not obtain CGImage from label snapshot."])
+        }
+
+        // Draw into an exact widthPx x heightPx 8-bit grayscale context on white background
+        var grayBytes = [UInt8](repeating: 255, count: widthPx * heightPx)
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        guard let ctx = CGContext(
+            data: &grayBytes,
+            width: widthPx,
+            height: heightPx,
+            bitsPerComponent: 8,
+            bytesPerRow: widthPx,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else {
+            throw NSError(domain: "GDGPrintStation", code: 500, userInfo: [NSLocalizedDescriptionKey: "Could not create grayscale bitmap context."])
+        }
+        ctx.setFillColor(gray: 1.0, alpha: 1.0)
+        ctx.fill(CGRect(x: 0, y: 0, width: widthPx, height: heightPx))
+        ctx.interpolationQuality = .high
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: widthPx, height: heightPx))
+
+        let widthBytes = widthInt // 8 dots/mm => 1 byte/mm
+        var mono = Data(count: widthBytes * heightPx)
+        mono.withUnsafeMutableBytes { dstRaw in
+            let dst = dstRaw.bindMemory(to: UInt8.self)
+            for y in 0..<heightPx {
+                let srcRow = y * widthPx
+                let dstRow = y * widthBytes
+                for x in 0..<widthPx {
+                    if grayBytes[srcRow + x] < 170 {
+                        dst[dstRow + (x >> 3)] |= (0x80 >> (x & 7))
+                    }
+                }
+            }
+        }
+        return mono
+    }
+
     nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         Task { @MainActor in
             self.continuation?.resume()
@@ -461,10 +545,537 @@ final class LabelPdfRenderer: NSObject, WKNavigationDelegate {
     }
 }
 
-// MARK: - CUPS Printer Pool & Parallel Queue Dispatcher
+// MARK: - Clabel CT221B TSPL Builder & Native CoreBluetooth Manager
+
+enum Ct221bTsplBuilder {
+    static let serviceUuid = CBUUID(string: "49535343-FE7D-4AE5-8FA9-9FAFD205E455")
+    static let writeCharUuid = CBUUID(string: "49535343-8841-43F4-A8D4-ECBE34729BB3")
+    static let notifyCharUuid = CBUUID(string: "49535343-1E4D-4BD9-BA61-23C647249616")
+
+    static func buildPayload(
+        monoBitmap: Data,
+        widthMm: Double,
+        heightMm: Double,
+        density: Int = 8,
+        gapMm: Int = 2,
+        copies: Int = 1
+    ) -> Data {
+        let w = max(10, min(60, Int(widthMm.rounded())))
+        let h = max(10, min(120, Int(heightMm.rounded())))
+        let heightDots = h * 8
+        let safeDensity = max(1, min(15, density))
+        let safeGap = max(0, min(10, gapMm))
+        let safeCopies = max(1, min(10, copies))
+
+        let header = [
+            "SIZE \(w) mm,\(h) mm",
+            "GAP \(safeGap) mm,0 mm",
+            "DIRECTION 0,0",
+            "REFERENCE 0,0",
+            "DENSITY \(safeDensity)",
+            "OFFSET 0 mm",
+            "SPEED 3",
+            "CLS",
+            "BITMAP 0,0,\(w),\(heightDots),1,"
+        ].joined(separator: "\r\n")
+
+        var payload = Data(header.utf8)
+        payload.append(monoBitmap)
+        payload.append(Data("\r\nPRINT 1,\(safeCopies)\r\n".utf8))
+        return payload
+    }
+
+    static func parseBatteryPercent(from frame: Data) -> Int? {
+        guard frame.count >= 9 else { return nil }
+        let bytes = [UInt8](frame)
+        for i in 0...(bytes.count - 9) {
+            guard bytes[i] == 0xDD, bytes[i + 1] == 0x00, bytes[i + 4] == 0x00, bytes[i + 5] == 0x01, bytes[i + 8] == 0xDD else {
+                continue
+            }
+            if bytes[i + 2] == 0x05 && bytes[i + 3] == 0x83 && bytes[i + 7] <= 100 {
+                return Int(bytes[i + 7])
+            }
+            if bytes[i + 2] == 0x05 && bytes[i + 3] == 0x86 && bytes[i + 6] <= 100 {
+                return Int(bytes[i + 6])
+            }
+        }
+        return nil
+    }
+}
+
+struct DiscoveredBluetoothDevice {
+    var id: String
+    var name: String
+    var rssi: Int
+    var connected: Bool
+    var batteryPercent: Int?
+}
+
+final class BluetoothPrinterManager: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+    static let shared = BluetoothPrinterManager()
+
+    private let bleQueue = DispatchQueue(label: "org.gdgjakarta.printstation.ble")
+    private let lock = NSLock()
+    private var central: CBCentralManager?
+    private var bluetoothStateValue: CBManagerState = .unknown
+
+    private var peripheralsById: [String: CBPeripheral] = [:]
+    private var rssiById: [String: Int] = [:]
+    private var writeCharsById: [String: CBCharacteristic] = [:]
+    private var batteryById: [String: Int] = [:]
+    private var lastErrorById: [String: String] = [:]
+
+    private var connectContinuations: [String: CheckedContinuation<String, Error>] = [:]
+    private var writeContinuations: [String: CheckedContinuation<Void, Error>] = [:]
+    private var readyToSendWaiters: [String: CheckedContinuation<Void, Never>] = [:]
+
+    var onStateChanged: (() -> Void)?
+
+    private override init() {
+        super.init()
+    }
+
+    func start() {
+        bleQueue.async { [weak self] in
+            guard let self = self, self.central == nil else { return }
+            self.central = CBCentralManager(delegate: self, queue: self.bleQueue)
+        }
+    }
+
+    func bluetoothStateString() -> String {
+        lock.lock()
+        let st = bluetoothStateValue
+        lock.unlock()
+        switch st {
+        case .poweredOn: return "poweredOn"
+        case .poweredOff: return "poweredOff"
+        case .unauthorized: return "unauthorized"
+        case .unsupported: return "unsupported"
+        case .resetting: return "resetting"
+        default: return "unknown"
+        }
+    }
+
+    func isConnected(id: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let p = peripheralsById[id] else { return false }
+        return p.state == .connected && writeCharsById[id] != nil
+    }
+
+    func batteryPercent(for id: String) -> Int? {
+        lock.lock()
+        defer { lock.unlock() }
+        return batteryById[id]
+    }
+
+    func lastError(for id: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return lastErrorById[id]
+    }
+
+    func snapshotDiscovered() -> [DiscoveredBluetoothDevice] {
+        lock.lock()
+        defer { lock.unlock() }
+        return peripheralsById.map { id, p in
+            DiscoveredBluetoothDevice(
+                id: id,
+                name: p.name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? p.name! : "CT221B",
+                rssi: rssiById[id] ?? -60,
+                connected: p.state == .connected && writeCharsById[id] != nil,
+                batteryPercent: batteryById[id]
+            )
+        }.sorted { lhs, rhs in
+            if lhs.connected != rhs.connected { return lhs.connected }
+            return lhs.rssi > rhs.rssi
+        }
+    }
+
+    func scanForPrinters(durationSeconds: TimeInterval = 4.0) async -> [DiscoveredBluetoothDevice] {
+        start()
+        // Wait briefly for CoreBluetooth central to power on if just started
+        let deadline = Date().addingTimeInterval(1.5)
+        while Date() < deadline && bluetoothStateString() == "unknown" {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        guard bluetoothStateString() == "poweredOn" else {
+            return snapshotDiscovered()
+        }
+
+        bleQueue.async { [weak self] in
+            guard let self = self, let central = self.central else { return }
+            // Also pull any already-connected peripherals exposing the ISSC printer service
+            let alreadyConnected = central.retrieveConnectedPeripherals(withServices: [Ct221bTsplBuilder.serviceUuid])
+            self.lock.lock()
+            for p in alreadyConnected {
+                let id = p.identifier.uuidString
+                self.peripheralsById[id] = p
+                p.delegate = self
+            }
+            self.lock.unlock()
+
+            central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+        }
+
+        try? await Task.sleep(nanoseconds: UInt64(durationSeconds * 1_000_000_000))
+
+        bleQueue.async { [weak self] in
+            self?.central?.stopScan()
+        }
+        return snapshotDiscovered()
+    }
+
+    func connect(id: String, preferredName: String? = nil) async throws -> String {
+        start()
+        guard bluetoothStateString() == "poweredOn" else {
+            throw NSError(
+                domain: "GDGPrintStation",
+                code: 503,
+                userInfo: [NSLocalizedDescriptionKey: "macOS Bluetooth is \(bluetoothStateString()). Turn on Bluetooth and allow permission in System Settings."]
+            )
+        }
+
+        var peripheral: CBPeripheral?
+        lock.lock()
+        peripheral = peripheralsById[id]
+        lock.unlock()
+
+        if peripheral == nil, let uuid = UUID(uuidString: id) {
+            let retrieved = await withCheckedContinuation { (cont: CheckedContinuation<CBPeripheral?, Never>) in
+                bleQueue.async { [weak self] in
+                    let list = self?.central?.retrievePeripherals(withIdentifiers: [uuid]) ?? []
+                    cont.resume(returning: list.first)
+                }
+            }
+            if let found = retrieved {
+                lock.lock()
+                peripheralsById[id] = found
+                lock.unlock()
+                peripheral = found
+            }
+        }
+
+        guard let target = peripheral else {
+            throw NSError(
+                domain: "GDGPrintStation",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "Bluetooth printer not found. Run a Bluetooth scan first."]
+            )
+        }
+
+        if isConnected(id: id) {
+            let name = preferredName ?? target.name ?? "CT221B"
+            saveBluetoothPrinter(id: id, name: name, enabled: true)
+            return name
+        }
+
+        let resolvedName: String = try await withCheckedThrowingContinuation { cont in
+            lock.lock()
+            connectContinuations[id] = cont
+            lock.unlock()
+
+            bleQueue.async { [weak self] in
+                target.delegate = self
+                self?.central?.connect(target, options: nil)
+            }
+
+            bleQueue.asyncAfter(deadline: .now() + 10.0) { [weak self] in
+                guard let self = self else { return }
+                self.lock.lock()
+                let pending = self.connectContinuations.removeValue(forKey: id)
+                self.lock.unlock()
+                pending?.resume(throwing: NSError(
+                    domain: "GDGPrintStation",
+                    code: 504,
+                    userInfo: [NSLocalizedDescriptionKey: "Timed out connecting to Bluetooth printer."]
+                ))
+            }
+        }
+
+        let finalName = preferredName ?? resolvedName
+        saveBluetoothPrinter(id: id, name: finalName, enabled: true)
+        return finalName
+    }
+
+    func disconnect(id: String, disableInConfig: Bool = true) {
+        lock.lock()
+        let peripheral = peripheralsById[id]
+        writeCharsById.removeValue(forKey: id)
+        lock.unlock()
+
+        if let p = peripheral {
+            bleQueue.async { [weak self] in
+                self?.central?.cancelPeripheralConnection(p)
+            }
+        }
+        if disableInConfig {
+            var cfg = ConfigStore.shared.load()
+            var list = cfg.bluetoothPrinters ?? []
+            if let idx = list.firstIndex(where: { $0.id == id }) {
+                list[idx].enabled = false
+                cfg.bluetoothPrinters = list
+                ConfigStore.shared.save(cfg)
+            }
+        }
+        notifyStateChanged()
+    }
+
+    func toggleSavedBluetoothPrinter(id: String) {
+        var cfg = ConfigStore.shared.load()
+        var list = cfg.bluetoothPrinters ?? []
+        guard let idx = list.firstIndex(where: { $0.id == id }) else { return }
+        let nextEnabled = !list[idx].enabled
+        list[idx].enabled = nextEnabled
+        let name = list[idx].name
+        cfg.bluetoothPrinters = list
+        ConfigStore.shared.save(cfg)
+
+        if nextEnabled {
+            Task {
+                _ = try? await self.connect(id: id, preferredName: name)
+                PrinterPoolManager.shared.refreshPrinters()
+            }
+        } else {
+            disconnect(id: id, disableInConfig: false)
+            PrinterPoolManager.shared.refreshPrinters()
+        }
+    }
+
+    private func saveBluetoothPrinter(id: String, name: String, enabled: Bool) {
+        var cfg = ConfigStore.shared.load()
+        var list = cfg.bluetoothPrinters ?? []
+        if let idx = list.firstIndex(where: { $0.id == id }) {
+            list[idx].name = name
+            list[idx].enabled = enabled
+        } else {
+            list.append(SavedBluetoothPrinter(id: id, name: name, enabled: enabled))
+        }
+        cfg.bluetoothPrinters = list
+        ConfigStore.shared.save(cfg)
+    }
+
+    func reconnectSavedPrinters() {
+        let saved = (ConfigStore.shared.load().bluetoothPrinters ?? []).filter { $0.enabled }
+        guard !saved.isEmpty else { return }
+        for item in saved {
+            Task {
+                _ = try? await self.connect(id: item.id, preferredName: item.name)
+                PrinterPoolManager.shared.refreshPrinters()
+            }
+        }
+    }
+
+    func writeTspl(to id: String, payload: Data) async throws {
+        lock.lock()
+        let peripheral = peripheralsById[id]
+        let writeChar = writeCharsById[id]
+        lock.unlock()
+
+        guard let p = peripheral, p.state == .connected, let char = writeChar else {
+            throw NSError(
+                domain: "GDGPrintStation",
+                code: 503,
+                userInfo: [NSLocalizedDescriptionKey: "Bluetooth printer is disconnected. Turn it on and reconnect."]
+            )
+        }
+
+        let useWithoutResponse = char.properties.contains(.writeWithoutResponse)
+        let writeType: CBCharacteristicWriteType = useWithoutResponse ? .withoutResponse : .withResponse
+        let maxLen = max(20, min(180, p.maximumWriteValueLength(for: writeType)))
+
+        var offset = 0
+        while offset < payload.count {
+            let end = min(offset + maxLen, payload.count)
+            let chunk = payload.subdata(in: offset..<end)
+
+            if useWithoutResponse {
+                if !p.canSendWriteWithoutResponse {
+                    await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                        lock.lock()
+                        readyToSendWaiters[id] = cont
+                        lock.unlock()
+                    }
+                }
+                bleQueue.async {
+                    p.writeValue(chunk, for: char, type: .withoutResponse)
+                }
+                // Gentle pacing to avoid overflowing CT221B UART RX ring buffer
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            } else {
+                try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                    lock.lock()
+                    writeContinuations[id] = cont
+                    lock.unlock()
+                    bleQueue.async {
+                        p.writeValue(chunk, for: char, type: .withResponse)
+                    }
+                }
+            }
+            offset = end
+        }
+    }
+
+    private func notifyStateChanged() {
+        DispatchQueue.main.async { [weak self] in
+            self?.onStateChanged?()
+        }
+    }
+
+    // MARK: CBCentralManagerDelegate
+
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        lock.lock()
+        bluetoothStateValue = central.state
+        lock.unlock()
+        if central.state == .poweredOn {
+            reconnectSavedPrinters()
+        }
+        notifyStateChanged()
+    }
+
+    func centralManager(
+        _ central: CBCentralManager,
+        didDiscover peripheral: CBPeripheral,
+        advertisementData: [String: Any],
+        rssi RSSI: NSNumber
+    ) {
+        let localName = (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? peripheral.name ?? ""
+        let services = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]) ?? []
+        let looksLikeCt221b =
+            services.contains(Ct221bTsplBuilder.serviceUuid)
+            || localName.localizedCaseInsensitiveContains("CT221")
+            || localName.localizedCaseInsensitiveContains("Clabel")
+        guard looksLikeCt221b else { return }
+
+        let id = peripheral.identifier.uuidString
+        lock.lock()
+        peripheralsById[id] = peripheral
+        rssiById[id] = RSSI.intValue
+        lock.unlock()
+        peripheral.delegate = self
+    }
+
+    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        let id = peripheral.identifier.uuidString
+        lock.lock()
+        lastErrorById.removeValue(forKey: id)
+        lock.unlock()
+        peripheral.delegate = self
+        peripheral.discoverServices([Ct221bTsplBuilder.serviceUuid])
+    }
+
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        let id = peripheral.identifier.uuidString
+        let errMsg = error?.localizedDescription ?? "Failed to connect to Bluetooth printer."
+        lock.lock()
+        lastErrorById[id] = errMsg
+        let cont = connectContinuations.removeValue(forKey: id)
+        lock.unlock()
+        cont?.resume(throwing: NSError(domain: "GDGPrintStation", code: 503, userInfo: [NSLocalizedDescriptionKey: errMsg]))
+        notifyStateChanged()
+    }
+
+    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        let id = peripheral.identifier.uuidString
+        lock.lock()
+        writeCharsById.removeValue(forKey: id)
+        if let err = error {
+            lastErrorById[id] = err.localizedDescription
+        }
+        let writeCont = writeContinuations.removeValue(forKey: id)
+        let readyCont = readyToSendWaiters.removeValue(forKey: id)
+        lock.unlock()
+        writeCont?.resume(throwing: NSError(domain: "GDGPrintStation", code: 503, userInfo: [NSLocalizedDescriptionKey: "Bluetooth printer disconnected mid-print."]))
+        readyCont?.resume()
+        notifyStateChanged()
+    }
+
+    // MARK: CBPeripheralDelegate
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        let id = peripheral.identifier.uuidString
+        if let err = error {
+            lock.lock()
+            let cont = connectContinuations.removeValue(forKey: id)
+            lock.unlock()
+            cont?.resume(throwing: err)
+            return
+        }
+        guard let service = peripheral.services?.first(where: { $0.uuid == Ct221bTsplBuilder.serviceUuid }) ?? peripheral.services?.first else {
+            lock.lock()
+            let cont = connectContinuations.removeValue(forKey: id)
+            lock.unlock()
+            cont?.resume(throwing: NSError(domain: "GDGPrintStation", code: 404, userInfo: [NSLocalizedDescriptionKey: "CT221B ISSC UART service not found on device."]))
+            return
+        }
+        peripheral.discoverCharacteristics([Ct221bTsplBuilder.writeCharUuid, Ct221bTsplBuilder.notifyCharUuid], for: service)
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        let id = peripheral.identifier.uuidString
+        let chars = service.characteristics ?? []
+        let writeChar = chars.first(where: { $0.uuid == Ct221bTsplBuilder.writeCharUuid })
+            ?? chars.first(where: { $0.properties.contains(.writeWithoutResponse) || $0.properties.contains(.write) })
+        let notifyChar = chars.first(where: { $0.uuid == Ct221bTsplBuilder.notifyCharUuid })
+            ?? chars.first(where: { $0.properties.contains(.notify) })
+
+        if let n = notifyChar {
+            peripheral.setNotifyValue(true, for: n)
+        }
+
+        lock.lock()
+        if let w = writeChar {
+            writeCharsById[id] = w
+        }
+        let cont = connectContinuations.removeValue(forKey: id)
+        lock.unlock()
+
+        if writeChar != nil {
+            cont?.resume(returning: peripheral.name ?? "CT221B")
+        } else {
+            cont?.resume(throwing: NSError(domain: "GDGPrintStation", code: 404, userInfo: [NSLocalizedDescriptionKey: "Writable BLE characteristic not found on CT221B."]))
+        }
+        notifyStateChanged()
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard let data = characteristic.value else { return }
+        if let battery = Ct221bTsplBuilder.parseBatteryPercent(from: data) {
+            let id = peripheral.identifier.uuidString
+            lock.lock()
+            batteryById[id] = battery
+            lock.unlock()
+            notifyStateChanged()
+        }
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+        let id = peripheral.identifier.uuidString
+        lock.lock()
+        let cont = writeContinuations.removeValue(forKey: id)
+        lock.unlock()
+        if let err = error {
+            cont?.resume(throwing: err)
+        } else {
+            cont?.resume()
+        }
+    }
+
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        let id = peripheral.identifier.uuidString
+        lock.lock()
+        let waiter = readyToSendWaiters.removeValue(forKey: id)
+        lock.unlock()
+        waiter?.resume()
+    }
+}
+
+// MARK: - Unified CUPS + CoreBluetooth Printer Pool & Parallel Queue Dispatcher
 
 struct PrinterSlotState {
     var name: String
+    var transport: String // "usb" | "bluetooth"
     var uri: String?
     var state: String
     var busy: Bool
@@ -472,6 +1083,9 @@ struct PrinterSlotState {
     var lastError: String?
     var queueDepth: Int
     var usbConnected: Bool
+    var bluetoothConnected: Bool?
+    var batteryPercent: Int?
+    var bluetoothId: String?
     var unavailableUntil: Date
 }
 
@@ -600,7 +1214,7 @@ final class PrinterPoolManager {
         lock.unlock()
 
         let now = Date()
-        let computedSlots: [PrinterSlotState] = selected.map { name in
+        var computedSlots: [PrinterSlotState] = selected.map { name in
             let prev = oldByName[name]
             let stateLine = readPrinterStateLine(for: name)
             let qDepth = readQueueDepth(for: name)
@@ -611,6 +1225,7 @@ final class PrinterPoolManager {
             let available = !isUnavailable && cooldownUntil <= now
             return PrinterSlotState(
                 name: name,
+                transport: "usb",
                 uri: uris[name],
                 state: stateLine,
                 busy: prev?.busy ?? false,
@@ -618,7 +1233,38 @@ final class PrinterPoolManager {
                 lastError: prev?.lastError,
                 queueDepth: qDepth,
                 usbConnected: usbOk,
+                bluetoothConnected: nil,
+                batteryPercent: nil,
+                bluetoothId: nil,
                 unavailableUntil: cooldownUntil
+            )
+        }
+
+        // Append enabled CoreBluetooth CT221B printers into the unified pool
+        let savedBt = (cfg.bluetoothPrinters ?? []).filter { $0.enabled }
+        for bt in savedBt {
+            let slotName = bt.name.hasSuffix(" (BLE)") ? bt.name : "\(bt.name) (BLE)"
+            let prev = oldByName[slotName]
+            let isConnected = BluetoothPrinterManager.shared.isConnected(id: bt.id)
+            let battery = BluetoothPrinterManager.shared.batteryPercent(for: bt.id)
+            let btErr = BluetoothPrinterManager.shared.lastError(for: bt.id)
+            let cooldownUntil = prev?.unavailableUntil ?? .distantPast
+            computedSlots.append(
+                PrinterSlotState(
+                    name: slotName,
+                    transport: "bluetooth",
+                    uri: "ble://\(bt.id)",
+                    state: isConnected ? "idle (Bluetooth BLE)" : "Bluetooth disconnected",
+                    busy: prev?.busy ?? false,
+                    available: isConnected && cooldownUntil <= now,
+                    lastError: isConnected ? prev?.lastError : (btErr ?? "Bluetooth printer disconnected"),
+                    queueDepth: 0,
+                    usbConnected: true,
+                    bluetoothConnected: isConnected,
+                    batteryPercent: battery,
+                    bluetoothId: bt.id,
+                    unavailableUntil: cooldownUntil
+                )
             )
         }
 
@@ -690,8 +1336,16 @@ final class PrinterPoolManager {
         let now = Date()
         return slots.map { s in
             var copy = s
-            let isUnavailable = s.state == "unavailable" || s.state.localizedCaseInsensitiveContains("disabled") || !s.usbConnected
-            copy.available = !isUnavailable && s.unavailableUntil <= now
+            if s.transport == "bluetooth" {
+                let btConn = s.bluetoothId.map { BluetoothPrinterManager.shared.isConnected(id: $0) } ?? false
+                copy.bluetoothConnected = btConn
+                copy.batteryPercent = s.bluetoothId.flatMap { BluetoothPrinterManager.shared.batteryPercent(for: $0) }
+                copy.state = btConn ? "idle (Bluetooth BLE)" : "Bluetooth disconnected"
+                copy.available = btConn && s.unavailableUntil <= now
+            } else {
+                let isUnavailable = s.state == "unavailable" || s.state.localizedCaseInsensitiveContains("disabled") || !s.usbConnected
+                copy.available = !isUnavailable && s.unavailableUntil <= now
+            }
             return copy
         }
     }
@@ -703,7 +1357,9 @@ final class PrinterPoolManager {
         copies: Int,
         requestedPrinter: String?,
         jobId: String?,
-        attendeeName: String?
+        attendeeName: String?,
+        density: Int = 8,
+        gapMm: Int = 2
     ) async throws -> (printer: String, message: String) {
         let displayAttendee = (attendeeName?.isEmpty == false) ? attendeeName! : "Attendee Badge"
         let cleanJobId = jobId?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -725,13 +1381,20 @@ final class PrinterPoolManager {
 
         // Select target printer slot
         let chosenPrinter: String
+        let chosenTransport: String
+        let chosenBluetoothId: String?
         do {
             lock.lock()
             defer { lock.unlock() }
             for i in slots.indices {
-                let isClabel = slots[i].name.localizedCaseInsensitiveContains("clabel") || (slots[i].uri?.localizedCaseInsensitiveContains("clabel") ?? false)
-                if isClabel {
-                    slots[i].usbConnected = hasLiveClabelUsb
+                if slots[i].transport == "bluetooth" {
+                    let btConn = slots[i].bluetoothId.map { BluetoothPrinterManager.shared.isConnected(id: $0) } ?? false
+                    slots[i].bluetoothConnected = btConn
+                } else {
+                    let isClabel = slots[i].name.localizedCaseInsensitiveContains("clabel") || (slots[i].uri?.localizedCaseInsensitiveContains("clabel") ?? false)
+                    if isClabel {
+                        slots[i].usbConnected = hasLiveClabelUsb
+                    }
                 }
             }
             if slots.isEmpty {
@@ -741,6 +1404,9 @@ final class PrinterPoolManager {
                     userInfo: [NSLocalizedDescriptionKey: "No printers enabled in GDG Print Station."]
                 )
             }
+            let isSlotReachable: (PrinterSlotState) -> Bool = { s in
+                s.transport == "bluetooth" ? (s.bluetoothConnected == true) : s.usbConnected
+            }
             if let req = requestedPrinter, !req.isEmpty {
                 guard let idx = slots.firstIndex(where: { $0.name == req }) else {
                     throw NSError(
@@ -749,29 +1415,32 @@ final class PrinterPoolManager {
                         userInfo: [NSLocalizedDescriptionKey: "Unknown or disabled printer \"\(req)\"."]
                     )
                 }
-                if !slots[idx].usbConnected {
-                    throw NSError(
-                        domain: "GDGPrintStation",
-                        code: 503,
-                        userInfo: [NSLocalizedDescriptionKey: "\(slots[idx].name) is USB unplugged or turned off."]
-                    )
+                if !isSlotReachable(slots[idx]) {
+                    let reason = slots[idx].transport == "bluetooth"
+                        ? "\(slots[idx].name) is Bluetooth disconnected or turned off."
+                        : "\(slots[idx].name) is USB unplugged or turned off."
+                    throw NSError(domain: "GDGPrintStation", code: 503, userInfo: [NSLocalizedDescriptionKey: reason])
                 }
                 slots[idx].busy = true
                 chosenPrinter = slots[idx].name
-            } else if let idx = slots.firstIndex(where: { !$0.busy && $0.usbConnected && $0.available }) ?? slots.firstIndex(where: { !$0.busy && $0.usbConnected }) {
+                chosenTransport = slots[idx].transport
+                chosenBluetoothId = slots[idx].bluetoothId
+            } else if let idx = slots.firstIndex(where: { !$0.busy && isSlotReachable($0) && $0.available }) ?? slots.firstIndex(where: { !$0.busy && isSlotReachable($0) }) {
                 slots[idx].busy = true
                 chosenPrinter = slots[idx].name
-            } else if slots.allSatisfy({ !$0.usbConnected }) {
+                chosenTransport = slots[idx].transport
+                chosenBluetoothId = slots[idx].bluetoothId
+            } else if slots.allSatisfy({ !isSlotReachable($0) }) {
                 throw NSError(
                     domain: "GDGPrintStation",
                     code: 503,
-                    userInfo: [NSLocalizedDescriptionKey: "USB printer is unplugged or turned off."]
+                    userInfo: [NSLocalizedDescriptionKey: "All configured printers are unplugged or disconnected."]
                 )
             } else {
                 throw NSError(
                     domain: "GDGPrintStation",
                     code: 503,
-                    userInfo: [NSLocalizedDescriptionKey: "All connected USB printers are currently busy."]
+                    userInfo: [NSLocalizedDescriptionKey: "All connected printers are currently busy."]
                 )
             }
         } catch {
@@ -783,7 +1452,7 @@ final class PrinterPoolManager {
             throw error
         }
 
-        let dimsText = "\(Int(widthMm))×\(Int(heightMm))mm"
+        let dimsText = chosenTransport == "bluetooth" ? "\(Int(widthMm))×\(Int(heightMm))mm • BLE" : "\(Int(widthMm))×\(Int(heightMm))mm"
 
         await MainActor.run {
             self.onStateChanged?()
@@ -802,6 +1471,40 @@ final class PrinterPoolManager {
         }
 
         do {
+            // Bluetooth CT221B direct TSPL path
+            if chosenTransport == "bluetooth", let btId = chosenBluetoothId {
+                let monoBitmap = try await LabelPdfRenderer.shared.renderHtmlToMonoBitmap(
+                    html: html,
+                    widthMm: widthMm,
+                    heightMm: heightMm
+                )
+                let tsplPayload = Ct221bTsplBuilder.buildPayload(
+                    monoBitmap: monoBitmap,
+                    widthMm: widthMm,
+                    heightMm: heightMm,
+                    density: density,
+                    gapMm: gapMm,
+                    copies: copies
+                )
+                try await BluetoothPrinterManager.shared.writeTspl(to: btId, payload: tsplPayload)
+
+                let btMessage = "Sent \(tsplPayload.count) TSPL bytes over BLE to \(chosenPrinter)"
+                lock.lock()
+                if let idx = slots.firstIndex(where: { $0.name == chosenPrinter }) {
+                    slots[idx].lastError = nil
+                    slots[idx].unavailableUntil = .distantPast
+                }
+                if let jid = cleanJobId, !jid.isEmpty {
+                    recentJobResults[jid] = (Date(), chosenPrinter, btMessage)
+                }
+                lock.unlock()
+
+                await MainActor.run {
+                    NotchDynamicIslandController.shared.show(.completed(attendee: displayAttendee, printer: chosenPrinter))
+                }
+                return (chosenPrinter, btMessage)
+            }
+
             // 1. Check CUPS queue status before submitting
             let stateLine = readPrinterStateLine(for: chosenPrinter)
             if stateLine == "unavailable" || stateLine.localizedCaseInsensitiveContains("disabled") {
@@ -1010,8 +1713,9 @@ final class LoopbackHttpServer {
         if method == "GET" && path == "/health" {
             let slots = PrinterPoolManager.shared.snapshotSlots()
             let printersJson: [[String: Any]] = slots.map { s in
-                [
+                var entry: [String: Any] = [
                     "name": s.name,
+                    "transport": s.transport,
                     "uri": s.uri as Any,
                     "state": s.state,
                     "busy": s.busy,
@@ -1020,6 +1724,16 @@ final class LoopbackHttpServer {
                     "queueDepth": s.queueDepth,
                     "usbConnected": s.usbConnected
                 ]
+                if let btConn = s.bluetoothConnected {
+                    entry["bluetoothConnected"] = btConn
+                }
+                if let battery = s.batteryPercent {
+                    entry["batteryPercent"] = battery
+                }
+                if let btId = s.bluetoothId {
+                    entry["bluetoothId"] = btId
+                }
+                return entry
             }
             let payload: [String: Any] = [
                 "ok": true,
@@ -1029,12 +1743,77 @@ final class LoopbackHttpServer {
                     "computerName": device.computerName,
                     "model": device.model as Any,
                     "os": device.os,
-                    "appMode": "menubar"
+                    "appMode": "menubar",
+                    "bluetoothState": BluetoothPrinterManager.shared.bluetoothStateString()
                 ],
                 "printers": printersJson,
                 "queued": 0
             ]
             sendJson(conn: conn, status: "200 OK", origin: origin, json: payload)
+            return
+        }
+
+        if method == "POST" && path == "/bluetooth/scan" {
+            Task {
+                let devices = await BluetoothPrinterManager.shared.scanForPrinters(durationSeconds: 4.0)
+                let list: [[String: Any]] = devices.map { d in
+                    var item: [String: Any] = [
+                        "id": d.id,
+                        "name": d.name,
+                        "rssi": d.rssi,
+                        "connected": d.connected
+                    ]
+                    if let batt = d.batteryPercent {
+                        item["batteryPercent"] = batt
+                    }
+                    return item
+                }
+                self.sendJson(conn: conn, status: "200 OK", origin: origin, json: [
+                    "ok": true,
+                    "bluetoothState": BluetoothPrinterManager.shared.bluetoothStateString(),
+                    "devices": list
+                ])
+            }
+            return
+        }
+
+        if method == "POST" && path == "/bluetooth/connect" {
+            guard let jsonObj = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+                  let id = jsonObj["id"] as? String, !id.isEmpty else {
+                sendJson(conn: conn, status: "400 Bad Request", origin: origin, json: ["ok": false, "error": "`id` is required"])
+                return
+            }
+            let name = jsonObj["name"] as? String
+            Task {
+                do {
+                    let connectedName = try await BluetoothPrinterManager.shared.connect(id: id, preferredName: name)
+                    PrinterPoolManager.shared.refreshPrinters()
+                    await MainActor.run {
+                        NotchDynamicIslandController.shared.show(.completed(attendee: "Bluetooth Connected", printer: "\(connectedName) (BLE)"))
+                    }
+                    self.sendJson(conn: conn, status: "200 OK", origin: origin, json: [
+                        "ok": true,
+                        "printer": "\(connectedName) (BLE)"
+                    ])
+                } catch {
+                    self.sendJson(conn: conn, status: "500 Internal Server Error", origin: origin, json: [
+                        "ok": false,
+                        "error": error.localizedDescription
+                    ])
+                }
+            }
+            return
+        }
+
+        if method == "POST" && path == "/bluetooth/disconnect" {
+            guard let jsonObj = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any],
+                  let id = jsonObj["id"] as? String, !id.isEmpty else {
+                sendJson(conn: conn, status: "400 Bad Request", origin: origin, json: ["ok": false, "error": "`id` is required"])
+                return
+            }
+            BluetoothPrinterManager.shared.disconnect(id: id, disableInConfig: true)
+            PrinterPoolManager.shared.refreshPrinters()
+            sendJson(conn: conn, status: "200 OK", origin: origin, json: ["ok": true])
             return
         }
 
@@ -1050,6 +1829,8 @@ final class LoopbackHttpServer {
             let printer = jsonObj["printer"] as? String
             let jobId = jsonObj["jobId"] as? String
             let attendeeName = jsonObj["attendeeName"] as? String
+            let density = (jsonObj["density"] as? NSNumber)?.intValue ?? 8
+            let gapMm = (jsonObj["gapMm"] as? NSNumber)?.intValue ?? 2
 
             Task {
                 do {
@@ -1060,7 +1841,9 @@ final class LoopbackHttpServer {
                         copies: copies,
                         requestedPrinter: printer,
                         jobId: jobId,
-                        attendeeName: attendeeName
+                        attendeeName: attendeeName,
+                        density: density,
+                        gapMm: gapMm
                     )
                     self.sendJson(conn: conn, status: "200 OK", origin: origin, json: [
                         "ok": true,
@@ -1139,6 +1922,16 @@ final class PrintStationAppDelegate: NSObject, NSApplicationDelegate {
                 self?.updateStatusBarTitle()
             }
         }
+        BluetoothPrinterManager.shared.onStateChanged = { [weak self] in
+            DispatchQueue.global(qos: .utility).async {
+                PrinterPoolManager.shared.refreshPrinters()
+                Task { @MainActor in
+                    self?.rebuildMenu()
+                    self?.updateStatusBarTitle()
+                }
+            }
+        }
+        BluetoothPrinterManager.shared.start()
 
         rebuildMenu()
 
@@ -1233,6 +2026,43 @@ final class PrintStationAppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
+        let btSectionItem = NSMenuItem(
+            title: "Bluetooth Printers (CT221B • \(BluetoothPrinterManager.shared.bluetoothStateString())):",
+            action: nil,
+            keyEquivalent: ""
+        )
+        btSectionItem.isEnabled = false
+        menu.addItem(btSectionItem)
+
+        let savedBt = cfg.bluetoothPrinters ?? []
+        if savedBt.isEmpty {
+            let emptyBt = NSMenuItem(title: "No Bluetooth CT221B paired yet", action: nil, keyEquivalent: "")
+            emptyBt.isEnabled = false
+            menu.addItem(emptyBt)
+        } else {
+            for bt in savedBt {
+                let connected = BluetoothPrinterManager.shared.isConnected(id: bt.id)
+                let batt = BluetoothPrinterManager.shared.batteryPercent(for: bt.id)
+                let battText = batt.map { " • \($0)%" } ?? ""
+                let statusText = !bt.enabled ? "Disabled" : (connected ? "Ready • BLE\(battText)" : "Disconnected")
+                let item = NSMenuItem(
+                    title: "\(bt.name) — \(statusText)",
+                    action: #selector(handleToggleBluetoothPrinter(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = bt.id
+                item.state = bt.enabled ? .on : .off
+                menu.addItem(item)
+            }
+        }
+
+        let scanBtItem = NSMenuItem(title: "Scan & Connect Bluetooth CT221B…", action: #selector(handleScanBluetooth), keyEquivalent: "b")
+        scanBtItem.target = self
+        menu.addItem(scanBtItem)
+
+        menu.addItem(.separator())
+
         let refreshItem = NSMenuItem(title: "Refresh Printers & Auto-Fix USB Ports", action: #selector(handleRefreshPrinters), keyEquivalent: "r")
         refreshItem.target = self
         menu.addItem(refreshItem)
@@ -1261,6 +2091,35 @@ final class PrintStationAppDelegate: NSObject, NSApplicationDelegate {
     @objc private func handleTogglePrinter(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
         PrinterPoolManager.shared.togglePrinter(name)
+    }
+
+    @objc private func handleToggleBluetoothPrinter(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        BluetoothPrinterManager.shared.toggleSavedBluetoothPrinter(id: id)
+    }
+
+    @objc private func handleScanBluetooth() {
+        NotchDynamicIslandController.shared.show(.printing(attendee: "Scanning Bluetooth…", printer: "Looking for Clabel CT221B", dimensions: "BLE"))
+        Task {
+            let found = await BluetoothPrinterManager.shared.scanForPrinters(durationSeconds: 4.0)
+            if let first = found.first(where: { !$0.connected }) ?? found.first {
+                do {
+                    let name = try await BluetoothPrinterManager.shared.connect(id: first.id, preferredName: first.name)
+                    PrinterPoolManager.shared.refreshPrinters()
+                    await MainActor.run {
+                        NotchDynamicIslandController.shared.show(.completed(attendee: "Bluetooth Connected", printer: "\(name) (BLE)"))
+                    }
+                } catch {
+                    await MainActor.run {
+                        NotchDynamicIslandController.shared.show(.failed(attendee: "Bluetooth Connect Failed", error: error.localizedDescription))
+                    }
+                }
+            } else {
+                await MainActor.run {
+                    NotchDynamicIslandController.shared.show(.failed(attendee: "No CT221B Found", error: "Ensure printer is ON (blinking blue LED)"))
+                }
+            }
+        }
     }
 
     @objc private func handleRefreshPrinters() {

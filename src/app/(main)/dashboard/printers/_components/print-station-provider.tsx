@@ -81,6 +81,8 @@ function ActiveBackgroundPrintStation() {
     widthMm: config.paper_width_mm,
     heightMm: config.paper_height_mm,
     orientation: config.orientation,
+    bluetoothDensity: config.bluetooth_density,
+    bluetoothGapMm: config.bluetooth_gap_mm,
     recentJobs,
   });
 

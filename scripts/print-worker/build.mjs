@@ -59,13 +59,15 @@ const INFO_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>2.4.0</string>
+  <string>2.5.0</string>
   <key>CFBundleVersion</key>
-  <string>240</string>
+  <string>250</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
   <key>LSUIElement</key>
   <true/>
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>GDG Print Station uses Bluetooth to discover and print attendee badges directly to Clabel CT221B thermal label printers.</string>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>
@@ -160,6 +162,8 @@ async function main() {
     "WebKit",
     "-framework",
     "Network",
+    "-framework",
+    "CoreBluetooth",
     SWIFT_SOURCE,
     "-o",
     compiledBinaryPath,
@@ -247,8 +251,8 @@ async function main() {
     "pkill -f GDGPrintStation 2>/dev/null || true",
     "launchctl unload ~/Library/LaunchAgents/org.gdgjakarta.print-worker.plist 2>/dev/null || true",
     "rm -rf ~/.gdg-print-worker/bin ~/Library/LaunchAgents/org.gdgjakarta.print-worker.plist 2>/dev/null || true",
-    'echo "2/3 Downloading GDG Print Station.app (v2.4.0)..."',
-    'curl -fsSL "https://gdgjakarta.com/api/media/community-dashboard/app/GDG-Print-Station-macOS.dmg?v=2.4.0" -o /tmp/GDG-Print-Station.dmg',
+    'echo "2/3 Downloading GDG Print Station.app (v2.5.0)..."',
+    'curl -fsSL "https://gdgjakarta.com/api/media/community-dashboard/app/GDG-Print-Station-macOS.dmg?v=2.5.0" -o /tmp/GDG-Print-Station.dmg',
     "hdiutil attach /tmp/GDG-Print-Station.dmg -nobrowse -quiet",
     'rm -rf "/Applications/GDG Print Station.app"',
     'cp -R "/Volumes/GDG Print Station/GDG Print Station.app" "/Applications/GDG Print Station.app"',

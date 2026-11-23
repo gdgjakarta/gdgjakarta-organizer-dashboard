@@ -5,7 +5,7 @@ export const DEFAULT_PRINT_WORKER_URL = "http://127.0.0.1:17777";
 export const FALLBACK_PRINT_WORKER_URL = "http://localhost:17777";
 /** Where the packaged Print Station macOS Disk Image (.dmg) lives (Media page, `community-dashboard/app/`). */
 export const PRINT_WORKER_DOWNLOAD_URL =
-  "https://gdgjakarta.com/api/media/community-dashboard/app/GDG-Print-Station-macOS.dmg?v=2.4.0";
+  "https://gdgjakarta.com/api/media/community-dashboard/app/GDG-Print-Station-macOS.dmg?v=2.5.0";
 /** Production dashboard address the worker accepts out of the box. */
 export const PRINT_WORKER_DASHBOARD_ORIGIN = "https://gdgjakarta.com";
 export const PRINT_WORKER_BINARY_NAME = "gdg-print-worker";
@@ -16,7 +16,9 @@ const PRINT_TIMEOUT_MS = 45_000;
 
 export interface PrintWorkerPrinter {
   name: string | null;
-  /** CUPS device URI. Two printers with the same URI are the same device to CUPS (workers from 2.3.0). */
+  /** Transport layer reported by worker v2.5.0+ ("usb" for CUPS, "bluetooth" for CoreBluetooth CT221B). */
+  transport?: "usb" | "bluetooth";
+  /** CUPS device URI (USB) or Bluetooth peripheral UUID (BLE). */
   uri?: string | null;
   state: string;
   busy: boolean;
@@ -27,6 +29,12 @@ export interface PrintWorkerPrinter {
   queueDepth?: number;
   /** Whether the USB device is physically present on the USB bus (workers from 2.4.0). */
   usbConnected?: boolean;
+  /** Whether the BLE GATT link is currently connected (workers from 2.5.0). */
+  bluetoothConnected?: boolean;
+  /** Last battery percentage (0–100) reported by CT221B BLE notify frames. */
+  batteryPercent?: number | null;
+  /** CoreBluetooth peripheral UUID for disconnect/toggle actions. */
+  bluetoothId?: string | null;
 }
 
 export interface PrintWorkerDevice {
@@ -37,6 +45,8 @@ export interface PrintWorkerDevice {
   os: string;
   /** "menubar" when running as the native macOS Menu Bar app (`GDG Print Station.app`), "cli" when running via Node. */
   appMode?: "menubar" | "cli";
+  /** macOS CoreBluetooth state (e.g. "poweredOn", "poweredOff", "unauthorized") on v2.5.0+. */
+  bluetoothState?: string;
 }
 
 export interface PrintWorkerHealth {
@@ -60,6 +70,25 @@ export interface PrintWorkerPayload {
   copies?: number;
   /** Print on exactly this printer (workers from 2.3.0). Without it the worker picks an idle one itself. */
   printer?: string;
+  /** Optional thermal darkness (1–15, default 8) for Bluetooth TSPL printers. */
+  density?: number;
+  /** Optional label gap in mm (default 2) for Bluetooth TSPL printers. */
+  gapMm?: number;
+}
+
+export interface WorkerBluetoothDevice {
+  id: string;
+  name: string;
+  rssi: number;
+  connected: boolean;
+  batteryPercent?: number | null;
+}
+
+export interface WorkerBluetoothScanResult {
+  ok: boolean;
+  bluetoothState?: string;
+  devices: WorkerBluetoothDevice[];
+  error?: string;
 }
 
 export interface PrintWorkerResult {
@@ -160,6 +189,57 @@ export async function printViaWorker(payload: PrintWorkerPayload): Promise<Print
     throw new Error(data?.error ?? `Print Station App responded with ${res.status}`);
   }
   return { printer: data.printer ?? null };
+}
+
+const BLUETOOTH_SCAN_TIMEOUT_MS = 10_000;
+
+async function postWorkerJson<T>(path: string, body: Record<string, unknown>, timeoutMs: number): Promise<T> {
+  let res: Response | null = null;
+  let lastErr: unknown = null;
+  for (const baseUrl of getCandidateWorkerUrls()) {
+    try {
+      res = await fetchWithTimeout(
+        `${baseUrl}${path}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+        timeoutMs,
+      );
+      activeBaseUrl = baseUrl;
+      break;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  if (!res) {
+    throw new PrintWorkerUnreachableError(lastErr);
+  }
+  const data = (await res.json().catch(() => null)) as (T & { ok?: boolean; error?: string }) | null;
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error ?? `Print Station App responded with ${res.status}`);
+  }
+  return data;
+}
+
+export async function scanWorkerBluetoothPrinters(): Promise<WorkerBluetoothScanResult> {
+  return postWorkerJson<WorkerBluetoothScanResult>("/bluetooth/scan", {}, BLUETOOTH_SCAN_TIMEOUT_MS);
+}
+
+export async function connectWorkerBluetoothPrinter(
+  id: string,
+  name?: string,
+): Promise<{ ok: boolean; printer?: string }> {
+  return postWorkerJson<{ ok: boolean; printer?: string }>(
+    "/bluetooth/connect",
+    { id, ...(name ? { name } : {}) },
+    15_000,
+  );
+}
+
+export async function disconnectWorkerBluetoothPrinter(id: string): Promise<{ ok: boolean }> {
+  return postWorkerJson<{ ok: boolean }>("/bluetooth/disconnect", { id }, 8_000);
 }
 
 /**

@@ -30,6 +30,8 @@ export const CLABEL_PAPER_PRESETS: PaperPreset[] = [
   },
 ];
 
+export type PrintTransport = "usb" | "bluetooth" | "web_bluetooth";
+
 export interface PrinterConfig {
   enabled: boolean;
   paper_width_mm: number;
@@ -37,6 +39,10 @@ export interface PrinterConfig {
   orientation: "portrait" | "landscape";
   template_html: string;
   auto_print_on_checkin: boolean;
+  /** Thermal print darkness for Bluetooth TSPL printing (1–15, default 8). */
+  bluetooth_density?: number;
+  /** Label gap height in mm for Bluetooth TSPL printing (default 2). */
+  bluetooth_gap_mm?: number;
   selected_event_id?: string;
   sample_data?: Partial<LabelTemplateData>;
   updated_at?: string;
@@ -62,19 +68,30 @@ export const MAX_PRINT_ATTEMPTS = 3;
 export const BROWSER_PRINTER_NAME = "Browser print dialog";
 /** Minimum Print Station App / worker version supporting hardware device ID, Notch HUD, and CUPS tracking. */
 export const MIN_PRINT_WORKER_VERSION = "2.4.0";
+/** Minimum Print Station App version supporting native CoreBluetooth CT221B wireless printing. */
+export const MIN_BLUETOOTH_WORKER_VERSION = "2.5.0";
 
-export function isWorkerVersionOutdated(version?: string | null): boolean {
-  if (!version) return true;
-  const parse = (v: string) =>
-    v
+export function compareSemver(a?: string | null, b?: string | null): number {
+  const parse = (v?: string | null) =>
+    (v ?? "")
       .replace(/^v/i, "")
       .split(".")
       .map((n) => Number.parseInt(n, 10) || 0);
-  const [majA = 0, minA = 0, patA = 0] = parse(version);
-  const [majB = 0, minB = 0, patB = 0] = parse(MIN_PRINT_WORKER_VERSION);
-  if (majA !== majB) return majA < majB;
-  if (minA !== minB) return minA < minB;
-  return patA < patB;
+  const [majA = 0, minA = 0, patA = 0] = parse(a);
+  const [majB = 0, minB = 0, patB = 0] = parse(b);
+  if (majA !== majB) return majA - majB;
+  if (minA !== minB) return minA - minB;
+  return patA - patB;
+}
+
+export function isWorkerVersionOutdated(version?: string | null): boolean {
+  if (!version) return true;
+  return compareSemver(version, MIN_PRINT_WORKER_VERSION) < 0;
+}
+
+export function supportsWorkerBluetooth(version?: string | null): boolean {
+  if (!version) return false;
+  return compareSemver(version, MIN_BLUETOOTH_WORKER_VERSION) >= 0;
 }
 
 export interface PrintJob {
@@ -116,7 +133,9 @@ export interface PrintJob {
 
 export interface PrintStationPrinter {
   name: string | null;
-  /** CUPS device URI; printers of one laptop sharing a URI cannot be told apart and print on one device. */
+  /** Connection transport: USB CUPS, macOS Worker CoreBluetooth BLE, or direct browser Web Bluetooth. */
+  transport?: PrintTransport;
+  /** CUPS device URI (USB) or Bluetooth peripheral identifier (BLE). */
   device_uri?: string | null;
   state: string;
   busy: boolean;
@@ -129,6 +148,10 @@ export interface PrintStationPrinter {
   queue_depth?: number;
   /** Whether the physical USB printer is currently detected on the bus (when known). */
   usb_connected?: boolean;
+  /** Whether the Bluetooth GATT link is currently connected (for BLE / Web BLE printers). */
+  bluetooth_connected?: boolean;
+  /** Last reported battery percentage (0–100) from CT221B BLE notifications. */
+  battery_percent?: number | null;
 }
 
 /** A laptop with the dashboard open, written to `print_workers/{id}` as a heartbeat. */

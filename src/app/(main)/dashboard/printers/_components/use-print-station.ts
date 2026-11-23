@@ -28,6 +28,12 @@ import {
   type PrintStationPrinter,
   printerKey,
 } from "@/lib/printers/types";
+import {
+  connectWebBluetoothCT221B,
+  isWebBluetoothSupported,
+  printViaWebBluetooth,
+  type WebBluetoothPrinterHandle,
+} from "@/lib/printers/web-bluetooth-ct221b";
 
 const DEVICE_STATION_ID_STORAGE_KEY = "gdg_print_station_device_id";
 const LEGACY_TAB_STATION_ID_KEY = "gdg_print_station_id";
@@ -171,6 +177,10 @@ interface UsePrintStationOptions {
   widthMm: number;
   heightMm: number;
   orientation?: "portrait" | "landscape";
+  /** Optional thermal darkness (1–15, default 8) for Bluetooth TSPL printers. */
+  bluetoothDensity?: number;
+  /** Optional label gap in mm (default 2) for Bluetooth TSPL printers. */
+  bluetoothGapMm?: number;
   /** Fallback when manually printing through the hidden iframe / browser dialog. */
   printInBrowser?: (bodyHtml: string) => Promise<void>;
   /** Recent jobs, used to fail jobs whose laptop vanished mid-print. */
@@ -190,6 +200,12 @@ export interface PrintStationState {
   queueError: string | null;
   /** True when this browser tab is the active leader for this physical laptop. */
   isLeaderTab: boolean;
+  /** True in Chromium browsers that support direct Web Bluetooth (`navigator.bluetooth`). */
+  webBluetoothSupported: boolean;
+  /** Active CT221B printers paired directly in this browser tab via Web Bluetooth. */
+  webBluetoothPrinters: WebBluetoothPrinterHandle[];
+  connectWebBluetoothPrinter: () => Promise<WebBluetoothPrinterHandle | null>;
+  disconnectWebBluetoothPrinter: (id: string) => void;
 }
 
 /**
@@ -211,6 +227,8 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
   const [stations, setStations] = React.useState<PrintStation[]>([]);
   const [queueError, setQueueError] = React.useState<string | null>(null);
   const [isLeaderTab, setIsLeaderTab] = React.useState(true);
+  const [webBluetoothSupported, setWebBluetoothSupported] = React.useState(false);
+  const [webBluetoothPrinters, setWebBluetoothPrinters] = React.useState<WebBluetoothPrinterHandle[]>([]);
 
   const tabInstanceIdRef = React.useRef<string>(
     `tab_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
@@ -218,6 +236,7 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
   const isLeaderTabRef = React.useRef(true);
   const stationIdRef = React.useRef<string | null>(null);
   const healthRef = React.useRef<PrintWorkerHealth | null>(null);
+  const webBluetoothPrintersRef = React.useRef<WebBluetoothPrinterHandle[]>([]);
   const stationsRef = React.useRef<PrintStation[]>([]);
   const pendingJobsRef = React.useRef<PrintJob[]>([]);
   const recentJobsRef = React.useRef<PrintJob[]>(recentJobs);
@@ -310,37 +329,69 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
   const stationName = health?.device?.computerName ?? "This Mac";
   stationNameRef.current = stationName;
 
+  // Detect Chromium Web Bluetooth support client-side
+  React.useEffect(() => {
+    setWebBluetoothSupported(isWebBluetoothSupported());
+  }, []);
+
   /**
-   * Printers connected to this laptop's Print Station App right now.
-   * IMPORTANT (Weakness F fix): Never return a fake "Browser print dialog" printer when the worker is offline,
-   * because claiming queue jobs into a browser print dialog marks jobs "Printed" after 0.6s without printing labels.
+   * Printers connected to this laptop's Print Station App (USB + CoreBluetooth BLE) or direct Web Bluetooth.
+   * IMPORTANT (Weakness F fix): Never return a fake "Browser print dialog" printer when offline.
    */
   const getLocalPrinters = React.useCallback((): PrintStationPrinter[] => {
     const active = activePrintersRef.current;
     const current = healthRef.current;
-    if (!current) {
-      return [];
-    }
-    return current.printers.map((printer) => {
-      const key = printer.name ?? DEFAULT_PRINTER_KEY;
-      const usbOk = printer.usbConnected !== false;
-      const queueStuck = (printer.queueDepth ?? 0) > 5;
+    const workerList: PrintStationPrinter[] = current
+      ? current.printers.map((printer) => {
+          const key = printer.name ?? DEFAULT_PRINTER_KEY;
+          const isBle = printer.transport === "bluetooth";
+          const usbOk = isBle ? true : printer.usbConnected !== false;
+          const btOk = isBle ? printer.bluetoothConnected !== false : undefined;
+          const queueStuck = !isBle && (printer.queueDepth ?? 0) > 5;
+          const linkOk = isBle ? btOk !== false : usbOk;
+          return {
+            name: printer.name,
+            transport: isBle ? "bluetooth" : "usb",
+            device_uri: printer.uri ?? null,
+            state: !linkOk ? (isBle ? "Bluetooth disconnected" : "USB not connected") : printer.state,
+            busy: printer.busy || active.has(key),
+            available: printer.available && linkOk && !queueStuck,
+            last_error: !linkOk
+              ? isBle
+                ? "Bluetooth printer disconnected or turned off"
+                : "USB printer unplugged or turned off"
+              : queueStuck
+                ? `${printer.queueDepth} stuck jobs in CUPS queue`
+                : printer.lastError,
+            current_job_id: active.get(key) ?? null,
+            queue_depth: printer.queueDepth ?? 0,
+            usb_connected: usbOk,
+            bluetooth_connected: btOk,
+            battery_percent: printer.batteryPercent ?? null,
+          };
+        })
+      : [];
+
+    const webBleList: PrintStationPrinter[] = webBluetoothPrintersRef.current.map((bt) => {
+      const displayName = bt.name.endsWith(" (Web BLE)") ? bt.name : `${bt.name} (Web BLE)`;
+      const connected = bt.connected && Boolean(bt.device.gatt?.connected);
       return {
-        name: printer.name,
-        device_uri: printer.uri ?? null,
-        state: !usbOk ? "USB not connected" : printer.state,
-        busy: printer.busy || active.has(key),
-        available: printer.available && usbOk && !queueStuck,
-        last_error: !usbOk
-          ? "USB printer unplugged or turned off"
-          : queueStuck
-            ? `${printer.queueDepth} stuck jobs in CUPS queue`
-            : printer.lastError,
-        current_job_id: active.get(key) ?? null,
-        queue_depth: printer.queueDepth ?? 0,
-        usb_connected: usbOk,
+        name: displayName,
+        transport: "web_bluetooth",
+        device_uri: `web-ble://${bt.id}`,
+        state: connected ? "idle (Web Bluetooth)" : "Bluetooth disconnected",
+        busy: active.has(displayName),
+        available: connected,
+        last_error: connected ? null : (bt.lastError ?? "Web Bluetooth disconnected"),
+        current_job_id: active.get(displayName) ?? null,
+        queue_depth: 0,
+        usb_connected: true,
+        bluetooth_connected: connected,
+        battery_percent: bt.batteryPercent,
       };
     });
+
+    return [...workerList, ...webBleList];
   }, []);
 
   const publishPresenceImmediate = React.useCallback(async () => {
@@ -348,10 +399,12 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
     const id = stationIdRef.current;
     if (!id) return;
     const current = healthRef.current;
+    const hasWebBle = webBluetoothPrintersRef.current.some((p) => p.connected && p.device.gatt?.connected);
+    const hasLiveTransport = current !== null || hasWebBle;
     const running = optionsRef.current.isStationRunning;
 
-    // Nothing to report: no worker and not taking jobs. Don't leave a ghost laptop in the list.
-    if (!current && !running) {
+    // Nothing to report: no worker, no Web BLE, and not taking jobs. Don't leave a ghost laptop in the list.
+    if (!hasLiveTransport && !running) {
       if (registeredRef.current) {
         registeredRef.current = false;
         await removePrintStation(id).catch(() => undefined);
@@ -364,12 +417,12 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
       await upsertPrintStation({
         id,
         device_id: current?.device?.id ?? id,
-        name: current?.device?.computerName ?? stationNameRef.current,
+        name: current?.device?.computerName ?? (hasWebBle ? "Browser Bluetooth Station" : stationNameRef.current),
         model: current?.device?.model ?? undefined,
         os: current?.device?.os ?? undefined,
         worker_version: current?.version,
-        worker_connected: current !== null,
-        station_running: running && current !== null,
+        worker_connected: hasLiveTransport,
+        station_running: running && hasLiveTransport,
         printers: getLocalPrinters(),
         user_email: optionsRef.current.userEmail,
       });
@@ -407,31 +460,59 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
 
   const runClaimedJob = React.useCallback(
     async (job: PrintJob, printer: PrintStationPrinter, id: string) => {
-      const { buildDocument, widthMm, heightMm, orientation = "landscape" } = optionsRef.current;
+      const {
+        buildDocument,
+        widthMm,
+        heightMm,
+        orientation = "landscape",
+        bluetoothDensity,
+        bluetoothGapMm,
+      } = optionsRef.current;
       const jobWidthMm = job.paper_width_mm ?? widthMm;
       const jobHeightMm = job.paper_height_mm ?? heightMm;
       const jobOrientation = job.orientation ?? orientation;
       const key = printerKey(id, printer.name);
 
       try {
-        if (!healthRef.current || printer.name === BROWSER_PRINTER_NAME) {
-          throw new Error("GDG Print Station App disconnected before printing could start.");
-        }
-
         const fullHtml = buildDocument
           ? buildDocument(job.rendered_html, jobWidthMm, jobHeightMm, jobOrientation)
           : buildPrintDocument(job.rendered_html, jobWidthMm, jobHeightMm, jobOrientation);
 
-        const result = await printViaWorker({
-          jobId: job.id,
-          attendeeName: job.member_name,
-          html: fullHtml,
-          widthMm: jobWidthMm,
-          heightMm: jobHeightMm,
-          // Pinned to this specific printer slot so 2 printers on 1 laptop print their own assigned jobs concurrently.
-          printer: printer.name ?? undefined,
-        });
-        const printedOn = result.printer ?? printer.name;
+        let printedOn: string | null = printer.name;
+
+        if (printer.transport === "web_bluetooth") {
+          const btId = printer.device_uri?.replace(/^web-ble:\/\//, "");
+          const handle = webBluetoothPrintersRef.current.find(
+            (h) => h.id === btId || `${h.name} (Web BLE)` === printer.name || h.name === printer.name,
+          );
+          if (!handle || !handle.connected) {
+            throw new Error("Web Bluetooth printer disconnected before printing could start.");
+          }
+          await printViaWebBluetooth(handle, {
+            html: fullHtml,
+            widthMm: jobWidthMm,
+            heightMm: jobHeightMm,
+            density: bluetoothDensity,
+            gapMm: bluetoothGapMm,
+          });
+        } else {
+          if (!healthRef.current || printer.name === BROWSER_PRINTER_NAME) {
+            throw new Error("GDG Print Station App disconnected before printing could start.");
+          }
+          const result = await printViaWorker({
+            jobId: job.id,
+            attendeeName: job.member_name,
+            html: fullHtml,
+            widthMm: jobWidthMm,
+            heightMm: jobHeightMm,
+            density: bluetoothDensity,
+            gapMm: bluetoothGapMm,
+            // Pinned to this specific printer slot so 2 printers on 1 laptop print their own assigned jobs concurrently.
+            printer: printer.name ?? undefined,
+          });
+          printedOn = result.printer ?? printer.name;
+        }
+
         await finishPrintJob(job.id, id, { ok: true, printer: printedOn });
         consecutiveErrorsRef.current = 0;
         jobBackoffUntilRef.current.delete(job.id);
@@ -453,8 +534,9 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
   const drain = React.useCallback(() => {
     if (!isLeaderTabRef.current) return;
     const id = stationIdRef.current;
-    // Never claim jobs when the station is stopped or when the local Print Station App is not connected (Weakness F).
-    if (!id || !optionsRef.current.isStationRunning || !healthRef.current) return;
+    const hasWebBle = webBluetoothPrintersRef.current.some((p) => p.connected && p.device.gatt?.connected);
+    // Never claim jobs when the station is stopped or when neither the local Print Station App nor Web BLE is connected (Weakness F).
+    if (!id || !optionsRef.current.isStationRunning || (!healthRef.current && !hasWebBle)) return;
     if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_CLAIM_ERRORS) return;
 
     const now = Date.now();
@@ -726,6 +808,43 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
     return () => window.clearInterval(timer);
   }, []);
 
+  const connectWebBluetoothPrinter = React.useCallback(async (): Promise<WebBluetoothPrinterHandle | null> => {
+    try {
+      const handle = await connectWebBluetoothCT221B({
+        onStatusChange: () => {
+          setWebBluetoothPrinters([...webBluetoothPrintersRef.current]);
+          publishPresence();
+        },
+      });
+      const next = [...webBluetoothPrintersRef.current.filter((p) => p.id !== handle.id), handle];
+      webBluetoothPrintersRef.current = next;
+      setWebBluetoothPrinters(next);
+      toast.success(`Connected to ${handle.name} via Web Bluetooth.`);
+      void publishPresenceImmediate();
+      drain();
+      return handle;
+    } catch (err) {
+      if (err instanceof Error && err.name === "NotFoundError") {
+        // User cancelled the browser Bluetooth chooser
+        return null;
+      }
+      toast.error(err instanceof Error ? err.message : "Could not connect to Bluetooth printer.");
+      return null;
+    }
+  }, [publishPresence, publishPresenceImmediate, drain]);
+
+  const disconnectWebBluetoothPrinter = React.useCallback(
+    (id: string) => {
+      const found = webBluetoothPrintersRef.current.find((p) => p.id === id);
+      found?.disconnect();
+      const next = webBluetoothPrintersRef.current.filter((p) => p.id !== id);
+      webBluetoothPrintersRef.current = next;
+      setWebBluetoothPrinters(next);
+      void publishPresenceImmediate();
+    },
+    [publishPresenceImmediate],
+  );
+
   return {
     stationId,
     stationName,
@@ -736,5 +855,9 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
     stations,
     queueError,
     isLeaderTab,
+    webBluetoothSupported,
+    webBluetoothPrinters,
+    connectWebBluetoothPrinter,
+    disconnectWebBluetoothPrinter,
   };
 }

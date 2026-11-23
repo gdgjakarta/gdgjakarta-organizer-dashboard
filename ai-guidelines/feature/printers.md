@@ -13,7 +13,7 @@ The **Thermal Printers & Label Station** (`/dashboard/printers`) allows organize
 - **Name Fitting & Escaping**: `src/lib/printers/name-fit.ts`
 - **Offline SVG QR Generator**: `src/lib/printers/qr-svg.ts`
 - **Check-In Scanner Integration**: `src/app/(main)/dashboard/events/[eventId]/_components/qr-checkin-scanner-dialog.tsx`
-- **Local Print Station App & Worker (`v2.4.0`)**: `scripts/print-worker/macos-app/GDGPrintStation.swift`, `scripts/print-worker/{main,worker,setup,build}.mjs`, client in `src/lib/printers/local-worker.ts`, universal check-in helper in `src/lib/printers/checkin-auto-print.ts`, global layout runner in `src/app/(main)/dashboard/printers/_components/print-station-provider.tsx`, and setup/status UI in `src/app/(main)/dashboard/printers/_components/{install-print-worker-dialog,print-worker-status,print-stations-card}.tsx`
+- **Local Print Station App & Worker (`v2.5.0`)**: `scripts/print-worker/macos-app/GDGPrintStation.swift` (CUPS USB + native CoreBluetooth BLE/TSPL), `scripts/print-worker/{main,worker,setup,build}.mjs`, client in `src/lib/printers/local-worker.ts`, TSPL encoder in `src/lib/printers/tspl-ct221b.ts`, Chromium Web Bluetooth driver in `src/lib/printers/web-bluetooth-ct221b.ts`, universal check-in helper in `src/lib/printers/checkin-auto-print.ts`, global layout runner in `src/app/(main)/dashboard/printers/_components/print-station-provider.tsx`, and setup/status UI in `src/app/(main)/dashboard/printers/_components/{install-print-worker-dialog,print-worker-status,print-stations-card}.tsx`
 - **Firestore Persistence**: `src/lib/firestore/client.ts` (`system_settings/printer`, `events/{eventId}.printer_config`, and `system_settings/printer_queue`)
 
 ## Architecture & Patterns

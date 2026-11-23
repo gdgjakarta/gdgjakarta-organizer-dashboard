@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Laptop, Printer, Usb } from "lucide-react";
+import { AlertTriangle, Battery, Bluetooth, Laptop, Printer, Usb } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,13 @@ interface PrintStationsCardProps {
   jobs: PrintJob[];
 }
 
+function isPrinterLinkReady(printer: PrintStationPrinter): boolean {
+  if (printer.transport === "bluetooth" || printer.transport === "web_bluetooth") {
+    return printer.bluetooth_connected !== false;
+  }
+  return printer.usb_connected !== false;
+}
+
 function printerStatus(
   printer: PrintStationPrinter,
   online: boolean,
@@ -32,7 +39,15 @@ function printerStatus(
   if (!online) {
     return { label: "Offline", className: "bg-muted text-muted-foreground", detail: null };
   }
-  if (printer.usb_connected === false) {
+  if (printer.transport === "bluetooth" || printer.transport === "web_bluetooth") {
+    if (printer.bluetooth_connected === false) {
+      return {
+        label: "BT Disconnected",
+        className: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
+        detail: printer.last_error ?? "Bluetooth printer out of range or turned off",
+      };
+    }
+  } else if (printer.usb_connected === false) {
     return {
       label: "USB Unplugged",
       className: "bg-rose-500/10 text-rose-700 dark:text-rose-300",
@@ -61,11 +76,13 @@ function printerStatus(
   };
 }
 
-/** Device URIs used by more than one printer of a laptop (CUPS cannot tell those printers apart). */
+/** Device URIs used by more than one USB printer of a laptop (CUPS cannot tell those printers apart). */
 function sharedDeviceUris(station: PrintStation): Set<string> {
   const counts = new Map<string, number>();
   for (const printer of station.printers) {
-    if (printer.device_uri) counts.set(printer.device_uri, (counts.get(printer.device_uri) ?? 0) + 1);
+    if (printer.device_uri?.startsWith("usb://")) {
+      counts.set(printer.device_uri, (counts.get(printer.device_uri) ?? 0) + 1);
+    }
   }
   return new Set([...counts].filter(([, count]) => count > 1).map(([uri]) => uri));
 }
@@ -79,8 +96,7 @@ export function PrintStationsCard({ stations, ownStationId, jobs }: PrintStation
   );
   const onlineStations = visible.filter((station) => isPrintStationOnline(station, now));
   const totalReadyPrinters = onlineStations.reduce(
-    (sum, s) =>
-      sum + (s.station_running ? s.printers.filter((p) => p.available && p.usb_connected !== false).length : 0),
+    (sum, s) => sum + (s.station_running ? s.printers.filter((p) => p.available && isPrinterLinkReady(p)).length : 0),
     0,
   );
 
@@ -217,14 +233,31 @@ export function PrintStationsCard({ stations, ownStationId, jobs }: PrintStation
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="flex min-w-0 items-center gap-1.5">
-                                <Printer className="size-3 shrink-0 text-muted-foreground" />
+                                {printer.transport === "bluetooth" || printer.transport === "web_bluetooth" ? (
+                                  <Bluetooth className="size-3 shrink-0 text-blue-500" />
+                                ) : (
+                                  <Printer className="size-3 shrink-0 text-muted-foreground" />
+                                )}
                                 <span className="truncate font-medium">{printer.name ?? "System default"}</span>
                                 <Badge
                                   variant="outline"
                                   className="px-1 py-0 font-mono text-[9px] text-muted-foreground"
                                 >
-                                  Printer #{idx + 1}
+                                  {printer.transport === "web_bluetooth"
+                                    ? "Web BLE"
+                                    : printer.transport === "bluetooth"
+                                      ? "BLE"
+                                      : `USB #${idx + 1}`}
                                 </Badge>
+                                {typeof printer.battery_percent === "number" && (
+                                  <Badge
+                                    variant="outline"
+                                    className="gap-0.5 px-1 py-0 font-mono text-[9px] text-emerald-700 dark:text-emerald-300"
+                                  >
+                                    <Battery className="size-2.5" />
+                                    {printer.battery_percent}%
+                                  </Badge>
+                                )}
                               </span>
                               <span className={cn("shrink-0 rounded-sm px-1.5 py-0.5 text-[10px]", status.className)}>
                                 {status.label}
@@ -239,7 +272,11 @@ export function PrintStationsCard({ stations, ownStationId, jobs }: PrintStation
                                     : "text-muted-foreground/80",
                                 )}
                               >
-                                <Usb className="size-2.5 shrink-0" />
+                                {printer.transport === "bluetooth" || printer.transport === "web_bluetooth" ? (
+                                  <Bluetooth className="size-2.5 shrink-0 text-blue-500" />
+                                ) : (
+                                  <Usb className="size-2.5 shrink-0" />
+                                )}
                                 <span className="truncate">
                                   {sharedUris.has(printer.device_uri)
                                     ? `Shared URI: ${printer.device_uri}`

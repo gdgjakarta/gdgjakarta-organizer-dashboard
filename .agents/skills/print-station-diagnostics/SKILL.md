@@ -104,3 +104,9 @@ Use this skill whenever modifying or debugging the badge printing pipeline (`Che
 - [ ] **Unplug one printer midway**: Job retries on another available `(stationId, printerName)` and records the attempt history.
 - [ ] **Stop the worker midway**: Station shows `Offline` and never marks queued jobs as `Printed` via browser dialog fallback.
 - [ ] **Zero stuck CUPS jobs**: `lpstat -W not-completed -o` is empty after 20 consecutive labels.
+
+---
+
+## 5. Direct Bluetooth Printing (CT221B / Web Bluetooth / TSPL)
+
+For Clabel CT221B hardware specs, verified BLE GATT UUIDs (`49535343-...` ISSC Transparent UART), raw TSPL bitmap framing, and Web Bluetooth feasibility/constraints, see [references/ct221b-bluetooth-tspl.md](./references/ct221b-bluetooth-tspl.md).
