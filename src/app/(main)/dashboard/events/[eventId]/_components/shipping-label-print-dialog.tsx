@@ -26,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { subscribePrintStations } from "@/lib/firestore/client";
+import { subscribePrinterConfigDoc, subscribePrintStations } from "@/lib/firestore/client";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { fetchPrintWorkerHealth, type PrintWorkerHealth } from "@/lib/printers/local-worker";
 import {
@@ -59,10 +59,16 @@ export function ShippingLabelPrintDialog({
   const [isCheckingLocal, setIsCheckingLocal] = useState(false);
   const [selectedTargetKey, setSelectedTargetKey] = useState<string>("auto");
   const [isPrinting, setIsPrinting] = useState(false);
+  const [shippingTemplateHtml, setShippingTemplateHtml] = useState<string | undefined>(undefined);
+  const [globalPaper, setGlobalPaper] = useState<{
+    widthMm: number;
+    heightMm: number;
+    orientation: "portrait" | "landscape";
+  } | null>(null);
 
-  const widthMm = event.printer_config?.paper_width_mm ?? 50;
-  const heightMm = event.printer_config?.paper_height_mm ?? 30;
-  const orientation = event.printer_config?.orientation ?? "landscape";
+  const widthMm = globalPaper?.widthMm ?? event.printer_config?.paper_width_mm ?? 50;
+  const heightMm = globalPaper?.heightMm ?? event.printer_config?.paper_height_mm ?? 30;
+  const orientation = globalPaper?.orientation ?? event.printer_config?.orientation ?? "landscape";
 
   const checkLocalWorker = useCallback(async () => {
     setIsCheckingLocal(true);
@@ -78,11 +84,26 @@ export function ShippingLabelPrintDialog({
     if (!isOpen) return;
     setPreviewIndex(0);
     void checkLocalWorker();
-    const unsub = subscribePrintStations(
+    const unsubStations = subscribePrintStations(
       (list) => setStations(list),
       () => setStations([]),
     );
-    return () => unsub();
+    const unsubConfig = subscribePrinterConfigDoc((cfg) => {
+      setShippingTemplateHtml(
+        cfg.shipping_template_html?.trim() || cfg.shipping_default_template_html?.trim() || undefined,
+      );
+      if (cfg.paper_width_mm && cfg.paper_height_mm) {
+        setGlobalPaper({
+          widthMm: cfg.paper_width_mm,
+          heightMm: cfg.paper_height_mm,
+          orientation: cfg.orientation ?? "landscape",
+        });
+      }
+    });
+    return () => {
+      unsubStations();
+      unsubConfig();
+    };
   }, [isOpen, checkLocalWorker]);
 
   const availablePrinters = useMemo<AvailableThermalPrinterTarget[]>(() => {
@@ -168,8 +189,11 @@ export function ShippingLabelPrintDialog({
   const activeReg = registrations[previewIndex] ?? registrations[0];
   const activeData = useMemo(() => (activeReg ? extractShippingLabelData(activeReg, event) : null), [activeReg, event]);
   const previewHtml = useMemo(
-    () => (activeData ? buildShippingLabelHtml(activeData, { widthMm, heightMm, orientation }) : ""),
-    [activeData, widthMm, heightMm, orientation],
+    () =>
+      activeData
+        ? buildShippingLabelHtml(activeData, { widthMm, heightMm, orientation, templateHtml: shippingTemplateHtml })
+        : "",
+    [activeData, widthMm, heightMm, orientation, shippingTemplateHtml],
   );
 
   const hasMapsQr = Boolean(activeData?.mapsUrl && activeData.mapsUrl.trim().length > 0);
@@ -202,6 +226,7 @@ export function ShippingLabelPrintDialog({
           widthMm,
           heightMm,
           orientation,
+          templateHtml: shippingTemplateHtml,
         });
         printedCount += 1;
       }

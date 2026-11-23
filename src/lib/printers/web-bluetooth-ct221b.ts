@@ -179,10 +179,18 @@ export async function connectWebBluetoothCT221B(callbacks?: {
 /**
  * Renders an inline-styled badge HTML document into a 203 DPI (8 dots/mm) 1-bit monochrome bitmap
  * using SVG `<foreignObject>` + HTML5 `<canvas>` (100% local, zero external network dependencies).
+ * For portrait layouts (`heightMm > widthMm`), rotates 90° clockwise onto the physical landscape roll.
  */
-export async function renderHtmlToMonoBitmap(html: string, widthMm: number, heightMm: number): Promise<Uint8Array> {
-  const widthPx = Math.round(widthMm) * CT221B_DOTS_PER_MM;
-  const heightPx = Math.round(heightMm) * CT221B_DOTS_PER_MM;
+export async function renderHtmlToMonoBitmap(
+  html: string,
+  widthMm: number,
+  heightMm: number,
+): Promise<{ monoBitmap: Uint8Array; physicalWidthMm: number; physicalHeightMm: number }> {
+  const widthInt = Math.round(widthMm);
+  const heightInt = Math.round(heightMm);
+  const isPortrait = heightInt > widthInt;
+  const widthPx = widthInt * CT221B_DOTS_PER_MM;
+  const heightPx = heightInt * CT221B_DOTS_PER_MM;
 
   // Parse the HTML document to extract styles + body content for clean XHTML foreignObject serialization
   const parser = new DOMParser();
@@ -219,19 +227,33 @@ export async function renderHtmlToMonoBitmap(html: string, widthMm: number, heig
     img.src = svgUrl;
   });
 
+  const physicalWidthMm = isPortrait ? heightInt : widthInt;
+  const physicalHeightMm = isPortrait ? widthInt : heightInt;
+  const physPxW = physicalWidthMm * CT221B_DOTS_PER_MM;
+  const physPxH = physicalHeightMm * CT221B_DOTS_PER_MM;
+
   const canvas = document.createElement("canvas");
-  canvas.width = widthPx;
-  canvas.height = heightPx;
+  canvas.width = physPxW;
+  canvas.height = physPxH;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     throw new Error("Could not initialize 2D canvas context for Bluetooth printing.");
   }
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, widthPx, heightPx);
+  ctx.fillRect(0, 0, physPxW, physPxH);
+  if (isPortrait) {
+    // Rotate portrait (widthPx x heightPx) 90° clockwise onto landscape roll (physPxW x physPxH)
+    ctx.translate(physPxW, 0);
+    ctx.rotate(Math.PI / 2);
+  }
   ctx.drawImage(img, 0, 0, widthPx, heightPx);
 
-  const imageData = ctx.getImageData(0, 0, widthPx, heightPx);
-  return rgbaToMonoBitmap(imageData.data, widthPx, heightPx);
+  const imageData = ctx.getImageData(0, 0, physPxW, physPxH);
+  return {
+    monoBitmap: rgbaToMonoBitmap(imageData.data, physPxW, physPxH),
+    physicalWidthMm,
+    physicalHeightMm,
+  };
 }
 
 async function writeChunkedBle(
@@ -292,11 +314,15 @@ export async function printViaWebBluetooth(
     handle.connected = false;
     throw new Error(`Bluetooth printer "${handle.name}" is disconnected.`);
   }
-  const monoBitmap = await renderHtmlToMonoBitmap(options.html, options.widthMm, options.heightMm);
+  const { monoBitmap, physicalWidthMm, physicalHeightMm } = await renderHtmlToMonoBitmap(
+    options.html,
+    options.widthMm,
+    options.heightMm,
+  );
   const tsplPayload = buildCt221bTsplPayload({
     monoBitmap,
-    widthMm: options.widthMm,
-    heightMm: options.heightMm,
+    widthMm: physicalWidthMm,
+    heightMm: physicalHeightMm,
     density: options.density,
     gapMm: options.gapMm,
     copies: options.copies ?? 1,

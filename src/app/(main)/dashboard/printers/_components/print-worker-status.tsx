@@ -56,8 +56,18 @@ export function PrintWorkerStatus({ health, isChecking, onRecheck, onOpenSetupGu
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button size="sm" variant="outline" className="gap-2" aria-label="Print Station App status">
-          <span className="relative flex size-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="max-w-[200px] gap-2"
+          aria-label="Print Station App status"
+          title={
+            isConnected
+              ? `Print Station App: ${appStatusLabel(health)}${isOutdated ? " (Update available)" : ""}`
+              : "Print Station App: Not Running"
+          }
+        >
+          <span className="relative flex size-2 shrink-0">
             {isConnected && !isOutdated && (
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-60" />
             )}
@@ -68,9 +78,9 @@ export function PrintWorkerStatus({ health, isChecking, onRecheck, onOpenSetupGu
               )}
             />
           </span>
-          {isConnected
-            ? `Print Station App: ${appStatusLabel(health)}${isOutdated ? " (Update)" : ""}`
-            : "Print Station App: Not Running"}
+          <span className="truncate">
+            {isConnected ? `${appStatusLabel(health)}${isOutdated ? " (Update)" : ""}` : "Station Offline"}
+          </span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-88 space-y-3">

@@ -5,6 +5,7 @@ import { useEffect, useId, useState } from "react";
 import Image from "next/image";
 
 import {
+  AwardIcon,
   CalendarIcon,
   CheckCircle2Icon,
   ClockIcon,
@@ -364,6 +365,7 @@ export function ConfigureTemplateDataDialog({
                         {cfg.key === "partner_confirmation" && (
                           <HandshakeIcon className="size-3.5 text-emerald-500 shrink-0" />
                         )}
+                        {cfg.key === "speaker_thank_you" && <AwardIcon className="size-3.5 shrink-0 text-amber-500" />}
                         <span className="font-medium">{cfg.name}</span>
                       </div>
                     </SelectItem>

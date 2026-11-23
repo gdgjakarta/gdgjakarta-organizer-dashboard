@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import {
+  Award,
   CheckCircle2,
   Clock,
   CreditCard,
@@ -271,6 +272,7 @@ export function SendTemplateEmailDialog({
                       {cfg.key === "partner_confirmation" && (
                         <Handshake className="size-3.5 text-emerald-500 shrink-0" />
                       )}
+                      {cfg.key === "speaker_thank_you" && <Award className="size-3.5 shrink-0 text-amber-500" />}
                       <span>{cfg.name}</span>
                     </div>
                   </SelectItem>

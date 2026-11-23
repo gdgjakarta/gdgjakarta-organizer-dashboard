@@ -131,7 +131,10 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
 
   const [requiresApproval, setRequiresApproval] = useState(() => isEventCurationMode(event));
   const [allowWaitlist, setAllowWaitlist] = useState(event.allow_waitlist !== false);
-  const [maxAttendees, setMaxAttendees] = useState(event.max_attendees ? String(event.max_attendees) : "");
+  const [maxAttendees, setMaxAttendees] = useState(() => {
+    const cap = event.max_attendees ?? event.total_capacity;
+    return cap && cap > 0 ? String(cap) : "";
+  });
 
   // 2. Registration Schedule & Publishing Status
   const [registrationStatus, setRegistrationStatus] = useState<"Draft" | "Published" | "Closed">(
@@ -367,8 +370,12 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
         let loadedMaxAttendees = "";
         if (docData?.max_attendees !== undefined && docData.max_attendees !== null) {
           loadedMaxAttendees = String(docData.max_attendees);
-        } else if (currentEvent.max_attendees) {
-          loadedMaxAttendees = String(currentEvent.max_attendees);
+        } else if (!docData) {
+          // New/unsaved event in Firestore: follow Bevy's total_capacity
+          const fallbackCap = currentEvent.max_attendees ?? currentEvent.total_capacity;
+          if (fallbackCap && fallbackCap > 0) {
+            loadedMaxAttendees = String(fallbackCap);
+          }
         }
         let loadedSessions = Array.isArray(docData?.sessions) ? docData.sessions : (currentEvent.sessions ?? []);
         if (Object.keys(liveSessionCounts).length > 0) {
@@ -450,7 +457,10 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
         initialSnapshotRef.current ??= JSON.stringify({
           requiresApproval: isEventCurationMode(currentEvent),
           allowWaitlist: currentEvent.allow_waitlist !== false,
-          maxAttendees: currentEvent.max_attendees ? String(currentEvent.max_attendees) : "",
+          maxAttendees: (() => {
+            const cap = currentEvent.max_attendees ?? currentEvent.total_capacity;
+            return cap && cap > 0 ? String(cap) : "";
+          })(),
           sessions: currentEvent.sessions ?? [],
           defaultSessionName: currentEvent.default_session_name?.trim() || "Main Event",
           defaultSessionTime: currentEvent.default_session_time ?? "",

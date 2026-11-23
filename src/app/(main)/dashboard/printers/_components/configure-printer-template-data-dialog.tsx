@@ -28,7 +28,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { FirestoreRegistration } from "@/lib/firestore/types";
+import type { CustomQuestion, FirestoreRegistration } from "@/lib/firestore/types";
+import { getRegistrantOrg, getRegistrantRole } from "@/lib/printers/checkin-auto-print";
 import type { LabelTemplateData } from "@/lib/printers/types";
 
 export interface ConfigurePrinterTemplateDataDialogProps {
@@ -75,65 +76,65 @@ export function ConfigurePrinterTemplateDataDialog({
     const reg = registrations.find((r) => r.id === regId);
     if (!reg) return;
 
+    const questionsForLookup = customQuestions as CustomQuestion[];
+    const pickAnswer = (...keys: string[]): string => {
+      if (!reg.answers) return "";
+      for (const k of keys) {
+        const val = reg.answers[k];
+        if (Array.isArray(val) && val.length > 0) return val.join(", ").trim();
+        if (typeof val === "string" && val.trim()) return val.trim();
+      }
+      return "";
+    };
+
     const chosenName =
-      reg.member_name ||
-      (reg.answers?.full_name as string) ||
-      (reg.answers?.["Full Name"] as string) ||
-      (reg.answers?.Name as string) ||
+      reg.member_name?.trim() ||
+      pickAnswer("full_name", "Full Name", "name", "Name") ||
+      reg.member_email?.trim() ||
       "Attendee";
-    const chosenEmail = reg.member_email || "";
-    const resolvedTicketCode =
-      reg.attendee_code ||
-      (reg.answers?.ticket_code as string) ||
-      (reg.answers?.ticketCode as string) ||
-      (reg.answers?.attendee_code as string) ||
-      (reg.bevy_attendee_id ? `#${reg.bevy_attendee_id}` : undefined);
+
+    const chosenEmail = reg.member_email?.trim() || pickAnswer("email", "Email", "email_address") || "";
+
     const resolvedAttendeeId = reg.bevy_attendee_id ? String(reg.bevy_attendee_id) : String(reg.id);
+    const resolvedTicketCode =
+      reg.attendee_code?.trim() ||
+      pickAnswer("ticket_code", "ticketCode", "attendee_code", "ref_code", "refCode") ||
+      (reg.bevy_attendee_id ? `#${reg.bevy_attendee_id}` : String(reg.id));
 
-    // Resolve title / role
-    const resolvedTitle =
-      (reg.answers?.role_or_title as string) ||
-      (reg.answers?.job_title as string) ||
-      (reg.answers?.current_role as string) ||
-      (reg.answers?.role as string) ||
-      (reg.answers?.position as string) ||
-      (reg.answers?.pekerjaan as string) ||
-      (reg.answers?.jabatan as string) ||
-      "Participant";
-
-    // Resolve company / institution
-    const resolvedCompany =
-      (reg.answers?.company_or_institution as string) ||
-      (reg.answers?.institution as string) ||
-      (reg.answers?.company as string) ||
-      (reg.answers?.organization as string) ||
-      (reg.answers?.university as string) ||
-      (reg.answers?.instansi as string) ||
-      (reg.answers?.kampus as string) ||
-      "GDG Community";
+    // Resolve actual role/title and company/organization from registration answers (matching custom question labels & IDs)
+    const resolvedTitle = getRegistrantRole(reg, questionsForLookup);
+    const resolvedCompany = getRegistrantOrg(reg, questionsForLookup);
 
     const resolvedSessionTrack =
-      (reg.answers?.session_title as string) ||
-      (reg.answers?.Session as string) ||
-      (reg.answers?.session as string) ||
-      sampleData.sessionTrack ||
-      "Main Event";
+      reg.session_title?.trim() || pickAnswer("session_title", "Session", "session", "session_track") || "";
 
-    const resolvedTicketType =
-      reg.ticket_type === "free"
-        ? "Free RSVP"
-        : reg.ticket_type === "commitment_fee"
-          ? "Commitment Fee"
-          : reg.ticket_type === "paid" || reg.ticket_price
-            ? "Paid Pass"
-            : sampleData.ticketType || "Paid Pass";
+    let resolvedTicketType = "";
+    if (reg.ticket_type === "free" || reg.ticket_price === 0) {
+      resolvedTicketType = "Free RSVP";
+    } else if (reg.ticket_type === "commitment_fee") {
+      resolvedTicketType = "Commitment Fee";
+    } else if (reg.ticket_type === "paid" || (typeof reg.ticket_price === "number" && reg.ticket_price > 0)) {
+      resolvedTicketType = "Paid Pass";
+    } else if (typeof reg.ticket_type === "string" && reg.ticket_type.trim()) {
+      resolvedTicketType = reg.ticket_type.trim();
+    }
 
-    const resolvedTicketName = reg.ticket_name || reg.ticket_tier || sampleData.ticketName || "Super Early Bird";
+    const resolvedTicketName =
+      reg.ticket_name?.trim() ||
+      reg.ticket_tier?.trim() ||
+      pickAnswer("ticket_name", "ticketName", "ticket_tier") ||
+      "";
 
-    const answersMap: Record<string, unknown> = {
-      ...(sampleData.answers || {}),
-      ...(reg.answers || {}),
-    };
+    const resolvedCheckinTime = reg.checked_in_at
+      ? new Date(reg.checked_in_at).toLocaleTimeString("en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })
+      : sampleData.checkinTime;
+
+    const answersMap: Record<string, unknown> = { ...(reg.answers || {}) };
+    const resolvedEventId = eventId ?? sampleData.eventId;
 
     onSampleDataChange({
       name: chosenName,
@@ -143,9 +144,11 @@ export function ConfigurePrinterTemplateDataDialog({
       ticketType: resolvedTicketType,
       ticketName: resolvedTicketName,
       sessionTrack: resolvedSessionTrack,
-      ticketCode: resolvedTicketCode || sampleData.ticketCode,
-      attendeeCode: resolvedTicketCode || sampleData.attendeeCode,
-      attendeeId: resolvedAttendeeId || sampleData.attendeeId,
+      ticketCode: resolvedTicketCode,
+      attendeeCode: resolvedTicketCode,
+      attendeeId: resolvedAttendeeId,
+      checkinTime: resolvedCheckinTime,
+      qrPayload: `${resolvedEventId}:${resolvedAttendeeId}`,
       answers: answersMap,
       ...answersMap,
     });
@@ -470,7 +473,7 @@ export function ConfigurePrinterTemplateDataDialog({
         </div>
 
         {/* Footer */}
-        <DialogFooter className="p-4 border-t bg-muted/20 sm:justify-between items-center gap-2">
+        <DialogFooter className="mx-0 mb-0 items-center gap-2 border-t bg-muted/20 px-6 py-4 sm:justify-between">
           <div className="text-[11px] text-muted-foreground">
             Changes update the thermal badge live preview in real time.
           </div>

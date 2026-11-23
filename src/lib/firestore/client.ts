@@ -6167,6 +6167,25 @@ export async function retryPrintJob(jobId: string): Promise<void> {
 }
 
 /**
+ * Cancels (deletes) a print job only if it is still `pending` in the queue.
+ * Returns `true` if cancelled, or `false` if a station already claimed/finished it.
+ */
+export async function cancelQueuedPrintJob(jobId: string): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  await waitForAuthReady();
+  const ref = doc(db, PRINT_JOBS_COLLECTION, jobId);
+
+  return runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) return false;
+    const job = snap.data() as PrintJob;
+    if (job.status !== "pending") return false;
+    transaction.delete(ref);
+    return true;
+  });
+}
+
+/**
  * Fails a job whose laptop stopped answering while it was printing. It is not handed to another printer: the label
  * may already have come out, so a person checks and retries.
  */

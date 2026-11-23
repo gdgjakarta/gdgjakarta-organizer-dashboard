@@ -38,6 +38,10 @@ export interface PrinterConfig {
   paper_height_mm: number;
   orientation: "portrait" | "landscape";
   template_html: string;
+  /** Editable HTML template for Merchandise Delivery Shipping Labels. */
+  shipping_template_html?: string;
+  /** Organizer-saved default Shipping Label HTML template ("Save Current as Default"). */
+  shipping_default_template_html?: string;
   auto_print_on_checkin: boolean;
   /** Thermal print darkness for Bluetooth TSPL printing (1–15, default 8). */
   bluetooth_density?: number;

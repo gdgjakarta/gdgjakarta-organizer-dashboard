@@ -461,9 +461,15 @@ export function InstallPrintWorkerDialog({
 
   return (
     <>
-      <Button size="sm" variant="outline" className="gap-1.5" onClick={handleOpenClick}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="gap-1.5"
+        onClick={handleOpenClick}
+        title="Print Station Preparation & Connection Config"
+      >
         <SlidersHorizontal className="size-3.5" />
-        Preparation &amp; Config
+        Setup
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>

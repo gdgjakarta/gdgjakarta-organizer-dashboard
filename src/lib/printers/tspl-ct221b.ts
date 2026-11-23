@@ -31,7 +31,7 @@ export function expectedCt221bBitmapBytes(widthMm: number, heightMm: number): nu
 
 /**
  * Converts an RGBA pixel buffer (at 203 DPI: `widthMm * 8` × `heightMm * 8` pixels) into
- * packed 1-bit monochrome bytes for TSPL `BITMAP` (`1` = burn black dot, `0` = white).
+ * packed 1-bit monochrome bytes for TSPL `BITMAP` (`0` = burn black dot, `1` = white paper).
  */
 export function rgbaToMonoBitmap(
   rgba: Uint8ClampedArray | Uint8Array,
@@ -40,7 +40,8 @@ export function rgbaToMonoBitmap(
   threshold = 170,
 ): Uint8Array {
   const widthBytes = Math.ceil(widthPx / 8);
-  const out = new Uint8Array(widthBytes * heightPx);
+  // TSPL BITMAP polarity: 1 = white (unburned), 0 = black thermal dot
+  const out = new Uint8Array(widthBytes * heightPx).fill(0xff);
 
   for (let y = 0; y < heightPx; y++) {
     const rowByteOffset = y * widthBytes;
@@ -54,8 +55,8 @@ export function rgbaToMonoBitmap(
       const alpha = a / 255;
       const luma = (0.299 * r + 0.587 * g + 0.114 * b) * alpha + 255 * (1 - alpha);
       if (luma < threshold) {
-        // TSPL BITMAP bit=1 burns a black dot (MSB first per byte)
-        out[rowByteOffset + (x >> 3)] |= 0x80 >> (x & 7);
+        // Clear bit (0) to burn a black thermal dot (MSB first per byte)
+        out[rowByteOffset + (x >> 3)] &= ~(0x80 >> (x & 7));
       }
     }
   }

@@ -9,17 +9,21 @@ import {
   Bluetooth,
   Calendar,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Code2,
   ExternalLink,
   Laptop,
   MapPin,
   Maximize2,
+  Package,
   Play,
   Printer,
   Radio,
   RefreshCw,
   Square,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,9 +44,10 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { enqueuePrintJobAction, fetchEventRegistrationsAction, savePrinterConfigAction } from "@/lib/firestore/actions";
-import { retryPrintJob } from "@/lib/firestore/client";
+import { cancelQueuedPrintJob, retryPrintJob } from "@/lib/firestore/client";
 import type { FirestoreRegistration } from "@/lib/firestore/types";
 import { PRINT_STATION_APP_NAME, printViaWorker } from "@/lib/printers/local-worker";
+import { buildDefaultShippingLabelTemplate, syncShippingTemplateDimensions } from "@/lib/printers/shipping-label";
 import {
   buildPrintDocument,
   DEFAULT_LABEL_TEMPLATE,
@@ -68,6 +73,7 @@ import { InstallPrintWorkerDialog } from "./install-print-worker-dialog";
 import { LabelHtmlEditorPreview } from "./label-html-editor-preview";
 import { PrintStationsCard } from "./print-stations-card";
 import { PrintWorkerStatus } from "./print-worker-status";
+import { ShippingLabelEditorTab } from "./shipping-label-editor-tab";
 import { readPersistedStationRunning, usePrintStation, writePersistedStationRunning } from "./use-print-station";
 
 const CLIENT_EVENTS_CACHE_KEY = "gdg_email_published_events_cache_v1";
@@ -120,6 +126,43 @@ const DEFAULT_SAMPLE_ATTENDEE = {
   checkinTime: "20:13",
 };
 
+function formatPrintJobTimestamp(iso: string): { time: string; dateLabel: string; full: string } {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return { time: "--:--:--", dateLabel: "", full: iso };
+  }
+  const time = date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const now = new Date();
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  let dateLabel: string;
+  if (isSameDay(date, now)) {
+    dateLabel = "Today";
+  } else if (isSameDay(date, yesterday)) {
+    dateLabel = "Yesterday";
+  } else {
+    dateLabel = date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  }
+  const full = date.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  return { time, dateLabel, full };
+}
+
 interface PrintersDashboardProps {
   initialConfig: PrinterConfig;
 }
@@ -130,6 +173,10 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     (raw: PrinterConfig): PrinterConfig => ({
       ...raw,
       template_html: ensureFullLabelHtml(raw.template_html, raw.paper_width_mm, raw.paper_height_mm, raw.orientation),
+      shipping_template_html:
+        raw.shipping_template_html?.trim() ||
+        raw.shipping_default_template_html?.trim() ||
+        buildDefaultShippingLabelTemplate(raw.paper_width_mm, raw.paper_height_mm, raw.orientation),
     }),
     [],
   );
@@ -137,9 +184,12 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
   const [config, setConfig] = React.useState<PrinterConfig>(() => normalizeConfig(initialConfig));
   const [savedConfig, setSavedConfig] = React.useState<PrinterConfig>(() => normalizeConfig(initialConfig));
   const [isSaving, setIsSaving] = React.useState(false);
+  const [isSavingShippingDefault, setIsSavingShippingDefault] = React.useState(false);
   const [isStationRunning, setIsStationRunningState] = React.useState<boolean>(() => readPersistedStationRunning());
   const [isSetupDialogOpen, setIsSetupDialogOpen] = React.useState(false);
   const [recentJobs, setRecentJobs] = React.useState<PrintJob[]>([]);
+  const [queuePage, setQueuePage] = React.useState(1);
+  const [queuePageSize, setQueuePageSize] = React.useState(10);
 
   const setIsStationRunning = React.useCallback((next: boolean | ((prev: boolean) => boolean)) => {
     setIsStationRunningState((prev) => {
@@ -350,7 +400,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     void (async () => {
       try {
         const { subscribeRecentPrintQueue } = await import("@/lib/firestore/client");
-        unsubscribe = subscribeRecentPrintQueue(30, (jobs) => {
+        unsubscribe = subscribeRecentPrintQueue(200, (jobs) => {
           setRecentJobs(jobs);
         });
       } catch (err) {
@@ -559,6 +609,12 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
           paper_width_mm: nextWidth,
           paper_height_mm: nextHeight,
           template_html: syncTemplateDimensions(prev.template_html, nextWidth, nextHeight, prev.orientation),
+          shipping_template_html: syncShippingTemplateDimensions(
+            prev.shipping_template_html || "",
+            nextWidth,
+            nextHeight,
+            prev.orientation,
+          ),
         };
       });
     }
@@ -578,6 +634,12 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         paper_width_mm: nextWidth,
         paper_height_mm: nextHeight,
         template_html: syncTemplateDimensions(prev.template_html, nextWidth, nextHeight, nextOrientation),
+        shipping_template_html: syncShippingTemplateDimensions(
+          prev.shipping_template_html || "",
+          nextWidth,
+          nextHeight,
+          nextOrientation,
+        ),
       };
     });
   };
@@ -592,6 +654,12 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         paper_width_mm: nextWidth,
         paper_height_mm: nextHeight,
         template_html: syncTemplateDimensions(prev.template_html, nextWidth, nextHeight, prev.orientation),
+        shipping_template_html: syncShippingTemplateDimensions(
+          prev.shipping_template_html || "",
+          nextWidth,
+          nextHeight,
+          prev.orientation,
+        ),
       };
     });
   };
@@ -606,6 +674,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
       (config.bluetooth_density ?? 8) !== (savedConfig.bluetooth_density ?? 8) ||
       (config.bluetooth_gap_mm ?? 2) !== (savedConfig.bluetooth_gap_mm ?? 2) ||
       config.template_html !== savedConfig.template_html ||
+      (config.shipping_template_html || "") !== (savedConfig.shipping_template_html || "") ||
       (config.selected_event_id || "") !== (savedConfig.selected_event_id || "") ||
       JSON.stringify(config.sample_data ?? null) !== JSON.stringify(savedConfig.sample_data ?? null)
     );
@@ -654,6 +723,76 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     }
   };
 
+  // Save current shipping label HTML as the organization default (and active shipping template)
+  const handleSaveShippingAsDefault = async () => {
+    setIsSavingShippingDefault(true);
+    try {
+      const currentShippingHtml =
+        config.shipping_template_html?.trim() ||
+        buildDefaultShippingLabelTemplate(config.paper_width_mm, config.paper_height_mm, config.orientation);
+      const nextToSave: PrinterConfig = {
+        ...config,
+        shipping_template_html: currentShippingHtml,
+        shipping_default_template_html: currentShippingHtml,
+        selected_event_id: selectedEvent?.id || config.selected_event_id,
+        updated_by: user?.email || user?.name || "Organizer",
+      };
+      const res = await savePrinterConfigAction(nextToSave);
+      if (res.success) {
+        setConfig(nextToSave);
+        setSavedConfig(nextToSave);
+        toast.success("Saved current Shipping Label template as default.");
+      } else {
+        toast.error(res.error || "Failed to save default shipping label template.");
+      }
+    } catch {
+      toast.error("An unexpected error occurred while saving default shipping template.");
+    } finally {
+      setIsSavingShippingDefault(false);
+    }
+  };
+
+  const handleTestPrintShipping = async (renderedHtml: string, sampleName: string) => {
+    try {
+      const jobPayload = {
+        event_id: String(activeSampleData.eventId),
+        attendee_id: activeSampleData.attendeeId,
+        registration_id: "test-shipping-reg",
+        member_name: sampleName,
+        member_title: "Shipping Label Test",
+        member_company: "GDG Jakarta",
+        qr_payload: "",
+        rendered_html: renderedHtml,
+        paper_width_mm: config.paper_width_mm,
+        paper_height_mm: config.paper_height_mm,
+        orientation: config.orientation,
+        job_type: "shipping_label" as const,
+      };
+      if (isStationRunning || anyStationTakingJobs) {
+        const res = await enqueuePrintJobAction(jobPayload, { forceNewJob: true });
+        if (!res.success) throw new Error(res.error || "Could not queue shipping label test print.");
+        toast.success("Shipping label test print queued.");
+        return;
+      }
+      if (workerHealthRef.current || hasConnectedWebBluetooth) {
+        const printedOn = await executeSilentPrint(renderedHtml, sampleName);
+        if (stationId) {
+          await enqueuePrintJobAction(jobPayload, {
+            printedBy: { stationId, stationName, printer: printedOn },
+            forceNewJob: true,
+          });
+        }
+        toast.success(`Shipping label sent to ${printedOn ?? "the default printer"}.`);
+        return;
+      }
+      const res = await enqueuePrintJobAction(jobPayload, { forceNewJob: true });
+      if (!res.success) throw new Error(res.error || "Could not queue shipping label test print.");
+      toast.warning("Shipping label queued, but no print station is running.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Shipping label test print failed.");
+    }
+  };
+
   const handleToggleStationRunning = React.useCallback(() => {
     if (!isStationRunning && !workerHealth && !hasConnectedWebBluetooth) {
       toast.warning(
@@ -673,6 +812,8 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     });
   }, [isStationRunning, workerHealth, hasConnectedWebBluetooth, stationName, setIsStationRunning]);
 
+  const anyStationTakingJobs = stations.some((station) => station.station_running && isPrintStationOnline(station));
+
   // Run Test Print
   const handleTestPrint = async () => {
     try {
@@ -691,29 +832,35 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         orientation: config.orientation,
       };
 
-      if (isStationRunning) {
-        // This laptop takes jobs, so the queue hands the test label to whichever printer is idle.
+      // If this laptop or any other online Print Station is running, route through Firestore so a real printer claims it.
+      if (isStationRunning || anyStationTakingJobs) {
         const res = await enqueuePrintJobAction(jobPayload, { forceNewJob: true });
         if (!res.success) throw new Error(res.error || "Could not queue the test print.");
-        toast.success("Test print queued.");
+        toast.success("Test print queued for an active print station.");
         return;
       }
 
-      // Station is off here: print directly on this laptop and log it as already printed.
-      const printedOn = await executeSilentPrint(renderedHtml, activeSampleData.name);
-      if (stationId) {
-        await enqueuePrintJobAction(jobPayload, {
-          printedBy: { stationId, stationName, printer: printedOn },
-          forceNewJob: true,
-        });
+      // No station is running anywhere, but this laptop has a direct local Worker or Web BLE printer: print directly.
+      if (workerHealthRef.current || hasConnectedWebBluetooth) {
+        const printedOn = await executeSilentPrint(renderedHtml, activeSampleData.name);
+        if (stationId) {
+          await enqueuePrintJobAction(jobPayload, {
+            printedBy: { stationId, stationName, printer: printedOn },
+            forceNewJob: true,
+          });
+        }
+        toast.success(`Test print sent to ${printedOn ?? "the default printer"}.`);
+        return;
       }
-      toast.success(`Test print sent to ${printedOn ?? "the default printer"}.`);
+
+      // No local printer and no online station: queue as pending instead of falsely marking "Printed" via browser dialog.
+      const res = await enqueuePrintJobAction(jobPayload, { forceNewJob: true });
+      if (!res.success) throw new Error(res.error || "Could not queue the test print.");
+      toast.warning("Test print queued, but no print station is running. Start Print Station on a connected Mac.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Test print failed");
     }
   };
-
-  const anyStationTakingJobs = stations.some((station) => station.station_running && isPrintStationOnline(station));
 
   // Reprint = a fresh job in the queue, so it gets assigned to a printer and logged like any other.
   const handleReprint = async (job: PrintJob) => {
@@ -750,6 +897,19 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     }
   };
 
+  const handleCancelQueuedJob = async (job: PrintJob) => {
+    try {
+      const cancelled = await cancelQueuedPrintJob(job.id);
+      if (cancelled) {
+        toast.info(`Cancelled queued badge for ${job.member_name}.`);
+      } else {
+        toast.warning("This print job was already claimed or finished.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not cancel queued print job.");
+    }
+  };
+
   const pendingJobsCount = recentJobs.filter((j) => j.status === "pending").length;
   const failedJobsCount = recentJobs.filter((j) => j.status === "failed").length;
   const completedJobsCount = recentJobs.filter((j) => j.status === "completed").length;
@@ -780,7 +940,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 lg:w-fit">
+        <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap">
           <PrintWorkerStatus
             health={workerHealth}
             isChecking={isCheckingWorker}
@@ -800,6 +960,13 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
             onTestPrint={handleTestPrint}
           />
 
+          <Button size="sm" variant="outline" onClick={handleTestPrint} className="gap-1.5">
+            <Printer className="size-3.5" />
+            Test Print
+          </Button>
+
+          <div className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
+
           <Button
             size="sm"
             variant={
@@ -811,19 +978,14 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
             {isStationRunning ? (
               <>
                 <Square className="size-3.5 fill-current" />
-                Stop Print Station
+                Stop Station
               </>
             ) : (
               <>
                 <Play className="size-3.5 fill-current" />
-                Start Print Station
+                Start Station
               </>
             )}
-          </Button>
-
-          <Button size="sm" variant="outline" onClick={handleTestPrint} className="gap-1.5">
-            <RefreshCw className="size-3.5" />
-            Test Print
           </Button>
         </div>
       </div>
@@ -970,11 +1132,15 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
           <TabsList>
             <TabsTrigger value="editor" className="gap-1.5">
               <Code2 className="size-3.5" />
-              Template & Size
+              Badge Template &amp; Size
+            </TabsTrigger>
+            <TabsTrigger value="shipping" className="gap-1.5">
+              <Package className="size-3.5" />
+              Shipping Labels
             </TabsTrigger>
             <TabsTrigger value="queue" className="gap-1.5">
               <Clock className="size-3.5" />
-              Print Queue ({recentJobs.length})
+              Print Queue
             </TabsTrigger>
             <TabsTrigger value="instructions" className="gap-1.5">
               <Laptop className="size-3.5" />
@@ -1177,13 +1343,29 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
           </Card>
         </TabsContent>
 
-        {/* TAB 2: PRINT QUEUE */}
+        {/* TAB 2: SHIPPING LABEL TEMPLATE */}
+        <TabsContent value="shipping" className="mt-0">
+          <ShippingLabelEditorTab
+            value={config.shipping_template_html || ""}
+            customDefaultHtml={config.shipping_default_template_html}
+            onChange={(nextHtml) => setConfig((prev) => ({ ...prev, shipping_template_html: nextHtml }))}
+            onSaveAsDefault={handleSaveShippingAsDefault}
+            isSavingDefault={isSavingShippingDefault}
+            onTestPrint={handleTestPrintShipping}
+            widthMm={config.paper_width_mm}
+            heightMm={config.paper_height_mm}
+            orientation={config.orientation}
+          />
+        </TabsContent>
+
+        {/* TAB 3: PRINT QUEUE */}
         <TabsContent value="queue" className="mt-0">
           <Card>
             <CardHeader>
               <CardTitle>Real-Time Print Queue</CardTitle>
               <CardDescription>
-                Latest 30 print jobs from QR check-in scans across the venue. Each job is held by exactly one printer.
+                Real-time print history from QR check-in scans and shipping labels across the venue. Each job is held by
+                exactly one printer.
               </CardDescription>
               <CardAction className="flex gap-1.5">
                 {failedJobsCount > 0 && (
@@ -1206,120 +1388,215 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                   </p>
                 </div>
               ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[140px]">Time</TableHead>
-                        <TableHead>Attendee</TableHead>
-                        <TableHead>Event ID</TableHead>
-                        <TableHead>QR Payload</TableHead>
-                        <TableHead>Printed on</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Action</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {recentJobs.map((job) => (
-                        <TableRow key={job.id}>
-                          <TableCell className="font-mono text-muted-foreground text-xs">
-                            {new Date(job.created_at).toLocaleTimeString("id-ID", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              second: "2-digit",
+                (() => {
+                  const totalPages = Math.max(1, Math.ceil(recentJobs.length / queuePageSize));
+                  const safePage = Math.min(queuePage, totalPages);
+                  const startIdx = (safePage - 1) * queuePageSize;
+                  const paginatedJobs = recentJobs.slice(startIdx, startIdx + queuePageSize);
+                  const endIdx = Math.min(startIdx + paginatedJobs.length, recentJobs.length);
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[140px]">Time</TableHead>
+                              <TableHead>Attendee</TableHead>
+                              <TableHead>Event ID</TableHead>
+                              <TableHead>QR Payload</TableHead>
+                              <TableHead>Printed on</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="text-right">Action</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {paginatedJobs.map((job) => {
+                              const ts = formatPrintJobTimestamp(job.created_at);
+                              return (
+                                <TableRow key={job.id}>
+                                  <TableCell title={ts.full}>
+                                    <div className="font-medium font-mono text-foreground text-xs tabular-nums">
+                                      {ts.time}
+                                    </div>
+                                    {ts.dateLabel && (
+                                      <div className="text-[11px] text-muted-foreground">{ts.dateLabel}</div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="font-medium text-xs">{job.member_name}</div>
+                                    {job.member_title && (
+                                      <div className="text-[11px] text-muted-foreground">{job.member_title}</div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="font-mono text-xs">#{job.event_id}</TableCell>
+                                  <TableCell className="font-mono text-muted-foreground text-xs">
+                                    {job.qr_payload}
+                                  </TableCell>
+                                  <TableCell>
+                                    {job.assigned_station_name ? (
+                                      <>
+                                        <div className="font-medium text-xs">
+                                          {job.assigned_printer ?? "Default printer"}
+                                        </div>
+                                        <div className="text-[11px] text-muted-foreground">
+                                          {job.assigned_station_name}
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <span className="text-muted-foreground text-xs">Waiting for a printer</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {job.status === "completed" && (
+                                      <Badge className="border-emerald-500/20 bg-emerald-500/10 text-[10px] text-emerald-600">
+                                        <CheckCircle2 className="mr-1 size-3" />
+                                        Printed
+                                      </Badge>
+                                    )}
+                                    {job.status === "pending" && (
+                                      <Badge className="border-amber-500/20 bg-amber-500/10 text-[10px] text-amber-600">
+                                        <Clock className="mr-1 size-3" />
+                                        {job.attempts?.length ? "Retrying" : "Queued"}
+                                      </Badge>
+                                    )}
+                                    {job.status === "printing" && (
+                                      <Badge className="animate-pulse border-blue-500/20 bg-blue-500/10 text-[10px] text-blue-600">
+                                        <Printer className="mr-1 size-3" />
+                                        Printing
+                                      </Badge>
+                                    )}
+                                    {job.status === "failed" && (
+                                      <Badge className="border-rose-500/20 bg-rose-500/10 text-[10px] text-rose-600">
+                                        <AlertCircle className="mr-1 size-3" />
+                                        Failed
+                                      </Badge>
+                                    )}
+                                    {job.error_message && job.status !== "completed" && job.status !== "printing" && (
+                                      <div
+                                        className="mt-1 max-w-56 break-words text-[11px] text-rose-600 dark:text-rose-400"
+                                        title={job.error_message}
+                                      >
+                                        {job.error_message}
+                                      </div>
+                                    )}
+                                    {job.attempts && job.attempts.length > 1 && (
+                                      <div
+                                        className="mt-1 text-[11px] text-muted-foreground"
+                                        title={job.attempts
+                                          .map(
+                                            (attempt, index) =>
+                                              `#${index + 1} ${attempt.printer ?? "default"} @ ${attempt.station_name}${attempt.error ? `: ${attempt.error}` : ""}`,
+                                          )
+                                          .join("\n")}
+                                      >
+                                        {job.attempts.length} attempts (max {MAX_PRINT_ATTEMPTS})
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    <div className="inline-flex items-center justify-end gap-1.5">
+                                      {job.status === "failed" ? (
+                                        <Button
+                                          variant="outline"
+                                          size="icon"
+                                          className="size-7"
+                                          onClick={() => void handleRetry(job)}
+                                          aria-label={`Retry print job for ${job.member_name}`}
+                                          title="Retry print job"
+                                        >
+                                          <RefreshCw className="size-3.5" />
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          variant="outline"
+                                          size="icon"
+                                          className="size-7"
+                                          onClick={() => void handleReprint(job)}
+                                          aria-label={`Reprint badge for ${job.member_name}`}
+                                          title="Reprint badge"
+                                        >
+                                          <Printer className="size-3.5" />
+                                        </Button>
+                                      )}
+                                      {job.status === "pending" && (
+                                        <Button
+                                          variant="outline"
+                                          size="icon"
+                                          className="size-7 border-rose-500/30 text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-400"
+                                          onClick={() => void handleCancelQueuedJob(job)}
+                                          aria-label={`Cancel queued print job for ${job.member_name}`}
+                                          title="Cancel queued print job"
+                                        >
+                                          <X className="size-3.5" />
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              );
                             })}
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-medium text-xs">{job.member_name}</div>
-                            {job.member_title && (
-                              <div className="text-[11px] text-muted-foreground">{job.member_title}</div>
-                            )}
-                          </TableCell>
-                          <TableCell className="font-mono text-xs">#{job.event_id}</TableCell>
-                          <TableCell className="font-mono text-muted-foreground text-xs">{job.qr_payload}</TableCell>
-                          <TableCell>
-                            {job.assigned_station_name ? (
-                              <>
-                                <div className="font-medium text-xs">{job.assigned_printer ?? "Default printer"}</div>
-                                <div className="text-[11px] text-muted-foreground">{job.assigned_station_name}</div>
-                              </>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">Waiting for a printer</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {job.status === "completed" && (
-                              <Badge className="border-emerald-500/20 bg-emerald-500/10 text-[10px] text-emerald-600">
-                                <CheckCircle2 className="mr-1 size-3" />
-                                Printed
-                              </Badge>
-                            )}
-                            {job.status === "pending" && (
-                              <Badge className="border-amber-500/20 bg-amber-500/10 text-[10px] text-amber-600">
-                                <Clock className="mr-1 size-3" />
-                                {job.attempts?.length ? "Retrying" : "Queued"}
-                              </Badge>
-                            )}
-                            {job.status === "printing" && (
-                              <Badge className="animate-pulse border-blue-500/20 bg-blue-500/10 text-[10px] text-blue-600">
-                                <Printer className="mr-1 size-3" />
-                                Printing
-                              </Badge>
-                            )}
-                            {job.status === "failed" && (
-                              <Badge className="border-rose-500/20 bg-rose-500/10 text-[10px] text-rose-600">
-                                <AlertCircle className="mr-1 size-3" />
-                                Failed
-                              </Badge>
-                            )}
-                            {job.error_message && job.status !== "completed" && job.status !== "printing" && (
-                              <div
-                                className="mt-1 max-w-56 break-words text-[11px] text-rose-600 dark:text-rose-400"
-                                title={job.error_message}
-                              >
-                                {job.error_message}
-                              </div>
-                            )}
-                            {job.attempts && job.attempts.length > 1 && (
-                              <div
-                                className="mt-1 text-[11px] text-muted-foreground"
-                                title={job.attempts
-                                  .map(
-                                    (attempt, index) =>
-                                      `#${index + 1} ${attempt.printer ?? "default"} @ ${attempt.station_name}${attempt.error ? `: ${attempt.error}` : ""}`,
-                                  )
-                                  .join("\n")}
-                              >
-                                {job.attempts.length} attempts (max {MAX_PRINT_ATTEMPTS})
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {job.status === "failed" ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() => void handleRetry(job)}
-                              >
-                                Retry
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={() => void handleReprint(job)}
-                              >
-                                Reprint
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                          </TableBody>
+                        </Table>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="text-muted-foreground tabular-nums">
+                          Showing <span className="font-medium text-foreground">{startIdx + 1}</span>–
+                          <span className="font-medium text-foreground">{endIdx}</span> of{" "}
+                          <span className="font-medium text-foreground">{recentJobs.length}</span> jobs
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={String(queuePageSize)}
+                            onValueChange={(val) => {
+                              setQueuePageSize(Number(val));
+                              setQueuePage(1);
+                            }}
+                          >
+                            <SelectTrigger className="h-8 w-[108px] text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="10">10 / page</SelectItem>
+                              <SelectItem value="25">25 / page</SelectItem>
+                              <SelectItem value="50">50 / page</SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="size-8"
+                              onClick={() => setQueuePage(Math.max(1, safePage - 1))}
+                              disabled={safePage <= 1}
+                              aria-label="Previous page"
+                            >
+                              <ChevronLeft className="size-4" />
+                            </Button>
+                            <span className="min-w-[82px] text-center font-medium text-muted-foreground tabular-nums">
+                              Page {safePage} / {totalPages}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="size-8"
+                              onClick={() => setQueuePage(Math.min(totalPages, safePage + 1))}
+                              disabled={safePage >= totalPages}
+                              aria-label="Next page"
+                            >
+                              <ChevronRight className="size-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
               )}
             </CardContent>
           </Card>

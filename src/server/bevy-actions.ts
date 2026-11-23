@@ -505,6 +505,23 @@ export async function createBevyEventAction(input: BevyCreateEventInput) {
 
   const result = await createBevyExternalEvent(input);
   if (result.success && result.data?.id) {
+    // Seed Firestore event capacity so Registration Settings ("Total Event Capacity") follows Bevy's initial capacity
+    const rawCap = result.data.total_capacity ?? input.total_capacity;
+    const parsedCap = Number(rawCap);
+    if (Number.isFinite(parsedCap) && parsedCap > 0) {
+      try {
+        const { patchFirestoreDoc } = await import("@/server/firestore-admin");
+        await patchFirestoreDoc(
+          "events",
+          String(result.data.id),
+          { total_capacity: parsedCap, max_attendees: parsedCap },
+          true,
+        );
+      } catch (fsErr) {
+        console.warn("[createBevyEventAction] Non-fatal: failed to seed Firestore capacity:", fsErr);
+      }
+    }
+
     revalidatePath("/dashboard/events");
     revalidatePath("/events");
     revalidatePath(`/dashboard/events/${result.data.id}`);

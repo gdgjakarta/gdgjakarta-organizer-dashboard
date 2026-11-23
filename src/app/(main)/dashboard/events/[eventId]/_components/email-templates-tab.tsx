@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import Editor, { type OnMount } from "@monaco-editor/react";
 import {
+  Award,
   BookmarkCheck,
   Check,
   CheckCircle2,
@@ -1032,6 +1033,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
                         {cfg.key === "partner_confirmation" && (
                           <Handshake className="size-3.5 text-emerald-500 shrink-0" />
                         )}
+                        {cfg.key === "speaker_thank_you" && <Award className="size-3.5 shrink-0 text-amber-500" />}
                         <span className="truncate">{cfg.name}</span>
                         {!isCurrentActiveInFlow && (
                           <Badge variant="outline" className="ml-1 px-1 py-0 text-[9px] opacity-70">

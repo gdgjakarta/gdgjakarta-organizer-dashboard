@@ -17,14 +17,14 @@ export function buildLabelCoreCss(
   const round1 = (n: number) => Math.round(n * 10) / 10;
 
   const padVMm = round1(2.0 * scale);
-  const padHMm = round1(2.5 * scale);
-  const namePt = round1(16.0 * scale);
-  const titlePt = round1(6.5 * scale);
-  const companyPt = round1(5.5 * scale);
-  const refCodePt = round1(5.0 * scale);
-  const pillPt = round1(4.2 * scale);
+  const padHMm = round1((isPortrait ? 2.0 : 2.5) * scale);
+  const namePt = round1((isPortrait ? 12.0 : 16.0) * scale);
+  const titlePt = round1((isPortrait ? 8.0 : 10.0) * scale);
+  const companyPt = round1((isPortrait ? 7.0 : 8.0) * scale);
+  const refCodePt = round1((isPortrait ? 5.5 : 6.0) * scale);
+  const pillPt = round1((isPortrait ? 5.5 : 6.0) * scale);
   const eventPt = round1(5.0 * scale);
-  const qrSizeMm = round1((isPortrait ? 20 : 17.5) * scale);
+  const qrSizeMm = round1((isPortrait ? 18.0 : 17.5) * scale);
 
   return `      @page {
         size: ${widthMm}mm ${heightMm}mm;
@@ -60,37 +60,42 @@ export function buildLabelCoreCss(
         display: flex;
         flex-direction: column;
         justify-content: space-between;
+        gap: ${isPortrait ? "1.5mm" : "0.5mm"};
         overflow: hidden;
       }
 
       .attendee-name {
         flex: 0 0 auto;
+        width: 100%;
         font-size: ${namePt}pt;
         font-weight: 400;
         line-height: 1.15;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: break-word;
         text-transform: capitalize;
       }
 
       .ticket-body {
         flex: 1;
         min-height: 0;
+        width: 100%;
         display: flex;
         flex-direction: ${isPortrait ? "column-reverse" : "row"};
-        align-items: ${isPortrait ? "center" : "flex-end"};
+        align-items: ${isPortrait ? "stretch" : "flex-end"};
         justify-content: space-between;
-        gap: 2mm;
+        gap: ${isPortrait ? "1.5mm" : "2mm"};
       }
 
       .ticket-details {
         flex: 1 1 0%;
         min-width: 0;
-        height: 100%;
+        width: ${isPortrait ? "100%" : "auto"};
+        height: ${isPortrait ? "auto" : "100%"};
         display: flex;
         flex-direction: column;
         justify-content: space-between;
+        gap: ${isPortrait ? "0.8mm" : "0.4mm"};
         overflow: hidden;
       }
 
@@ -99,9 +104,9 @@ export function buildLabelCoreCss(
         font-family: 'Google Sans Flex', 'Google Sans', Arial, sans-serif;
         font-weight: 300;
         line-height: 1.2;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: break-word;
       }
 
       .attendee-company {
@@ -110,9 +115,9 @@ export function buildLabelCoreCss(
         font-weight: 300;
         line-height: 1.2;
         margin-top: 0.3mm;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: break-word;
       }
 
       .attendee-title:empty,
@@ -132,9 +137,9 @@ export function buildLabelCoreCss(
         font-variant-numeric: tabular-nums;
         letter-spacing: 0.3px;
         line-height: 1.1;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: break-word;
         align-self: flex-start;
       }
 
@@ -148,6 +153,7 @@ export function buildLabelCoreCss(
 
       .ticket-badge-pill {
         align-self: flex-start;
+        max-width: 100%;
         font-size: ${pillPt}pt;
         font-weight: 700;
         padding: 0.5mm 1.5mm;
@@ -157,6 +163,9 @@ export function buildLabelCoreCss(
         letter-spacing: 0.5px;
         text-transform: uppercase;
         line-height: 1.1;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: break-word;
       }
 
       .event-name {
@@ -164,15 +173,16 @@ export function buildLabelCoreCss(
         font-family: 'Google Sans Flex', 'Google Sans', Arial, sans-serif;
         font-weight: 300;
         line-height: 1.15;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        white-space: normal;
+        overflow-wrap: break-word;
+        word-break: break-word;
       }
 
       .ticket-qr-section {
         flex: 0 0 ${qrSizeMm}mm;
         width: ${qrSizeMm}mm;
         height: ${qrSizeMm}mm;
+        align-self: ${isPortrait ? "center" : "flex-end"};
         display: flex;
         align-items: center;
         justify-content: center;
@@ -203,6 +213,7 @@ export function buildDefaultLabelTemplate(
   heightMm = 30,
   orientation: "portrait" | "landscape" = "landscape",
 ): string {
+  const isPortrait = orientation === "portrait" || heightMm > widthMm;
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -221,7 +232,7 @@ ${buildLabelCoreCss(widthMm, heightMm, orientation)}
   </head>
   <body>
     <div class="ticket-badge">
-      <div class="attendee-name" data-fit-lines="1">[[Name]]</div>
+      <div class="attendee-name" data-fit-lines="${isPortrait ? "2" : "1"}">[[Name]]</div>
 
       <div class="ticket-body">
         <div class="ticket-details">
@@ -231,7 +242,7 @@ ${buildLabelCoreCss(widthMm, heightMm, orientation)}
           </div>
           <div class="ref-code">[[ticketCode]]</div>
           <div class="ticket-footer">
-            <span class="ticket-badge-pill">[[ticketName]] - [[ticketType]]</span>
+            <span class="ticket-badge-pill">[[ticketName]]</span>
             <div class="event-name">[[EventName]]</div>
           </div>
         </div>
@@ -248,7 +259,7 @@ ${buildLabelCoreCss(widthMm, heightMm, orientation)}
 export const DEFAULT_LABEL_TEMPLATE = buildDefaultLabelTemplate(50, 30, "landscape");
 
 /**
- * Synchronizes the <style> block inside the HTML template when paper dimensions or orientation change.
+ * Synchronizes the <style> block and name-fit line count inside the HTML template when paper dimensions or orientation change.
  */
 export function syncTemplateDimensions(
   html: string,
@@ -256,11 +267,17 @@ export function syncTemplateDimensions(
   heightMm: number,
   orientation: "portrait" | "landscape",
 ): string {
-  const full = ensureFullLabelHtml(html, widthMm, heightMm, orientation);
+  const isPortrait = orientation === "portrait" || heightMm > widthMm;
+  let full = ensureFullLabelHtml(html, widthMm, heightMm, orientation);
   const newCss = buildLabelCoreCss(widthMm, heightMm, orientation);
   if (/<style[^>]*>[\s\S]*?<\/style>/i.test(full)) {
-    return full.replace(/<style[^>]*>[\s\S]*?<\/style>/i, `<style>\n${newCss}\n    </style>`);
+    full = full.replace(/<style[^>]*>[\s\S]*?<\/style>/i, `<style>\n${newCss}\n    </style>`);
   }
+  // Allow 2 lines for attendee name in portrait so full names don't collapse into initials ("F. T.")
+  full = full.replace(
+    /(<div\b[^>]*class="[^"]*attendee-name[^"]*"[^>]*\bdata-fit-lines=")\d+(")/i,
+    `$1${isPortrait ? "2" : "1"}$2`,
+  );
   return full;
 }
 

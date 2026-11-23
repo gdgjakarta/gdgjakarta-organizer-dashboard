@@ -372,45 +372,62 @@ export function MerchandiseDeliveryStatusDialog({
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                {req.tracking_number && (
-                  <Button
-                    size="sm"
-                    className="h-8 gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-                    onClick={() => setIsLiveTrackingOpen(true)}
-                  >
-                    <Truck className="size-3.5" />
-                    Track Shipment
-                  </Button>
-                )}
+              {(() => {
+                const externalTrackingUrl = resolveCourierTrackingUrl(
+                  req.courier_type,
+                  req.tracking_number,
+                  req.tracking_url,
+                );
+                const hasSecondary = Boolean(externalTrackingUrl || req.delivery_proof_url);
+                if (!req.tracking_number && !hasSecondary) return null;
 
-                {(() => {
-                  const externalTrackingUrl = resolveCourierTrackingUrl(
-                    req.courier_type,
-                    req.tracking_number,
-                    req.tracking_url,
-                  );
-                  return (
-                    externalTrackingUrl && (
-                      <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                        <a href={externalTrackingUrl} target="_blank" rel="noopener noreferrer">
-                          Open Courier Website
-                          <ExternalLink className="size-3" />
-                        </a>
+                return (
+                  <div className="space-y-2 pt-1">
+                    {req.tracking_number && (
+                      <Button
+                        size="sm"
+                        className="h-9 w-full gap-1.5 bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90"
+                        onClick={() => setIsLiveTrackingOpen(true)}
+                      >
+                        <Truck className="size-3.5" />
+                        Track Shipment
                       </Button>
-                    )
-                  );
-                })()}
+                    )}
 
-                {req.delivery_proof_url && (
-                  <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                    <a href={req.delivery_proof_url} target="_blank" rel="noopener noreferrer">
-                      <FileImage className="size-3" />
-                      View Drop-off Proof
-                    </a>
-                  </Button>
-                )}
-              </div>
+                    {hasSecondary && (
+                      <div className="flex items-center gap-2">
+                        {externalTrackingUrl && (
+                          <Button
+                            asChild
+                            variant="outline"
+                            size="sm"
+                            className="h-8 flex-1 gap-1.5 bg-background/80 text-xs"
+                          >
+                            <a href={externalTrackingUrl} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
+                              <span className="truncate">Courier Website</span>
+                            </a>
+                          </Button>
+                        )}
+
+                        {req.delivery_proof_url && (
+                          <Button
+                            asChild
+                            variant="outline"
+                            size="sm"
+                            className="h-8 flex-1 gap-1.5 bg-background/80 text-xs"
+                          >
+                            <a href={req.delivery_proof_url} target="_blank" rel="noopener noreferrer">
+                              <FileImage className="size-3.5 shrink-0 text-muted-foreground" />
+                              <span className="truncate">Drop-off Proof</span>
+                            </a>
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 

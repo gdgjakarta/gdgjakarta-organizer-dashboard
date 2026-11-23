@@ -1,5 +1,6 @@
 import AppKit
 import CoreBluetooth
+import CoreImage
 import Foundation
 import Network
 import WebKit
@@ -219,6 +220,7 @@ final class NotchDynamicIslandController {
     private let badgeDot = NSView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let subtitleLabel = NSTextField(labelWithString: "")
+    private let pillContainer = NSView()
     private let pillTag = NSTextField(labelWithString: "")
     private var dismissWorkItem: DispatchWorkItem?
 
@@ -263,15 +265,21 @@ final class NotchDynamicIslandController {
         subtitleLabel.cell?.isScrollable = false
         subtitleLabel.maximumNumberOfLines = 0
 
+        pillContainer.wantsLayer = true
+        pillContainer.layer?.cornerRadius = 6
+
         pillTag.font = NSFont.systemFont(ofSize: 10, weight: .bold)
         pillTag.alignment = .center
-        pillTag.wantsLayer = true
-        pillTag.layer?.cornerRadius = 6
+        pillTag.drawsBackground = false
+        pillTag.isBezeled = false
+        pillTag.isEditable = false
+        pillTag.isSelectable = false
+        pillContainer.addSubview(pillTag)
 
         containerView.addSubview(badgeDot)
         containerView.addSubview(titleLabel)
         containerView.addSubview(subtitleLabel)
-        containerView.addSubview(pillTag)
+        containerView.addSubview(pillContainer)
 
         p.contentView = containerView
         self.panel = p
@@ -298,23 +306,23 @@ final class NotchDynamicIslandController {
             badgeDot.layer?.backgroundColor = NSColor.systemBlue.cgColor
             titleLabel.stringValue = "Printing badge for \(attendee)…"
             subtitleLabel.stringValue = "→ \(printer) (\(dims))"
-            pillTag.stringValue = " PRINTING "
+            pillTag.stringValue = "PRINTING"
             pillTag.textColor = NSColor.systemCyan
-            pillTag.layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.22).cgColor
+            pillContainer.layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.22).cgColor
         case let .completed(attendee, printer):
             badgeDot.layer?.backgroundColor = NSColor.systemGreen.cgColor
             titleLabel.stringValue = "Printed \(attendee)"
             subtitleLabel.stringValue = "✓ \(printer)"
-            pillTag.stringValue = " DONE "
+            pillTag.stringValue = "DONE"
             pillTag.textColor = NSColor.systemGreen
-            pillTag.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.22).cgColor
+            pillContainer.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.22).cgColor
         case let .failed(attendee, error):
             badgeDot.layer?.backgroundColor = NSColor.systemRed.cgColor
             titleLabel.stringValue = "Print failed: \(attendee)"
             subtitleLabel.stringValue = error
-            pillTag.stringValue = " ALERT "
+            pillTag.stringValue = "ALERT"
             pillTag.textColor = NSColor.systemRed
-            pillTag.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.22).cgColor
+            pillContainer.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.22).cgColor
         }
 
         // Measure wrapped heights for titleLabel and subtitleLabel so no text is ever truncated with ellipsis
@@ -341,7 +349,12 @@ final class NotchDynamicIslandController {
         // In AppKit (y = 0 at bottom), [0 ..< contentHeight] is the visible region BELOW the physical camera notch.
         let centerY = contentHeight / 2.0
         badgeDot.frame = NSRect(x: 16, y: centerY - 5, width: 10, height: 10)
-        pillTag.frame = NSRect(x: width - 80, y: centerY - 9, width: 64, height: 18)
+        let pillWidth: CGFloat = 66
+        let pillHeight: CGFloat = 20
+        pillContainer.frame = NSRect(x: width - pillWidth - 14, y: round(centerY - pillHeight / 2.0), width: pillWidth, height: pillHeight)
+        pillTag.sizeToFit()
+        let labelHeight = ceil(pillTag.frame.height)
+        pillTag.frame = NSRect(x: 0, y: floor((pillHeight - labelHeight) / 2.0), width: pillWidth, height: labelHeight)
         subtitleLabel.frame = NSRect(x: 34, y: verticalPad, width: textWidth, height: subtitleHeight)
         titleLabel.frame = NSRect(x: 34, y: verticalPad + subtitleHeight + gap, width: textWidth, height: titleHeight)
 
@@ -450,14 +463,17 @@ final class LabelPdfRenderer: NSObject, WKNavigationDelegate {
     }
 
     /// Renders HTML directly into a 203 DPI (8 dots/mm) packed 1-bit monochrome bitmap for Clabel CT221B TSPL printing.
-    func renderHtmlToMonoBitmap(html: String, widthMm: Double, heightMm: Double) async throws -> Data {
+    /// Note: WKWebView lays out CSS `mm` units at 96 CSS px/inch (3.7795 px/mm), and TSPL `BITMAP` uses 0 = black dot, 1 = white.
+    /// For portrait layouts (`heightMm > widthMm`), rotates 90° clockwise onto the physical landscape roll (`heightMm × widthMm`).
+    func renderHtmlToMonoBitmap(html: String, widthMm: Double, heightMm: Double) async throws -> (mono: Data, physicalWidthMm: Double, physicalHeightMm: Double) {
         let widthInt = max(10, min(60, Int(widthMm.rounded())))
         let heightInt = max(10, min(120, Int(heightMm.rounded())))
+        let isPortrait = heightInt > widthInt
         let widthPx = widthInt * 8
         let heightPx = heightInt * 8
-        let widthPt = CGFloat(Double(widthInt) * 72.0 / 25.4)
-        let heightPt = CGFloat(Double(heightInt) * 72.0 / 25.4)
-        let wv = ensureWebView(widthPt: widthPt, heightPt: heightPt)
+        let cssWidth = CGFloat(Double(widthInt) * 96.0 / 25.4)
+        let cssHeight = CGFloat(Double(heightInt) * 96.0 / 25.4)
+        let wv = ensureWebView(widthPt: cssWidth, heightPt: cssHeight)
 
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             self.continuation = cont
@@ -467,7 +483,7 @@ final class LabelPdfRenderer: NSObject, WKNavigationDelegate {
         try? await Task.sleep(nanoseconds: 110_000_000)
 
         let snapConfig = WKSnapshotConfiguration()
-        snapConfig.rect = CGRect(x: 0, y: 0, width: widthPt, height: heightPt)
+        snapConfig.rect = CGRect(x: 0, y: 0, width: cssWidth, height: cssHeight)
         snapConfig.snapshotWidth = NSNumber(value: widthPx)
 
         let nsImage: NSImage = try await withCheckedThrowingContinuation { (imgCont: CheckedContinuation<NSImage, Error>) in
@@ -487,40 +503,51 @@ final class LabelPdfRenderer: NSObject, WKNavigationDelegate {
             throw NSError(domain: "GDGPrintStation", code: 500, userInfo: [NSLocalizedDescriptionKey: "Could not obtain CGImage from label snapshot."])
         }
 
-        // Draw into an exact widthPx x heightPx 8-bit grayscale context on white background
-        var grayBytes = [UInt8](repeating: 255, count: widthPx * heightPx)
+        let physWidthMm = isPortrait ? heightInt : widthInt
+        let physHeightMm = isPortrait ? widthInt : heightInt
+        let physPxW = physWidthMm * 8
+        let physPxH = physHeightMm * 8
+
+        // Draw into an exact physPxW x physPxH 8-bit grayscale context on white background
+        var grayBytes = [UInt8](repeating: 255, count: physPxW * physPxH)
         let colorSpace = CGColorSpaceCreateDeviceGray()
         guard let ctx = CGContext(
             data: &grayBytes,
-            width: widthPx,
-            height: heightPx,
+            width: physPxW,
+            height: physPxH,
             bitsPerComponent: 8,
-            bytesPerRow: widthPx,
+            bytesPerRow: physPxW,
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.none.rawValue
         ) else {
             throw NSError(domain: "GDGPrintStation", code: 500, userInfo: [NSLocalizedDescriptionKey: "Could not create grayscale bitmap context."])
         }
         ctx.setFillColor(gray: 1.0, alpha: 1.0)
-        ctx.fill(CGRect(x: 0, y: 0, width: widthPx, height: heightPx))
+        ctx.fill(CGRect(x: 0, y: 0, width: physPxW, height: physPxH))
         ctx.interpolationQuality = .high
+        if isPortrait {
+            // Rotate portrait (widthPx x heightPx) 90° clockwise to fit onto landscape roll (physPxW x physPxH)
+            ctx.translateBy(x: 0, y: CGFloat(physPxH))
+            ctx.rotate(by: -.pi / 2)
+        }
         ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: widthPx, height: heightPx))
 
-        let widthBytes = widthInt // 8 dots/mm => 1 byte/mm
-        var mono = Data(count: widthBytes * heightPx)
+        let widthBytes = physWidthMm // 8 dots/mm => 1 byte/mm
+        // TSPL BITMAP polarity: 1 = white (unburned), 0 = black thermal dot
+        var mono = Data(repeating: 0xFF, count: widthBytes * physPxH)
         mono.withUnsafeMutableBytes { dstRaw in
             let dst = dstRaw.bindMemory(to: UInt8.self)
-            for y in 0..<heightPx {
-                let srcRow = y * widthPx
+            for y in 0..<physPxH {
+                let srcRow = y * physPxW
                 let dstRow = y * widthBytes
-                for x in 0..<widthPx {
+                for x in 0..<physPxW {
                     if grayBytes[srcRow + x] < 170 {
-                        dst[dstRow + (x >> 3)] |= (0x80 >> (x & 7))
+                        dst[dstRow + (x >> 3)] &= ~(0x80 >> (x & 7))
                     }
                 }
             }
         }
-        return mono
+        return (mono, Double(physWidthMm), Double(physHeightMm))
     }
 
     nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -1473,15 +1500,15 @@ final class PrinterPoolManager {
         do {
             // Bluetooth CT221B direct TSPL path
             if chosenTransport == "bluetooth", let btId = chosenBluetoothId {
-                let monoBitmap = try await LabelPdfRenderer.shared.renderHtmlToMonoBitmap(
+                let rendered = try await LabelPdfRenderer.shared.renderHtmlToMonoBitmap(
                     html: html,
                     widthMm: widthMm,
                     heightMm: heightMm
                 )
                 let tsplPayload = Ct221bTsplBuilder.buildPayload(
-                    monoBitmap: monoBitmap,
-                    widthMm: widthMm,
-                    heightMm: heightMm,
+                    monoBitmap: rendered.mono,
+                    widthMm: rendered.physicalWidthMm,
+                    heightMm: rendered.physicalHeightMm,
                     density: density,
                     gapMm: gapMm,
                     copies: copies
@@ -2156,29 +2183,235 @@ final class PrintStationAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func makeQrDataUri(for text: String) -> String {
+        guard let data = text.data(using: .utf8),
+              let filter = CIFilter(name: "CIQRCodeGenerator") else {
+            return ""
+        }
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let outputImage = filter.outputImage else { return "" }
+        let scaled = outputImage.transformed(by: CGAffineTransform(scaleX: 8, y: 8))
+        let rep = NSCIImageRep(ciImage: scaled)
+        let nsImage = NSImage(size: rep.size)
+        nsImage.addRepresentation(rep)
+        guard let tiff = nsImage.tiffRepresentation,
+              let bmp = NSBitmapImageRep(data: tiff),
+              let png = bmp.representation(using: .png, properties: [:]) else {
+            return ""
+        }
+        return "data:image/png;base64,\(png.base64EncodedString())"
+    }
+
     @objc private func handleTestPrint() {
+        let qrDataUri = makeQrDataUri(for: "https://gdgjakarta.com/dashboard/printers")
+        let qrTag = qrDataUri.isEmpty ? "" : "<img src=\"\(qrDataUri)\" alt=\"QR\" />"
+        let escapedHost = server.device.computerName
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
         let sampleHtml = """
         <!DOCTYPE html>
-        <html>
-        <head>
-        <meta charset="utf-8" />
-        <style>
-          @page { size: 50mm 30mm; margin: 0; }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          html, body { width: 50mm; height: 30mm; font-family: -apple-system, sans-serif; background: #fff; color: #000; }
-          .wrap { display: flex; flex-direction: column; justify-content: center; height: 100%; padding: 2.5mm 3mm; border: 0.4mm solid #000; }
-          .tag { font-size: 6.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
-          .name { font-size: 11pt; font-weight: 800; margin-top: 1mm; }
-          .meta { font-size: 7pt; margin-top: 1mm; }
-        </style>
-        </head>
-        <body>
-          <div class="wrap">
-            <div class="tag">GDG Jakarta • Print Station v\(WORKER_VERSION)</div>
-            <div class="name">Test Print OK</div>
-            <div class="meta">\(server.device.computerName)</div>
-          </div>
-        </body>
+        <html lang="en">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>Badge: GDG Jakarta Print Station</title>
+            <link rel="preconnect" href="https://fonts.googleapis.com" />
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+            <link
+              href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Flex:wght@100..900&display=block"
+              rel="stylesheet"
+            />
+            <style>
+              @page {
+                size: 50mm 30mm;
+                margin: 0;
+              }
+
+              * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+
+              body {
+                margin: 0;
+                width: 50mm;
+                height: 30mm;
+                overflow: hidden;
+                font-family: 'Google Sans', 'Google Sans Flex', -apple-system, Arial, sans-serif;
+                font-weight: 400;
+                background-color: #ffffff;
+                color: #000000;
+              }
+
+              .ticket-badge {
+                width: 50mm;
+                height: 30mm;
+                padding: 2mm 2.5mm;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                overflow: hidden;
+              }
+
+              .attendee-name {
+                flex: 0 0 auto;
+                font-size: 16pt;
+                font-weight: 400;
+                line-height: 1.15;
+                white-space: normal;
+                overflow-wrap: break-word;
+                word-break: break-word;
+                text-transform: capitalize;
+              }
+
+              .ticket-body {
+                flex: 1;
+                min-height: 0;
+                display: flex;
+                flex-direction: row;
+                align-items: flex-end;
+                justify-content: space-between;
+                gap: 2mm;
+              }
+
+              .ticket-details {
+                flex: 1 1 0%;
+                min-width: 0;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                overflow: hidden;
+              }
+
+              .attendee-title {
+                font-size: 6.5pt;
+                font-family: 'Google Sans Flex', 'Google Sans', -apple-system, Arial, sans-serif;
+                font-weight: 300;
+                line-height: 1.2;
+                white-space: normal;
+                overflow-wrap: break-word;
+                word-break: break-word;
+              }
+
+              .attendee-company {
+                font-size: 5.5pt;
+                font-family: 'Google Sans Flex', 'Google Sans', -apple-system, Arial, sans-serif;
+                font-weight: 300;
+                line-height: 1.2;
+                margin-top: 0.3mm;
+                white-space: normal;
+                overflow-wrap: break-word;
+                word-break: break-word;
+              }
+
+              .attendee-title:empty,
+              .attendee-company:empty {
+                display: none;
+              }
+
+              .ticket-details > div:first-child {
+                flex: 0 0 auto;
+                min-width: 0;
+              }
+
+              .ref-code {
+                flex: 0 0 auto;
+                font-size: 5pt;
+                font-weight: 400;
+                font-variant-numeric: tabular-nums;
+                letter-spacing: 0.3px;
+                line-height: 1.1;
+                white-space: normal;
+                overflow-wrap: break-word;
+                word-break: break-word;
+                align-self: flex-start;
+              }
+
+              .ticket-footer {
+                flex: 0 0 auto;
+                min-width: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 0.3mm;
+              }
+
+              .ticket-badge-pill {
+                align-self: flex-start;
+                font-size: 4.2pt;
+                font-weight: 700;
+                padding: 0.5mm 1.5mm;
+                background-color: #000000;
+                color: #ffffff;
+                border-radius: 2px;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+                line-height: 1.1;
+              }
+
+              .event-name {
+                font-size: 5pt;
+                font-family: 'Google Sans Flex', 'Google Sans', -apple-system, Arial, sans-serif;
+                font-weight: 300;
+                line-height: 1.15;
+                white-space: normal;
+                overflow-wrap: break-word;
+                word-break: break-word;
+              }
+
+              .ticket-qr-section {
+                flex: 0 0 17.5mm;
+                width: 17.5mm;
+                height: 17.5mm;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+
+              .qr-container {
+                width: 100%;
+                height: 100%;
+                display: block;
+              }
+
+              .qr-container svg,
+              .qr-container img {
+                width: 100%;
+                height: 100%;
+                display: block;
+                shape-rendering: crispEdges;
+                image-rendering: pixelated;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="ticket-badge">
+              <div class="attendee-name" data-fit-lines="1">Test Print OK</div>
+
+              <div class="ticket-body">
+                <div class="ticket-details">
+                  <div>
+                    <div class="attendee-title">Print Station v\(WORKER_VERSION)</div>
+                    <div class="attendee-company">\(escapedHost)</div>
+                  </div>
+                  <div class="ref-code">GDGJKT-TEST-2026</div>
+                  <div class="ticket-footer">
+                    <span class="ticket-badge-pill">TEST BADGE</span>
+                    <div class="event-name">GDG Jakarta Print Station</div>
+                  </div>
+                </div>
+
+                <div class="ticket-qr-section">
+                  <div class="qr-container">\(qrTag)</div>
+                </div>
+              </div>
+            </div>
+          </body>
         </html>
         """
         Task {
