@@ -20,9 +20,9 @@ interface BluetoothRemoteGATTCharacteristicLike {
     notify?: boolean;
   };
   value?: DataView;
-  writeValueWithoutResponse?: (value: BufferSource) => Promise<void>;
-  writeValueWithResponse?: (value: BufferSource) => Promise<void>;
-  writeValue?: (value: BufferSource) => Promise<void>;
+  writeValueWithoutResponse?: (value: BufferSource | Uint8Array) => Promise<void>;
+  writeValueWithResponse?: (value: BufferSource | Uint8Array) => Promise<void>;
+  writeValue?: (value: BufferSource | Uint8Array) => Promise<void>;
   startNotifications?: () => Promise<BluetoothRemoteGATTCharacteristicLike>;
   addEventListener: (type: string, listener: (ev: Event) => void) => void;
 }
@@ -246,12 +246,14 @@ async function writeChunkedBle(
     const canNoResp = Boolean(
       characteristic.properties?.writeWithoutResponse && characteristic.writeValueWithoutResponse,
     );
+    // Cast to BufferSource to support DOM BluetoothRemoteGATTCharacteristic typing across lib.dom versions
+    const bufferSource = chunk as unknown as BufferSource;
     if (canNoResp && characteristic.writeValueWithoutResponse) {
-      await characteristic.writeValueWithoutResponse(chunk);
+      await characteristic.writeValueWithoutResponse(bufferSource);
     } else if (characteristic.writeValueWithResponse) {
-      await characteristic.writeValueWithResponse(chunk);
+      await characteristic.writeValueWithResponse(bufferSource);
     } else if (characteristic.writeValue) {
-      await characteristic.writeValue(chunk);
+      await characteristic.writeValue(bufferSource);
     } else {
       throw new Error("BLE characteristic does not support write operations.");
     }
@@ -259,7 +261,7 @@ async function writeChunkedBle(
 
   while (offset < payload.length) {
     const end = Math.min(offset + chunkSize, payload.length);
-    const chunk = payload.subarray(offset, end);
+    const chunk = new Uint8Array(payload.subarray(offset, end));
     try {
       await writeOne(chunk);
       offset = end;
