@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
   Copy,
   ExternalLink,
   Eye,
@@ -34,6 +35,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -459,47 +466,33 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                   Back to Documents List ({documents.length})
                 </Button>
               ) : (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleStartCreate("quotation")}
-                    className="h-8 text-xs gap-1"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    New Quotation
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleStartCreate("loa")}
-                    className="h-8 text-xs gap-1"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    New LOA
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleStartCreate("mou")}
-                    className="h-8 text-xs gap-1"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    New MOU
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => handleStartCreate("invoice")}
-                    className="h-8 text-xs gap-1 font-semibold"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    New Invoice
-                  </Button>
-                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" size="sm" className="h-8 text-xs gap-1.5 font-semibold shrink-0">
+                      <Plus className="h-3.5 w-3.5" />
+                      New Document
+                      <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onClick={() => handleStartCreate("invoice")} className="text-xs gap-2">
+                      <FileText className="h-3.5 w-3.5" />
+                      New Invoice
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleStartCreate("quotation")} className="text-xs gap-2">
+                      <FileText className="h-3.5 w-3.5" />
+                      New Quotation
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleStartCreate("loa")} className="text-xs gap-2">
+                      <FileText className="h-3.5 w-3.5" />
+                      New LOA
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleStartCreate("mou")} className="text-xs gap-2">
+                      <FileText className="h-3.5 w-3.5" />
+                      New MOU
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
             </div>
           </DialogHeader>
