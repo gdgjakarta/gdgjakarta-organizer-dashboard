@@ -23,6 +23,7 @@ import {
   Radio,
   RefreshCw,
   Square,
+  Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +35,17 @@ import {
   type PublishedEventOption,
 } from "@/app/(main)/dashboard/email-manager/_actions/fetch-published-events";
 import { PublishedEventSelector } from "@/app/(main)/dashboard/email-manager/_components/published-event-selector";
+import { Shimmer } from "@/components/shimmer";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,7 +56,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { enqueuePrintJobAction, fetchEventRegistrationsAction, savePrinterConfigAction } from "@/lib/firestore/actions";
-import { cancelQueuedPrintJob, retryPrintJob } from "@/lib/firestore/client";
+import { cancelQueuedPrintJob, clearPendingPrintQueue, retryPrintJob } from "@/lib/firestore/client";
 import type { FirestoreRegistration } from "@/lib/firestore/types";
 import { PRINT_STATION_APP_NAME, printViaWorker } from "@/lib/printers/local-worker";
 import { buildDefaultShippingLabelTemplate, syncShippingTemplateDimensions } from "@/lib/printers/shipping-label";
@@ -192,6 +204,8 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
   const [queuePageSize, setQueuePageSize] = React.useState(10);
   const [queueLastFetchedAt, setQueueLastFetchedAt] = React.useState<Date | null>(null);
   const [isRefreshingQueue, setIsRefreshingQueue] = React.useState(false);
+  const [isClearQueueDialogOpen, setIsClearQueueDialogOpen] = React.useState(false);
+  const [isClearingQueue, setIsClearingQueue] = React.useState(false);
 
   const setIsStationRunning = React.useCallback((next: boolean | ((prev: boolean) => boolean)) => {
     setIsStationRunningState((prev) => {
@@ -428,6 +442,25 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     }
   }, []);
 
+  // Clear all pending jobs from the queue
+  const handleClearPendingQueue = React.useCallback(async () => {
+    setIsClearingQueue(true);
+    try {
+      const count = await clearPendingPrintQueue();
+      setIsClearQueueDialogOpen(false);
+      setQueuePage(1);
+      if (count > 0) {
+        toast.success(`Cleared ${count} queued print ${count === 1 ? "job" : "jobs"}.`);
+      } else {
+        toast.info("No pending jobs left in the queue.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to clear pending print queue.");
+    } finally {
+      setIsClearingQueue(false);
+    }
+  }, []);
+
   // Build active LabelTemplateData combining selected Bevy event + sample attendee overrides
   const activeSampleData = React.useMemo<LabelTemplateData>(() => {
     const custom = config.sample_data ?? {};
@@ -552,6 +585,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     isCheckingWorker,
     recheckWorker,
     stations,
+    isLoadingStations,
     queueError,
     webBluetoothSupported,
     webBluetoothPrinters,
@@ -931,6 +965,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
   const pendingJobsCount = recentJobs.filter((j) => j.status === "pending").length;
   const failedJobsCount = recentJobs.filter((j) => j.status === "failed").length;
   const completedJobsCount = recentJobs.filter((j) => j.status === "completed").length;
+  const isLoadingQueue = queueLastFetchedAt === null && !queueError;
 
   return (
     <div className="flex flex-col gap-5">
@@ -1124,25 +1159,34 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
           </CardHeader>
           <CardContent className="flex flex-col">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-3xl text-foreground leading-none tracking-tight">
-                {completedJobsCount}
-              </span>
-              <Badge
-                className={
-                  pendingJobsCount > 0
-                    ? "rounded-sm border-amber-600/50 bg-amber-500/10 px-1.5 font-normal text-amber-700 text-xs dark:border-amber-800/50 dark:bg-amber-500/15 dark:text-amber-300"
-                    : "rounded-sm border-emerald-600/50 bg-emerald-500/10 px-1.5 font-normal text-emerald-700 text-xs dark:border-emerald-800/50 dark:bg-emerald-500/15 dark:text-emerald-300"
-                }
-              >
-                {pendingJobsCount} Pending
-              </Badge>
+              {isLoadingQueue || isRefreshingQueue ? (
+                <>
+                  <Shimmer className="h-8 w-14" />
+                  <Shimmer className="h-5 w-20 rounded-sm" />
+                </>
+              ) : (
+                <>
+                  <span className="font-bold text-3xl text-foreground leading-none tracking-tight">
+                    {completedJobsCount}
+                  </span>
+                  <Badge
+                    className={
+                      pendingJobsCount > 0
+                        ? "rounded-sm border-amber-600/50 bg-amber-500/10 px-1.5 font-normal text-amber-700 text-xs dark:border-amber-800/50 dark:bg-amber-500/15 dark:text-amber-300"
+                        : "rounded-sm border-emerald-600/50 bg-emerald-500/10 px-1.5 font-normal text-emerald-700 text-xs dark:border-emerald-800/50 dark:bg-emerald-500/15 dark:text-emerald-300"
+                    }
+                  >
+                    {pendingJobsCount} Pending
+                  </Badge>
+                </>
+              )}
             </div>
             <div className="mt-2 text-right text-muted-foreground text-xs">Badges printed in recent queue</div>
           </CardContent>
         </Card>
       </div>
 
-      <PrintStationsCard stations={stations} ownStationId={stationId} jobs={recentJobs} />
+      <PrintStationsCard stations={stations} ownStationId={stationId} jobs={recentJobs} isLoading={isLoadingStations} />
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="editor" className="flex flex-col gap-5">
@@ -1427,10 +1471,84 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                   <RefreshCw className={`size-3.5 ${isRefreshingQueue ? "animate-spin" : ""}`} />
                   Refresh
                 </Button>
+                {pendingJobsCount > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1.5 border-rose-500/30 px-2.5 text-rose-600 text-xs hover:bg-rose-500/10 hover:text-rose-700 dark:text-rose-400"
+                    onClick={() => setIsClearQueueDialogOpen(true)}
+                    disabled={isClearingQueue}
+                  >
+                    <Trash2 className="size-3.5" />
+                    Clear Queue
+                  </Button>
+                )}
               </CardAction>
             </CardHeader>
             <CardContent>
-              {recentJobs.length === 0 ? (
+              {isLoadingQueue || isRefreshingQueue ? (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[140px]">Time</TableHead>
+                        <TableHead>Attendee</TableHead>
+                        <TableHead>Event ID</TableHead>
+                        <TableHead>QR Payload</TableHead>
+                        <TableHead>Triggered by</TableHead>
+                        <TableHead>Printed on</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {[0, 1, 2, 3, 4].map((idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <Shimmer className="h-3.5 w-16" />
+                              <Shimmer className="h-2.5 w-10" />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <Shimmer className="h-3.5 w-28" />
+                              <Shimmer className="h-2.5 w-20" />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Shimmer className="h-3.5 w-14" />
+                          </TableCell>
+                          <TableCell>
+                            <Shimmer className="h-3.5 w-32" />
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <Shimmer className="h-3.5 w-24" />
+                              <Shimmer className="h-2.5 w-32" />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="space-y-1">
+                              <Shimmer className="h-3.5 w-28" />
+                              <Shimmer className="h-2.5 w-32" />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Shimmer className="h-5 w-16 rounded-full" />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="inline-flex justify-end">
+                              <Shimmer className="size-7 rounded-md" />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : recentJobs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-center">
                   <Printer className="mb-2 size-8 text-muted-foreground/50" />
                   <p className="font-medium text-sm">No print jobs in queue</p>
@@ -1775,6 +1893,32 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         }
         helperText="Roll dimensions, label template & auto-print preferences will immediately apply."
       />
+
+      <AlertDialog open={isClearQueueDialogOpen} onOpenChange={setIsClearQueueDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear all pending print jobs?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will cancel and remove all <strong>{pendingJobsCount}</strong> queued{" "}
+              {pendingJobsCount === 1 ? "job" : "jobs"} waiting to print. Already printed, failed, or currently printing
+              jobs will not be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isClearingQueue}>Keep Queue</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={isClearingQueue}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleClearPendingQueue();
+              }}
+            >
+              {isClearingQueue ? "Clearing..." : `Clear ${pendingJobsCount} Queued`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

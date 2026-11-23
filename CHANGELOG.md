@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.58] - 2026-11-24
+
+### Added
+- **Clear Queue Action**: Added a red-outline **Clear Queue** button with confirmation dialog in the Real-Time Print Queue header (`clearPendingPrintQueue`), batch-deleting pending jobs in chunks of 400 without affecting printed, failed, or currently printing jobs.
+- **Printers Dashboard Shimmer Skeletons**: Added `<Shimmer />` loading skeletons for Print Queue Activity KPI, Connected Print Stations cards, and Real-Time Print Queue rows (both initial load and manual Refresh) to eliminate `0` / empty-state flashes.
+
+### Improved
+- **Readable Badge Name Fitting**: Updated `name-fit.ts` to keep the first 2 words intact (including prefix-led names like `R. Muhammad`), gently shrink font down to 70% (`min 9.5pt`), and drop excess trailing initials rather than collapsing into unrecognizable all-initials (`R. M. M. D. M. W.`).
+- **Badge Overflow Protection & Multi-Role Cleanup**: Added `normalizeBadgeRole` (primary role only before `,` / `;` / `|` / spaced `/`), `abbreviateBadgeCompany` (`Univ.`, `Inst.`, `Kemen.`, `Poltek.`, `ST`, `PT` for long names), tightened default badge CSS (`8pt` title, `6.8pt` company, `15.5mm` QR, 2-line clamp), and added progressive vertical overflow sacrifice (`shrink title/company → hide Event Name → hide Ref Code → zoom fallback`) so the ticket pill never clips.
+
+### Fixed
+- **Real-Time Check-In Watcher Queue Flood**: Guarded `usePrintStation` against empty Firestore cache snapshots (`!snap.metadata.fromCache`), enforced a 2-minute `checked_in_at` recency window, and added a 10-item per-snapshot burst cap so historical check-ins or bulk syncs can never flood the print queue.
+
+---
+
 ## [1.0.57] - 2026-11-23
 
 ### Added

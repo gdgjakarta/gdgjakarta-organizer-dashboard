@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Battery, Bluetooth, Laptop, Printer, Usb } from "lucide-react";
 
+import { Shimmer } from "@/components/shimmer";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -22,6 +23,7 @@ interface PrintStationsCardProps {
   stations: PrintStation[];
   ownStationId: string | null;
   jobs: PrintJob[];
+  isLoading?: boolean;
 }
 
 function isPrinterLinkReady(printer: PrintStationPrinter): boolean {
@@ -87,7 +89,7 @@ function sharedDeviceUris(station: PrintStation): Set<string> {
   return new Set([...counts].filter(([, count]) => count > 1).map(([uri]) => uri));
 }
 
-export function PrintStationsCard({ stations, ownStationId, jobs }: PrintStationsCardProps) {
+export function PrintStationsCard({ stations, ownStationId, jobs, isLoading = false }: PrintStationsCardProps) {
   const now = Date.now();
   const { unique } = deduplicatePrintStations(stations, ownStationId);
   const visible = unique.filter(
@@ -110,24 +112,54 @@ export function PrintStationsCard({ stations, ownStationId, jobs }: PrintStation
           duplicate.
         </CardDescription>
         <CardAction className="flex items-center gap-1.5">
-          <Badge variant="outline" className="text-xs">
-            {onlineStations.length} {onlineStations.length === 1 ? "Mac" : "Macs"} online
-          </Badge>
-          <Badge
-            variant="outline"
-            className={cn(
-              "text-xs",
-              totalReadyPrinters > 0
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                : "text-muted-foreground",
-            )}
-          >
-            {totalReadyPrinters} {totalReadyPrinters === 1 ? "printer" : "printers"} taking jobs
-          </Badge>
+          {isLoading ? (
+            <>
+              <Shimmer className="h-5 w-20 rounded-full" />
+              <Shimmer className="h-5 w-28 rounded-full" />
+            </>
+          ) : (
+            <>
+              <Badge variant="outline" className="text-xs">
+                {onlineStations.length} {onlineStations.length === 1 ? "Mac" : "Macs"} online
+              </Badge>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-xs",
+                  totalReadyPrinters > 0
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                    : "text-muted-foreground",
+                )}
+              >
+                {totalReadyPrinters} {totalReadyPrinters === 1 ? "printer" : "printers"} taking jobs
+              </Badge>
+            </>
+          )}
         </CardAction>
       </CardHeader>
       <CardContent>
-        {visible.length === 0 ? (
+        {isLoading ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {[0, 1].map((idx) => (
+              <div key={idx} className="space-y-3 rounded-lg border p-3.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-1.5">
+                    <Shimmer className="h-4 w-44" />
+                    <Shimmer className="h-3 w-36" />
+                  </div>
+                  <Shimmer className="h-5 w-16 rounded-full" />
+                </div>
+                <div className="flex items-center justify-between rounded-md border bg-muted/20 px-3 py-2.5">
+                  <div className="space-y-1.5">
+                    <Shimmer className="h-3.5 w-32" />
+                    <Shimmer className="h-2.5 w-48" />
+                  </div>
+                  <Shimmer className="h-5 w-14 rounded-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-8 text-center">
             <Laptop className="mb-2 size-7 text-muted-foreground/50" />
             <p className="font-medium text-sm">No Print Station Mac connected</p>

@@ -196,6 +196,8 @@ export interface PrintStationState {
   recheckWorker: () => Promise<void>;
   /** Every unique laptop that reported in (this one included), from Firestore. */
   stations: PrintStation[];
+  /** True until the initial Firestore print stations snapshot resolves. */
+  isLoadingStations: boolean;
   /** Non-null when Firestore rules or connectivity prevented reading the print queue / stations. */
   queueError: string | null;
   /** True when this browser tab is the active leader for this physical laptop. */
@@ -225,6 +227,7 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
   const [health, setHealth] = React.useState<PrintWorkerHealth | null>(null);
   const [isCheckingWorker, setIsCheckingWorker] = React.useState(false);
   const [stations, setStations] = React.useState<PrintStation[]>([]);
+  const [isLoadingStations, setIsLoadingStations] = React.useState(true);
   const [queueError, setQueueError] = React.useState<string | null>(null);
   const [isLeaderTab, setIsLeaderTab] = React.useState(true);
   const [webBluetoothSupported, setWebBluetoothSupported] = React.useState(false);
@@ -677,6 +680,7 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
         const { unique, duplicateIdsToRemove } = deduplicatePrintStations(rawStations, stationIdRef.current);
         stationsRef.current = unique;
         setStations(unique);
+        setIsLoadingStations(false);
         if (isLeaderTabRef.current && duplicateIdsToRemove.length > 0) {
           for (const dupId of duplicateIdsToRemove) {
             if (dupId !== stationIdRef.current) {
@@ -686,6 +690,7 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
         }
       },
       (err) => {
+        setIsLoadingStations(false);
         setQueueError(`Cannot read print stations (${err.message}). Verify your account has organizer/team access.`);
       },
     );
@@ -715,6 +720,9 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
   React.useEffect(() => {
     if (!isStationRunning || !isLeaderTab) return;
 
+    const RECENT_CHECKIN_WINDOW_MS = 2 * 60 * 1000;
+    const MAX_LIVE_BURST = 10;
+    const watcherStartedAt = Date.now();
     const seenCheckedInIds = new Set<string>();
     let initialSnapshotDone = false;
 
@@ -729,34 +737,60 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
+        // Wait for the first non-cache server snapshot before arming so local cache hydration
+        // never replays historical check-ins as brand-new "added" events.
         if (!initialSnapshotDone) {
           for (const docSnap of snap.docs) {
             seenCheckedInIds.add(docSnap.id);
           }
-          initialSnapshotDone = true;
+          if (!snap.metadata.fromCache) {
+            initialSnapshotDone = true;
+          }
           return;
         }
 
+        const newlyCheckedIn: FirestoreRegistration[] = [];
         for (const change of snap.docChanges()) {
           if (change.type === "added" || change.type === "modified") {
             const reg = { id: change.doc.id, ...(change.doc.data() as Omit<FirestoreRegistration, "id">) };
             if (!reg.is_checked_in || seenCheckedInIds.has(reg.id)) continue;
             seenCheckedInIds.add(reg.id);
 
-            const expectedJobId = buildDeterministicCheckInJobId(reg.event_id, reg.id);
-            const alreadyInRecent = recentJobsRef.current.some(
-              (j) =>
-                j.id === expectedJobId || (String(j.event_id) === String(reg.event_id) && j.registration_id === reg.id),
-            );
-            if (alreadyInRecent) continue;
-
-            void enqueueCheckInBadgeIfEnabled({
-              eventId: String(reg.event_id),
-              registration: reg,
-            });
+            // Only auto-print genuinely recent check-ins (prevents Bevy sync or reconnects from reprinting old attendees).
+            const checkedInMs = reg.checked_in_at ? new Date(reg.checked_in_at).getTime() : 0;
+            if (
+              !checkedInMs ||
+              Number.isNaN(checkedInMs) ||
+              checkedInMs < watcherStartedAt - RECENT_CHECKIN_WINDOW_MS
+            ) {
+              continue;
+            }
+            newlyCheckedIn.push(reg);
           } else if (change.type === "removed") {
             seenCheckedInIds.delete(change.doc.id);
           }
+        }
+
+        // Guard against bulk syncs / reconnect bursts flooding the thermal printer queue.
+        if (newlyCheckedIn.length > MAX_LIVE_BURST) {
+          console.warn(
+            `[Print Station] Suppressed bulk check-in burst (${newlyCheckedIn.length} attendees in one snapshot).`,
+          );
+          return;
+        }
+
+        for (const reg of newlyCheckedIn) {
+          const expectedJobId = buildDeterministicCheckInJobId(reg.event_id, reg.id);
+          const alreadyInRecent = recentJobsRef.current.some(
+            (j) =>
+              j.id === expectedJobId || (String(j.event_id) === String(reg.event_id) && j.registration_id === reg.id),
+          );
+          if (alreadyInRecent) continue;
+
+          void enqueueCheckInBadgeIfEnabled({
+            eventId: String(reg.event_id),
+            registration: reg,
+          });
         }
       },
       (err) => {
@@ -853,6 +887,7 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
     isCheckingWorker,
     recheckWorker,
     stations,
+    isLoadingStations,
     queueError,
     isLeaderTab,
     webBluetoothSupported,

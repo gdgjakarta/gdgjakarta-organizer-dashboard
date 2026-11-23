@@ -19,12 +19,12 @@ export function buildLabelCoreCss(
   const padVMm = round1(2.0 * scale);
   const padHMm = round1((isPortrait ? 2.0 : 2.5) * scale);
   const namePt = round1((isPortrait ? 12.0 : 16.0) * scale);
-  const titlePt = round1((isPortrait ? 8.0 : 10.0) * scale);
-  const companyPt = round1((isPortrait ? 7.0 : 8.0) * scale);
+  const titlePt = round1((isPortrait ? 7.5 : 8.0) * scale);
+  const companyPt = round1((isPortrait ? 6.5 : 6.8) * scale);
   const refCodePt = round1((isPortrait ? 5.5 : 6.0) * scale);
   const pillPt = round1((isPortrait ? 5.5 : 6.0) * scale);
   const eventPt = round1(5.0 * scale);
-  const qrSizeMm = round1((isPortrait ? 18.0 : 17.5) * scale);
+  const qrSizeMm = round1((isPortrait ? 18.0 : 15.5) * scale);
 
   return `      @page {
         size: ${widthMm}mm ${heightMm}mm;
@@ -103,21 +103,29 @@ export function buildLabelCoreCss(
         font-size: ${titlePt}pt;
         font-family: 'Google Sans Flex', 'Google Sans', Arial, sans-serif;
         font-weight: 300;
-        line-height: 1.2;
+        line-height: 1.12;
         white-space: normal;
         overflow-wrap: break-word;
         word-break: break-word;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
       }
 
       .attendee-company {
         font-size: ${companyPt}pt;
         font-family: 'Google Sans Flex', 'Google Sans', Arial, sans-serif;
         font-weight: 300;
-        line-height: 1.2;
+        line-height: 1.12;
         margin-top: 0.3mm;
         white-space: normal;
         overflow-wrap: break-word;
         word-break: break-word;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
       }
 
       .attendee-title:empty,
@@ -126,8 +134,10 @@ export function buildLabelCoreCss(
       }
 
       .ticket-details > div:first-child {
-        flex: 0 0 auto;
+        flex: 1 1 auto;
+        min-height: 0;
         min-width: 0;
+        overflow: hidden;
       }
 
       .ref-code {
@@ -351,6 +361,42 @@ function answerToHtml(value: unknown): string {
 }
 
 /**
+ * Extracts the primary job role from multi-role strings (e.g. "Data Analyst, SAS Modeler, Software Developer" -> "Data Analyst")
+ * while preserving compound roles like "UI/UX Designer" or "CI/CD Engineer".
+ */
+export function normalizeBadgeRole(role?: string | null): string {
+  const trimmed = (role ?? "").trim();
+  if (!trimmed) return "";
+  const first = trimmed
+    .split(/[,;|]|\s+\/\s+/)
+    .map((part) => part.trim())
+    .find(Boolean);
+  return first || trimmed;
+}
+
+const COMPANY_ABBREVIATIONS: Array<[RegExp, string]> = [
+  [/\bUniversitas\b/gi, "Univ."],
+  [/\bInstitut\b/gi, "Inst."],
+  [/\bKementerian\b/gi, "Kemen."],
+  [/\bPoliteknik\b/gi, "Poltek."],
+  [/\bSekolah Tinggi\b/gi, "ST"],
+  [/\bPerseroan Terbatas\b/gi, "PT"],
+];
+
+/**
+ * Abbreviates common long Indonesian institution prefixes when the company string is long (> 22 chars)
+ * so it fits cleanly on a 50x30mm badge without losing clarity.
+ */
+export function abbreviateBadgeCompany(company?: string | null): string {
+  let result = (company ?? "").replace(/\s+/g, " ").trim();
+  if (result.length <= 22) return result;
+  for (const [pattern, replacement] of COMPANY_ABBREVIATIONS) {
+    result = result.replace(pattern, replacement);
+  }
+  return result.replace(/\s+/g, " ").trim();
+}
+
+/**
  * Replace [[placeholder]] tokens with attendee & event values,
  * including answered questions from custom registration forms.
  */
@@ -358,6 +404,8 @@ export function renderLabelTemplate(template: string, data: LabelTemplateData): 
   const qrImgTag = `<img src="${generateQrImageUrl(data.qrPayload)}" alt="QR Code" class="qr-img" />`;
   const attendeeName = data.name || "Attendee";
   const attendeeEmail = data.email || "";
+  const badgeTitle = normalizeBadgeRole(data.title) || "Participant";
+  const badgeCompany = abbreviateBadgeCompany(data.company) || "Community Member";
   const eventTitle = data.eventTitle || "GDG Event";
   const eventDate = data.eventDate || "Date TBD";
   const eventTime = data.eventTime || "09:00 AM";
@@ -377,8 +425,8 @@ export function renderLabelTemplate(template: string, data: LabelTemplateData): 
     [["[[nameShort]]", "[[NameShort]]"], shortenName(attendeeName)],
     [["[[nameInitials]]", "[[NameInitials]]"], initialsOf(attendeeName)],
     [["[[email]]", "[[Email]]"], attendeeEmail],
-    [["[[title]]"], data.title || "Participant"],
-    [["[[company]]"], data.company || "Community Member"],
+    [["[[title]]"], badgeTitle],
+    [["[[company]]"], badgeCompany],
     [["[[ticketType]]", "[[TicketType]]"], ticketType],
     [["[[ticketName]]", "[[TicketName]]"], ticketName],
     [["[[sessionTrack]]", "[[SessionTrack]]"], sessionTrack],

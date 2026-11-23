@@ -6189,6 +6189,30 @@ export async function cancelQueuedPrintJob(jobId: string): Promise<boolean> {
 }
 
 /**
+ * Deletes all currently queued (`status === "pending"`) print jobs in batches of 400.
+ * Already completed, failed, or currently printing jobs are left untouched.
+ */
+export async function clearPendingPrintQueue(): Promise<number> {
+  if (typeof window === "undefined") return 0;
+  await waitForAuthReady();
+  const snap = await getDocs(query(collection(db, PRINT_JOBS_COLLECTION), where("status", "==", "pending")));
+  if (snap.empty) return 0;
+
+  let cleared = 0;
+  const docs = snap.docs;
+  for (let i = 0; i < docs.length; i += 400) {
+    const chunk = docs.slice(i, i + 400);
+    const batch = writeBatch(db);
+    for (const d of chunk) {
+      batch.delete(d.ref);
+    }
+    await batch.commit();
+    cleared += chunk.length;
+  }
+  return cleared;
+}
+
+/**
  * Fails a job whose laptop stopped answering while it was printing. It is not handed to another printer: the label
  * may already have come out, so a person checks and retries.
  */

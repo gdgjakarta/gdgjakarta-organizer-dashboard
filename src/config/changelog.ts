@@ -16,10 +16,37 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.58",
+    releaseDate: "2026-11-24",
+    title: "Badge Overflow Protection, Readable Name Fitting, Clear Queue & Watcher Flood Fix",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Added Clear Queue button with confirmation dialog to batch-clear pending print jobs without touching printed or active jobs.",
+      },
+      {
+        category: "Added",
+        text: "Added shimmer loading skeletons to Print Queue Activity, Connected Print Stations, and Real-Time Print Queue rows.",
+      },
+      {
+        category: "Improved",
+        text: "Upgraded badge name fitting to preserve the first 2 words, shrink gently, and drop excess trailing initials instead of collapsing into all-initials.",
+      },
+      {
+        category: "Improved",
+        text: "Added primary-role extraction, Indonesian institution abbreviation, tighter default badge typography (8pt/6.8pt/15.5mm QR), and progressive overflow sacrifice (shrink → hide Event Name → hide Ref Code → zoom).",
+      },
+      {
+        category: "Fixed",
+        text: "Fixed Real-Time Check-In Watcher cache replay flood by waiting for server snapshots, enforcing a 2-minute check-in recency window, and capping single-snapshot bursts.",
+      },
+    ],
+  },
+  {
     version: "1.0.57",
     releaseDate: "2026-11-23",
     title: "Manual Print Badge Trigger on Registrants & Application Dossier",
-    badge: "Latest",
     items: [
       {
         category: "Added",
