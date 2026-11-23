@@ -326,7 +326,13 @@ export function PartnersTab({ onSignPartnerPdf }: PartnersTabProps = {}) {
             }
             return [...prev, savedSponsor];
           });
-          toast.success("Sponsor saved and synced with Bevy!");
+          if (res.bevySynced) {
+            toast.success("Sponsor saved and synced with Bevy!");
+          } else {
+            toast.warning(
+              `Sponsor saved locally, but Bevy sync failed: ${res.bevyError || "Please try saving again."}`,
+            );
+          }
           setIsEditOpen(false);
           loadSponsors();
         } else {

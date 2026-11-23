@@ -2912,6 +2912,21 @@ export async function uploadBevyImage(
 }
 
 /**
+ * Bevy's /api/sponsor/ endpoint expects the relative GCS path (e.g. "sponsors/blob_xxx")
+ * rather than a full Cloudinary URL; passing a full URL causes Bevy to double-wrap it.
+ */
+function toBevySponsorLogoPath(logo?: string | null): string | null {
+  const cleaned = sanitizeBevyLogoUrl(logo);
+  if (!cleaned) return null;
+  const gcsMarker = "/platform-data-goog/";
+  const idx = cleaned.lastIndexOf(gcsMarker);
+  if (idx !== -1) {
+    return cleaned.slice(idx + gcsMarker.length) || null;
+  }
+  return cleaned;
+}
+
+/**
  * Create a new sponsor on Bevy with draft invoice payload and chapter reference
  */
 export async function createBevySponsor(
@@ -2928,7 +2943,7 @@ export async function createBevySponsor(
 ): Promise<{ success: boolean; data?: BevySponsor | null; error?: string }> {
   try {
     const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
-    const cleanedLogo = input.logo ? sanitizeBevyLogoUrl(input.logo) : null;
+    const cleanedLogo = toBevySponsorLogoPath(input.logo);
     const payload: BevyCreateSponsorPayload = {
       chapters: [{ id: chapterId }],
       company: input.company,
@@ -3003,7 +3018,7 @@ export async function updateBevySponsor(
     if (input.contact_email !== undefined) payload.contact_email = input.contact_email;
     if (input.contact_phone !== undefined) payload.contact_phone = input.contact_phone;
     if (input.logo !== undefined) {
-      payload.logo = input.logo ? (sanitizeBevyLogoUrl(input.logo) ?? null) : null;
+      payload.logo = toBevySponsorLogoPath(input.logo);
     }
 
     const response = await bevyFetchWithResponse<BevySponsor>(

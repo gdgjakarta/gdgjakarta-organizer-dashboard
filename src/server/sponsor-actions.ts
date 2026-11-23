@@ -211,7 +211,13 @@ export async function getChapterSponsorsAction(): Promise<{
  */
 export async function saveChapterSponsorAction(
   data: Partial<FirestoreSponsor> & { company: string },
-): Promise<{ success: boolean; sponsor?: FirestoreSponsor; error?: string }> {
+): Promise<{
+  success: boolean;
+  sponsor?: FirestoreSponsor;
+  bevySynced?: boolean;
+  bevyError?: string;
+  error?: string;
+}> {
   try {
     const isAuth = await isAuthorizedOrganizerSession();
     if (!isAuth) {
@@ -232,6 +238,8 @@ export async function saveChapterSponsorAction(
     const now = new Date().toISOString();
 
     let bevyId = data.bevy_id != null ? Number(data.bevy_id) : existing?.bevy_id;
+    let bevySynced = false;
+    let bevyError: string | undefined;
 
     // If no bevy_id yet, create in Bevy. If bevy_id exists, update in Bevy.
     if (!bevyId) {
@@ -247,9 +255,13 @@ export async function saveChapterSponsorAction(
 
       if (bevyRes.success && bevyRes.data?.id) {
         bevyId = bevyRes.data.id;
+        bevySynced = true;
+      } else {
+        bevyError = bevyRes.error || "Bevy did not return a sponsor ID.";
+        console.warn(`[saveChapterSponsorAction] Could not create sponsor "${data.company}" in Bevy:`, bevyError);
       }
     } else {
-      await updateBevySponsor(bevyId, {
+      const updateRes = await updateBevySponsor(bevyId, {
         company: data.company,
         url: data.url || "",
         description: data.description || "",
@@ -257,9 +269,17 @@ export async function saveChapterSponsorAction(
         contact_email: data.contact_email || "",
         contact_phone: data.contact_phone || "",
         logo: data.logo !== undefined ? data.logo : undefined,
-      }).catch((bevyErr) => {
-        console.warn(`[saveChapterSponsorAction] Could not update sponsor ${bevyId} in Bevy:`, bevyErr);
-      });
+      }).catch((bevyErr) => ({
+        success: false,
+        error: extractApiMessage(bevyErr, "Failed to update sponsor in Bevy."),
+      }));
+
+      if (updateRes.success) {
+        bevySynced = true;
+      } else {
+        bevyError = updateRes.error || "Failed to update sponsor in Bevy.";
+        console.warn(`[saveChapterSponsorAction] Could not update sponsor ${bevyId} in Bevy:`, bevyError);
+      }
     }
 
     const sponsorData: FirestoreSponsor = {
@@ -295,7 +315,7 @@ export async function saveChapterSponsorAction(
     }
 
     revalidatePath("/dashboard/partnership");
-    return { success: true, sponsor: sponsorData };
+    return { success: true, sponsor: sponsorData, bevySynced, bevyError };
   } catch (err) {
     return { success: false, error: extractApiMessage(err, "Failed to save sponsor.") };
   }
