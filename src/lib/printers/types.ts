@@ -127,6 +127,9 @@ export interface PrintJob {
   excluded_printers?: string[];
   /** Index in `attempts` where the current retry budget starts (set by a manual retry). */
   retry_from_attempt?: number;
+  /** Organizer who triggered/enqueued this print job. */
+  triggered_by_name?: string;
+  triggered_by_email?: string;
   /** Distinguishes attendee check-in badges from merchandise shipping labels. */
   job_type?: "badge" | "shipping_label";
   /** Optional target station & printer pinning for cross-laptop remote printing. */

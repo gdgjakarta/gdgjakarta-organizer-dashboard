@@ -5990,11 +5990,14 @@ export async function enqueuePrintJob(
 
   // A job that was already printed directly (test print) is logged as completed so no station picks it up.
   const printedBy = options?.printedBy;
+  const currentUser = auth.currentUser;
   const newJob = sanitizeFirestoreData<PrintJob>({
     ...jobData,
     id: jobId,
     status: printedBy ? "completed" : "pending",
     created_at: now,
+    triggered_by_name: jobData.triggered_by_name ?? currentUser?.displayName ?? undefined,
+    triggered_by_email: jobData.triggered_by_email ?? currentUser?.email ?? undefined,
     ...(printedBy
       ? {
           printed_at: now,
@@ -6263,6 +6266,16 @@ export function subscribeRecentPrintQueue(
       onError?.(err);
     },
   );
+}
+
+/** One-shot fresh fetch of the latest print jobs (used by the manual Refresh button). */
+export async function fetchRecentPrintQueue(limitCount = 200): Promise<PrintJob[]> {
+  if (typeof window === "undefined") return [];
+  await waitForAuthReady();
+  const snap = await getDocs(
+    query(collection(db, PRINT_JOBS_COLLECTION), orderBy("created_at", "desc"), limit(limitCount)),
+  );
+  return snap.docs.map((d) => d.data() as PrintJob);
 }
 
 /** Heartbeat of one laptop: who it is, whether its worker runs, which printers it has and what they are doing. */

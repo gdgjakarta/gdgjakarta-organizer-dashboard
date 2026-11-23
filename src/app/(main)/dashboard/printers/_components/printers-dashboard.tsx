@@ -190,6 +190,8 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
   const [recentJobs, setRecentJobs] = React.useState<PrintJob[]>([]);
   const [queuePage, setQueuePage] = React.useState(1);
   const [queuePageSize, setQueuePageSize] = React.useState(10);
+  const [queueLastFetchedAt, setQueueLastFetchedAt] = React.useState<Date | null>(null);
+  const [isRefreshingQueue, setIsRefreshingQueue] = React.useState(false);
 
   const setIsStationRunning = React.useCallback((next: boolean | ((prev: boolean) => boolean)) => {
     setIsStationRunningState((prev) => {
@@ -402,6 +404,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         const { subscribeRecentPrintQueue } = await import("@/lib/firestore/client");
         unsubscribe = subscribeRecentPrintQueue(200, (jobs) => {
           setRecentJobs(jobs);
+          setQueueLastFetchedAt(new Date());
         });
       } catch (err) {
         console.warn("[Printers] Could not subscribe to recent queue:", err);
@@ -409,6 +412,21 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     })();
     return () => unsubscribe?.();
   }, [user]);
+
+  // Force-refresh print queue history on demand
+  const handleRefreshQueue = React.useCallback(async () => {
+    setIsRefreshingQueue(true);
+    try {
+      const { fetchRecentPrintQueue } = await import("@/lib/firestore/client");
+      const jobs = await fetchRecentPrintQueue(200);
+      setRecentJobs(jobs);
+      setQueueLastFetchedAt(new Date());
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to refresh print queue.");
+    } finally {
+      setIsRefreshingQueue(false);
+    }
+  }, []);
 
   // Build active LabelTemplateData combining selected Bevy event + sample attendee overrides
   const activeSampleData = React.useMemo<LabelTemplateData>(() => {
@@ -1367,7 +1385,29 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                 Real-time print history from QR check-in scans and shipping labels across the venue. Each job is held by
                 exactly one printer.
               </CardDescription>
-              <CardAction className="flex gap-1.5">
+              <CardAction className="flex flex-wrap items-center gap-2">
+                {queueLastFetchedAt && (
+                  <span
+                    className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground tabular-nums"
+                    title={`Live Firestore listener · Last updated ${queueLastFetchedAt.toLocaleString()}`}
+                  >
+                    <span className="relative flex size-2 shrink-0">
+                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                      <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                    </span>
+                    <span className="font-medium text-emerald-600 dark:text-emerald-400">Live</span>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      Updated{" "}
+                      {queueLastFetchedAt.toLocaleTimeString("en-GB", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                        hour12: false,
+                      })}
+                    </span>
+                  </span>
+                )}
                 {failedJobsCount > 0 && (
                   <Badge className="border-rose-500/20 bg-rose-500/10 text-rose-600 text-xs">
                     {failedJobsCount} Failed
@@ -1376,6 +1416,17 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                 <Badge variant="outline" className="text-xs">
                   {pendingJobsCount} Pending
                 </Badge>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1.5 px-2.5 text-xs"
+                  onClick={() => void handleRefreshQueue()}
+                  disabled={isRefreshingQueue}
+                >
+                  <RefreshCw className={`size-3.5 ${isRefreshingQueue ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
               </CardAction>
             </CardHeader>
             <CardContent>
@@ -1405,6 +1456,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                               <TableHead>Attendee</TableHead>
                               <TableHead>Event ID</TableHead>
                               <TableHead>QR Payload</TableHead>
+                              <TableHead>Triggered by</TableHead>
                               <TableHead>Printed on</TableHead>
                               <TableHead>Status</TableHead>
                               <TableHead className="text-right">Action</TableHead>
@@ -1432,6 +1484,22 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                                   <TableCell className="font-mono text-xs">#{job.event_id}</TableCell>
                                   <TableCell className="font-mono text-muted-foreground text-xs">
                                     {job.qr_payload}
+                                  </TableCell>
+                                  <TableCell>
+                                    {job.triggered_by_name || job.triggered_by_email ? (
+                                      <>
+                                        {job.triggered_by_name && (
+                                          <div className="font-medium text-xs">{job.triggered_by_name}</div>
+                                        )}
+                                        {job.triggered_by_email && (
+                                          <div className="text-[11px] text-muted-foreground">
+                                            {job.triggered_by_email}
+                                          </div>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <span className="text-muted-foreground text-xs">—</span>
+                                    )}
                                   </TableCell>
                                   <TableCell>
                                     {job.assigned_station_name ? (
