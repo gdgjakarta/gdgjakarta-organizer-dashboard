@@ -27,6 +27,7 @@ import {
   Package,
   PackageCheck,
   Phone,
+  Printer,
   QrCode,
   RefreshCw,
   RotateCcw,
@@ -72,6 +73,7 @@ import type {
   SelectedMerchandiseOrder,
 } from "@/lib/firestore/types";
 import { type DriveVenueTicketFile, isEligibleForVenueTicket } from "@/lib/google-drive/venue-tickets";
+import { enqueueCheckInBadgeIfEnabled } from "@/lib/printers/checkin-auto-print";
 import { cn, getInitials } from "@/lib/utils";
 
 import { ChangeMerchandiseVariantDialog } from "./change-merchandise-variant-dialog";
@@ -318,6 +320,7 @@ export function ApplicantDetailDialog({
   const isCuration = isCurationMode ?? isEventCurationMode(event);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedProfile, setCopiedProfile] = useState(false);
+  const [isPrintingBadge, setIsPrintingBadge] = useState(false);
   const [isAssigningVenueTicket, setIsAssigningVenueTicket] = useState(false);
   const [loadedQuestions, setLoadedQuestions] = useState<CustomQuestion[]>([]);
   const [paymentLinkInfo, setPaymentLinkInfo] = useState<{ url: string; invoiceNumber: string } | null>(null);
@@ -1154,6 +1157,38 @@ export function ApplicantDetailDialog({
                         <span>{isResendingAccepted ? "Resending..." : "Resend Ticket Email"}</span>
                       </Button>
                     )}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2.5 text-xs"
+                    disabled={isPrintingBadge}
+                    onClick={async () => {
+                      setIsPrintingBadge(true);
+                      try {
+                        const res = await enqueueCheckInBadgeIfEnabled({
+                          eventId: String(event?.id ?? registration.event_id),
+                          eventTitle: event?.title,
+                          registration,
+                          questions: effectiveQuestions,
+                          forceNewJob: true,
+                        });
+                        if (res.enqueued) {
+                          toast.success(
+                            `Badge queued for ${registration.member_name || registration.member_email || "attendee"}`,
+                          );
+                        } else {
+                          toast.error(res.error || "Failed to queue badge print.");
+                        }
+                      } finally {
+                        setIsPrintingBadge(false);
+                      }
+                    }}
+                    title="Send attendee badge to Print Queue"
+                  >
+                    {isPrintingBadge ? <Loader2 className="size-3 animate-spin" /> : <Printer className="size-3" />}
+                    <span>{isPrintingBadge ? "Queueing..." : "Print Badge"}</span>
+                  </Button>
 
                   <Button
                     variant="outline"

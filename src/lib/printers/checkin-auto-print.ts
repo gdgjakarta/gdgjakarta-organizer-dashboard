@@ -105,13 +105,18 @@ export interface EnqueueCheckInBadgeParams {
    * `auto_print_on_checkin` flag.
    */
   forceAutoPrint?: boolean;
+  /**
+   * Manual print/reprint trigger (e.g. "Print Badge" button on Registrants list or Application Dossier).
+   * Bypasses `auto_print_on_checkin` / `enabled` guards and creates a fresh job document every time.
+   */
+  forceNewJob?: boolean;
 }
 
 /**
  * Universal Check-In Auto-Print Enqueue:
  * Called whenever an attendee's main check-in transitions to `is_checked_in: true` (from QR Scanner, Registrants
- * table toggle, Applicant Detail dialog, or the running Print Station check-in watcher).
- * Uses a deterministic job ID (`job_${eventId}_${registrationId}`) so concurrent callers or repeated scans never
+ * table toggle, Applicant Detail dialog, or the running Print Station check-in watcher), or manually via `forceNewJob`.
+ * Uses a deterministic job ID (`job_${eventId}_${registrationId}`) for check-in auto-print so concurrent callers never
  * enqueue duplicate labels, and stores the exact paper dimensions (`paper_width_mm`, `paper_height_mm`, `orientation`)
  * on the job document.
  */
@@ -122,7 +127,8 @@ export async function enqueueCheckInBadgeIfEnabled({
   attendeeIdOverride,
   questions,
   forceAutoPrint,
-}: EnqueueCheckInBadgeParams): Promise<{ enqueued: boolean; jobId?: string }> {
+  forceNewJob,
+}: EnqueueCheckInBadgeParams): Promise<{ enqueued: boolean; jobId?: string; error?: string }> {
   try {
     let eventPrinterCfg: Partial<PrinterConfig> | null = null;
     let resolvedEventTitle = eventTitle;
@@ -147,20 +153,22 @@ export async function enqueueCheckInBadgeIfEnabled({
     const cfgRes = await fetchPrinterConfigAction();
     const systemPrinterCfg = cfgRes.success && cfgRes.config ? cfgRes.config : null;
 
-    // Respect explicit disablement
-    if (eventPrinterCfg && eventPrinterCfg.enabled === false) {
-      return { enqueued: false };
-    }
-    if (!eventPrinterCfg && systemPrinterCfg && systemPrinterCfg.enabled === false) {
-      return { enqueued: false };
-    }
+    if (!forceNewJob) {
+      // Respect explicit disablement
+      if (eventPrinterCfg && eventPrinterCfg.enabled === false) {
+        return { enqueued: false };
+      }
+      if (!eventPrinterCfg && systemPrinterCfg && systemPrinterCfg.enabled === false) {
+        return { enqueued: false };
+      }
 
-    // Check whether auto_print_on_checkin is enabled (unless caller explicitly forced it via scanner switch)
-    const configuredAutoPrint =
-      eventPrinterCfg?.auto_print_on_checkin ?? systemPrinterCfg?.auto_print_on_checkin ?? false;
-    const shouldAutoPrint = forceAutoPrint !== undefined ? forceAutoPrint : configuredAutoPrint;
-    if (!shouldAutoPrint) {
-      return { enqueued: false };
+      // Check whether auto_print_on_checkin is enabled (unless caller explicitly forced it via scanner switch)
+      const configuredAutoPrint =
+        eventPrinterCfg?.auto_print_on_checkin ?? systemPrinterCfg?.auto_print_on_checkin ?? false;
+      const shouldAutoPrint = forceAutoPrint !== undefined ? forceAutoPrint : configuredAutoPrint;
+      if (!shouldAutoPrint) {
+        return { enqueued: false };
+      }
     }
 
     const templateToUse = eventPrinterCfg?.template_html || systemPrinterCfg?.template_html || DEFAULT_LABEL_TEMPLATE;
@@ -227,13 +235,14 @@ export async function enqueueCheckInBadgeIfEnabled({
         paper_width_mm: widthMm,
         paper_height_mm: heightMm,
         orientation,
+        job_type: "badge",
       },
-      { deterministicId },
+      forceNewJob ? { forceNewJob: true } : { deterministicId },
     );
 
-    return { enqueued: res.success, jobId: res.jobId };
+    return { enqueued: res.success, jobId: res.jobId, error: res.error };
   } catch (err) {
     console.warn("[CheckInAutoPrint] Failed to enqueue check-in badge:", err);
-    return { enqueued: false };
+    return { enqueued: false, error: err instanceof Error ? err.message : "Failed to queue badge print." };
   }
 }

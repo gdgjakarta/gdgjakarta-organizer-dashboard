@@ -23,6 +23,7 @@ import {
   MoreHorizontal,
   Package,
   PackageCheck,
+  Printer,
   QrCode,
   RefreshCw,
   RotateCcw,
@@ -705,6 +706,30 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [waitlistingRegistrationId, setWaitlistingRegistrationId] = useState<string | null>(null);
   const [isBatchWaitlisting, setIsBatchWaitlisting] = useState(false);
   const [isResendingInterestId, setIsResendingInterestId] = useState<string | null>(null);
+  const [printingBadgeId, setPrintingBadgeId] = useState<string | null>(null);
+
+  const handlePrintBadge = useCallback(
+    async (reg: FirestoreRegistration) => {
+      setPrintingBadgeId(reg.id);
+      try {
+        const res = await enqueueCheckInBadgeIfEnabled({
+          eventId: String(event?.id ?? eventId),
+          eventTitle: event?.title,
+          registration: reg,
+          questions: customQuestions,
+          forceNewJob: true,
+        });
+        if (res.enqueued) {
+          toast.success(`Badge queued for ${reg.member_name || reg.member_email || "attendee"}`);
+        } else {
+          toast.error(res.error || "Failed to queue badge print.");
+        }
+      } finally {
+        setPrintingBadgeId((curr) => (curr === reg.id ? null : curr));
+      }
+    },
+    [event?.id, event?.title, eventId, customQuestions],
+  );
   const [isBatchResendingInterest, setIsBatchResendingInterest] = useState(false);
   const [isResendingWaitlistId, setIsResendingWaitlistId] = useState<string | null>(null);
   const [isResendingPaidWaitlistId, setIsResendingPaidWaitlistId] = useState<string | null>(null);
@@ -2368,6 +2393,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
 
   // Reset check-in rate cache when eventId changes
   useEffect(() => {
+    void eventId;
     fetchGenRef.current += 1;
     checkInRateCacheRef.current = new Map();
     inFlightEmailsRef.current.clear();
@@ -2458,7 +2484,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     const gen = fetchGenRef.current;
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       for (let i = 0; i < toFetch.length; i += 10) {
         if (cancelled || fetchGenRef.current !== gen) break;
         const status = await fetchCheckInRateChunk(toFetch.slice(i, i + 10), gen);
@@ -2517,7 +2543,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     let cancelled = false;
     setHydrationProgress({ loaded: 0, total: toFetch.length });
 
-    (async () => {
+    void (async () => {
       for (let i = 0; i < toFetch.length; i += 10) {
         if (cancelled || fetchGenRef.current !== gen) break;
         const status = await fetchCheckInRateChunk(toFetch.slice(i, i + 10), gen);
@@ -6403,6 +6429,23 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                 </Button>
                               )}
 
+                              {/* 3b. Trigger Print Badge Button */}
+                              <Button
+                                size="icon-xs"
+                                variant="ghost"
+                                className="size-7 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                title="Print attendee badge"
+                                aria-label={`Print badge for ${reg.member_name || reg.member_email || "attendee"}`}
+                                disabled={printingBadgeId === reg.id}
+                                onClick={() => void handlePrintBadge(reg)}
+                              >
+                                {printingBadgeId === reg.id ? (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                ) : (
+                                  <Printer className="size-3.5" />
+                                )}
+                              </Button>
+
                               {/* 4. View Dossier / Details Button */}
                               <Button
                                 size="icon-xs"
@@ -6425,6 +6468,17 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                   <DropdownMenuItem onClick={() => setInspectRegistration(reg)}>
                                     <Eye className="mr-2 size-3.5" />
                                     View application dossier
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    disabled={printingBadgeId === reg.id}
+                                    onClick={() => void handlePrintBadge(reg)}
+                                  >
+                                    {printingBadgeId === reg.id ? (
+                                      <Loader2 className="mr-2 size-3.5 animate-spin" />
+                                    ) : (
+                                      <Printer className="mr-2 size-3.5" />
+                                    )}
+                                    Print Badge
                                   </DropdownMenuItem>
                                   {(rawStatus === "waiting_for_payment" ||
                                     (rawStatus === "expired" && hasRegistrationPaymentRequirements(reg))) && (
