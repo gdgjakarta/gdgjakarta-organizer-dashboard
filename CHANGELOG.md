@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.64] - 2026-11-24
+
+### Fixed
+- **Cloudflare Web Analytics Window & Retention Guard (`/dashboard/organizer`)**:
+  - Enforced Cloudflare Web Analytics hard API constraints (maximum single query span of 90 days against Cloudflare's 13w2d limit, and trailing 180-day data retention horizon), eliminating `account cannot request a time range wider than 13w2d` on `All Time` and wide date filters.
+  - Added graceful zero-metric handling when a requested historical window ends before the 180-day retention horizon.
+  - Bumped website analytics cache key to `v2` to immediately invalidate stale cached error payloads.
+
+---
+
 ## [1.0.63] - 2026-11-24
 
 ### Fixed

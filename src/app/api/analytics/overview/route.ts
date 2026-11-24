@@ -218,7 +218,7 @@ export async function GET(req: NextRequest) {
       if (isGa4Configured() || isCloudflareAnalyticsConfigured()) {
         // Cache external GA4/Cloudflare data; loggedInDashboardUsers is fetched with caller token or cached
         payload = await fetchExternalWithR2Cache(
-          ["analytics", "website", input.provider ?? "auto", window.sinceDate, window.apiUntilDate],
+          ["analytics", "website", "v2", input.provider ?? "auto", window.sinceDate, window.apiUntilDate],
           ttlSeconds,
           bypassCache,
           (cachedFlag) => computeWebsiteAnalytics(window, input.provider, bearerToken, cachedFlag),

@@ -3,8 +3,10 @@ import {
   addDays,
   calcDeltaPct,
   calcSharePct,
+  diffDaysInclusive,
   enumerateDateKeys,
   formatShortDateLabel,
+  getTodayWibDateStr,
   type ResolvedDateWindow,
 } from "@/lib/analytics/date-range";
 import type { ComparisonSeriesPoint, CountryMetricRow, KpiComparisonMetric } from "@/lib/analytics/types";
@@ -182,10 +184,53 @@ export async function fetchCloudflareWebsiteAnalytics(window: ResolvedDateWindow
     }
   `;
 
+  const MAX_CF_SPAN_DAYS = 90; // Cloudflare caps single queries at 13w2d (93 days)
+  const MAX_CF_RETENTION_DAYS = 180; // Cloudflare Web Analytics retains trailing ~6 months (26w2d)
+  const today = getTodayWibDateStr();
+  const earliestRetentionDate = addDays(today, -MAX_CF_RETENTION_DAYS);
+
+  // If the requested window ends before Cloudflare retention horizon, return zero metrics gracefully
+  if (window.apiUntilDate < earliestRetentionDate) {
+    return {
+      kpis: {
+        pageViews: { current: 0, previous: null, deltaPct: null },
+        totalSessions: { current: 0, previous: null, deltaPct: null },
+        pagesPerVisit: 0,
+      },
+      series: [],
+      countries: [],
+      topPaths: [],
+      topReferrers: [],
+    };
+  }
+
   const isAllTime = window.mode === "all_time";
-  const curStart = isAllTime ? addDays(window.apiUntilDate, -179) : window.sinceDate;
-  const prevStart = isAllTime ? curStart : window.prevSinceDate;
-  const prevEnd = isAllTime ? curStart : window.prevUntilDate;
+  let curStart: string;
+  if (isAllTime) {
+    curStart = addDays(window.apiUntilDate, -(MAX_CF_SPAN_DAYS - 1));
+  } else {
+    const rawStart = window.sinceDate < earliestRetentionDate ? earliestRetentionDate : window.sinceDate;
+    curStart =
+      diffDaysInclusive(rawStart, window.apiUntilDate) > MAX_CF_SPAN_DAYS
+        ? addDays(window.apiUntilDate, -(MAX_CF_SPAN_DAYS - 1))
+        : rawStart;
+  }
+
+  let prevStart = curStart;
+  let prevEnd = curStart;
+  let hasValidPrev = false;
+
+  if (!isAllTime && window.prevSinceDate && window.prevUntilDate) {
+    if (window.prevUntilDate >= earliestRetentionDate) {
+      prevEnd = window.prevUntilDate;
+      const rawPrevStart = window.prevSinceDate < earliestRetentionDate ? earliestRetentionDate : window.prevSinceDate;
+      prevStart =
+        diffDaysInclusive(rawPrevStart, prevEnd) > MAX_CF_SPAN_DAYS
+          ? addDays(prevEnd, -(MAX_CF_SPAN_DAYS - 1))
+          : rawPrevStart;
+      hasValidPrev = true;
+    }
+  }
 
   const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
     method: "POST",
@@ -235,7 +280,7 @@ export async function fetchCloudflareWebsiteAnalytics(window: ResolvedDateWindow
   }
 
   const currentKeys = enumerateDateKeys(curStart, window.apiUntilDate);
-  const prevKeys = isAllTime ? [] : enumerateDateKeys(prevStart, prevEnd);
+  const prevKeys = hasValidPrev ? enumerateDateKeys(prevStart, prevEnd) : [];
   const series: ComparisonSeriesPoint[] = currentKeys.map((dateKey, idx) => ({
     date: dateKey,
     label: formatShortDateLabel(dateKey),
@@ -284,10 +329,14 @@ export async function fetchCloudflareWebsiteAnalytics(window: ResolvedDateWindow
     kpis: {
       pageViews: {
         current: pageViewsCur,
-        previous: pageViewsPrev,
-        deltaPct: calcDeltaPct(pageViewsCur, pageViewsPrev),
+        previous: hasValidPrev ? pageViewsPrev : null,
+        deltaPct: hasValidPrev ? calcDeltaPct(pageViewsCur, pageViewsPrev) : null,
       },
-      totalSessions: { current: visitsCur, previous: visitsPrev, deltaPct: calcDeltaPct(visitsCur, visitsPrev) },
+      totalSessions: {
+        current: visitsCur,
+        previous: hasValidPrev ? visitsPrev : null,
+        deltaPct: hasValidPrev ? calcDeltaPct(visitsCur, visitsPrev) : null,
+      },
       pagesPerVisit: visitsCur > 0 ? Math.round((pageViewsCur / visitsCur) * 10) / 10 : 0,
     },
     series,
