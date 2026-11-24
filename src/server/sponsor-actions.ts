@@ -349,7 +349,7 @@ export async function deleteChapterSponsorAction(
       const configRes = await getOrInitChapterSponsorConfigAction();
       if (configRes.success && configRes.config) {
         const existingDeleted = Array.isArray((configRes.config as { deleted_bevy_ids?: number[] }).deleted_bevy_ids)
-          ? (configRes.config as { deleted_bevy_ids: number[] }).deleted_bevy_ids
+          ? ((configRes.config as { deleted_bevy_ids?: number[] }).deleted_bevy_ids ?? [])
           : [];
         if (!existingDeleted.includes(Number(bevyId))) {
           await patchFirestoreDoc(
