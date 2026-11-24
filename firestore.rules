@@ -1575,21 +1575,6 @@ service cloud.firestore {
       return v == null || (v is string && (v in allowed));
     }
 
-    // Validates optional e-Meterai placement rect map ({ page, x, y, width, height, corner? }, <= 10 keys)
-    function isValidEMeteraiPlacement(data) {
-      let p = data.get('emeterai_placement', null);
-      return p == null || (
-        p is map &&
-        p.size() <= 10 &&
-        optInt(p, 'page', 0, 1000) &&
-        optInt(p, 'x', -100000, 100000) &&
-        optInt(p, 'y', -100000, 100000) &&
-        optInt(p, 'width', 0, 100000) &&
-        optInt(p, 'height', 0, 100000) &&
-        optEnum(p, 'corner', ['top_left', 'top_right', 'bottom_left', 'bottom_right'])
-      );
-    }
-
     // Validates event_speaker_confirmations document structure, data types, and bounds
     function isValidSpeakerConfirmation(data) {
       return hasRequiredFields(data, [
@@ -1626,17 +1611,19 @@ service cloud.firestore {
         optInt(data, 'bevy_person_id', 0, 2147483647);
     }
 
-    // Validates partner_signed_documents document structure, data types, and bounds
+    // Validates partner_signed_documents document structure, data types, and bounds.
+    // Kept compact without nested helper calls to stay well below Firestore's 1,000 CEL expression limit.
     function isValidPartnerSignedDocument(data) {
-      return hasRequiredFields(data, [
-        'id', 'token', 'document_title', 'original_file_name', 'signed_file_name',
-        'company_name', 'signer_name', 'signer_title', 'signer_email', 'signer_uid',
-        'signature_methods_used', 'page_count', 'placement_count', 'include_certificate_page',
-        'signed_pdf_url', 'signed_pdf_key', 'signed_pdf_size_bytes',
-        'original_sha256', 'signed_sha256', 'ecert_status', 'status', 'email_status',
+      let keys = data.keys();
+      let es = data.get('emeterai_status', null);
+      let ep = data.get('emeterai_price_idr', null);
+      let epl = data.get('emeterai_placement', null);
+      return keys.hasAll([
+        'id', 'token', 'document_title', 'company_name', 'signer_email',
+        'signed_pdf_url', 'signed_pdf_key', 'ecert_status', 'status', 'email_status',
         'signed_at', 'created_at', 'updated_at'
       ]) &&
-        hasOnlyAllowedFields(data, [
+        keys.hasOnly([
           'id', 'token', 'document_title', 'original_file_name', 'signed_file_name',
           'sponsor_id', 'company_name', 'contact_name', 'contact_email',
           'event_id', 'event_title',
@@ -1653,51 +1640,19 @@ service cloud.firestore {
         data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
         data.token is string && data.token.size() > 0 && data.token.size() <= 128 &&
         data.document_title is string && data.document_title.size() > 0 && data.document_title.size() <= 200 &&
-        data.original_file_name is string && data.original_file_name.size() > 0 && data.original_file_name.size() <= 300 &&
-        data.signed_file_name is string && data.signed_file_name.size() > 0 && data.signed_file_name.size() <= 300 &&
-        optStr(data, 'sponsor_id', 128) &&
         data.company_name is string && data.company_name.size() > 0 && data.company_name.size() <= 200 &&
-        optStr(data, 'contact_name', 150) &&
-        (!('contact_email' in data) || data.contact_email == null || data.contact_email == '' || isValidEmail(data.contact_email)) &&
-        optStr(data, 'event_id', 128) &&
-        optStr(data, 'event_title', 300) &&
-        data.signer_name is string && data.signer_name.size() > 0 && data.signer_name.size() <= 150 &&
-        data.signer_title is string && data.signer_title.size() > 0 && data.signer_title.size() <= 150 &&
-        isValidEmail(data.signer_email) &&
-        data.signer_uid is string && data.signer_uid.size() > 0 && data.signer_uid.size() <= 128 &&
-        data.signature_methods_used is list &&
-        data.signature_methods_used.size() <= 10 &&
-        data.signature_methods_used.hasOnly(['initials', 'upload', 'draw', 'template']) &&
-        (data.page_count is int || data.page_count is float) && data.page_count >= 1 && data.page_count <= 1000 &&
-        (data.placement_count is int || data.placement_count is float) && data.placement_count >= 1 && data.placement_count <= 1000 &&
-        data.include_certificate_page is bool &&
+        data.signer_email is string && data.signer_email.size() > 0 && data.signer_email.size() <= 150 &&
         data.signed_pdf_url is string && data.signed_pdf_url.size() > 0 && data.signed_pdf_url.size() <= 2000 &&
         data.signed_pdf_key is string && data.signed_pdf_key.size() > 0 && data.signed_pdf_key.size() <= 500 &&
-        (data.signed_pdf_size_bytes is int || data.signed_pdf_size_bytes is float) && data.signed_pdf_size_bytes >= 1 && data.signed_pdf_size_bytes <= 104857600 &&
-        data.original_sha256 is string && data.original_sha256.size() > 0 && data.original_sha256.size() <= 128 &&
-        data.signed_sha256 is string && data.signed_sha256.size() > 0 && data.signed_sha256.size() <= 128 &&
-        data.ecert_status is string && (data.ecert_status in ['signed_p12', 'hash_only']) &&
-        optMap(data, 'ecert_metadata', 20) &&
-        optEnum(data, 'emeterai_status', ['none', 'queued', 'processing', 'stamped', 'failed']) &&
-        optEnum(data, 'emeterai_provider', ['resmi_id']) &&
-        optEnum(data, 'emeterai_mode', ['live', 'test']) &&
-        optStr(data, 'emeterai_request_id', 150) &&
-        optStr(data, 'emeterai_serial_number', 128) &&
-        optEnum(data, 'emeterai_doc_type', [
-          'Surat Perjanjian', 'Dokumen Transaksi', 'Surat Keterangan',
-          'Surat Kuasa', 'Surat Pernyataan', 'Dokumen Lainnya'
-        ]) &&
-        optInt(data, 'emeterai_price_idr', 0, 1000000) &&
-        isValidEMeteraiPlacement(data) &&
-        optStr(data, 'emeterai_stamped_at', 50) &&
-        optStr(data, 'emeterai_error', 500) &&
-        data.status is string && (data.status in ['signed', 'sent', 'revoked']) &&
-        data.email_status is string && (data.email_status in ['not_sent', 'sent', 'failed']) &&
-        optStr(data, 'email_sent_at', 50) &&
-        (!('email_recipient' in data) || data.email_recipient == null || data.email_recipient == '' || isValidEmail(data.email_recipient)) &&
-        data.signed_at is string && data.signed_at.size() > 0 && data.signed_at.size() <= 50 &&
-        data.created_at is string && data.created_at.size() > 0 && data.created_at.size() <= 50 &&
-        data.updated_at is string && data.updated_at.size() > 0 && data.updated_at.size() <= 50;
+        data.ecert_status in ['signed_p12', 'hash_only'] &&
+        data.status in ['signed', 'sent', 'revoked'] &&
+        data.email_status in ['not_sent', 'sent', 'failed'] &&
+        data.signed_at is string && data.signed_at.size() <= 50 &&
+        data.created_at is string && data.created_at.size() <= 50 &&
+        data.updated_at is string && data.updated_at.size() <= 50 &&
+        (es == null || es in ['none', 'queued', 'processing', 'stamped', 'failed']) &&
+        (ep == null || ((ep is int || ep is float) && ep >= 0 && ep <= 1000000)) &&
+        (epl == null || (epl is map && epl.size() <= 10));
     }
 
     // ===============================================================

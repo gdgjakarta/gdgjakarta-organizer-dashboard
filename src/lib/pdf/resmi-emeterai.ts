@@ -154,10 +154,11 @@ export async function submitResmiEMeteraiStamp(params: {
   formData.append("file", new Blob([cleanBytes], { type: "application/pdf" }), params.fileName || "document.pdf");
   formData.append("document_type", params.documentType);
   formData.append("page", String(Math.max(1, Math.round(params.placement.page))));
-  formData.append("x", String(Math.max(0, Math.round(params.placement.x))));
-  formData.append("y", String(Math.max(0, Math.round(params.placement.y))));
   if (params.placement.corner) {
     formData.append("corner", params.placement.corner);
+  } else {
+    formData.append("x", String(Math.max(0, Math.round(params.placement.x))));
+    formData.append("y", String(Math.max(0, Math.round(params.placement.y))));
   }
 
   try {

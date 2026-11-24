@@ -707,13 +707,16 @@ export async function signPartnerPdfBuffer(params: SignPartnerPdfParams): Promis
     });
 
     if (placement.kind === "emeterai") {
-      // PERURI/Resmi.ID stamps the official visual seal & QR code via API; only capture PDF-space coords here.
+      // Resmi.ID expects top-left origin in PDF points (x from left, y from top), unlike pdf-lib's bottom-left rect.y.
+      const isRotated90Or270 = ((Math.round(rotationDegrees) % 180) + 180) % 180 === 90;
+      const viewW = isRotated90Or270 ? cropBox.height : cropBox.width;
+      const viewH = isRotated90Or270 ? cropBox.width : cropBox.height;
       emeteraiPlacementRect = {
         page: placement.pageIndex + 1,
-        x: Math.round(rect.x),
-        y: Math.round(rect.y),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
+        x: Math.round(placement.xPct * viewW),
+        y: Math.round(placement.yPct * viewH),
+        width: Math.round(placement.widthPct * viewW),
+        height: Math.round(placement.heightPct * viewH),
         ...(placement.emeteraiCorner ? { corner: placement.emeteraiCorner } : {}),
       };
       continue;

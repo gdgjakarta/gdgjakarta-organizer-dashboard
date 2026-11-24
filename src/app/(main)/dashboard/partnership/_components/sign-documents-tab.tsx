@@ -475,13 +475,13 @@ export function SignDocumentsTab({
     }
 
     const widthPct = 0.22;
-    const heightPct = 0.085;
+    const heightPct = 0.08;
     const newMeterai: PdfPlacement = {
       id: `plc_emeterai_${Date.now().toString(36)}`,
       kind: "emeterai",
       pageIndex: activePageIndex,
       xPct: 0.74,
-      yPct: 0.875,
+      yPct: 0.88,
       widthPct,
       heightPct,
       emeteraiCorner: "bottom_right",
@@ -1733,7 +1733,12 @@ export function SignDocumentsTab({
                                   {retryingDocId === doc.id ? "..." : "Retry"}
                                 </Button>
                                 {isInsufficientBalanceError(doc.emeterai_error) && (
-                                  <Button asChild variant="outline" size="sm" className="h-5 px-1.5 text-[10px]">
+                                  <Button
+                                    asChild
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-5 px-1.5 text-[10px] no-underline!"
+                                  >
                                     <a
                                       href="https://docs.resmi.id/dashboard"
                                       target="_blank"
@@ -2018,7 +2023,7 @@ export function SignDocumentsTab({
                         Retry Stamp
                       </Button>
                       {isInsufficientBalanceError(previewingDoc.emeterai_error) && (
-                        <Button asChild variant="outline" size="sm" className="gap-1.5 text-xs">
+                        <Button asChild variant="outline" size="sm" className="gap-1.5 text-xs no-underline!">
                           <a href="https://docs.resmi.id/dashboard" target="_blank" rel="noopener noreferrer">
                             <ExternalLink className="h-3.5 w-3.5" />
                             Top up in Resmi.ID Dashboard
@@ -2164,7 +2169,12 @@ export function SignDocumentsTab({
                     <span>{resultDialogDoc.emeterai_error || "PERURI gateway returned an error."}</span>
                     <div className="flex flex-wrap items-center gap-1.5 shrink-0">
                       {isInsufficientBalanceError(resultDialogDoc.emeterai_error) && (
-                        <Button asChild variant="outline" size="sm" className="h-6 px-2 text-[11px] gap-1">
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="h-6 px-2 text-[11px] gap-1 no-underline!"
+                        >
                           <a href="https://docs.resmi.id/dashboard" target="_blank" rel="noopener noreferrer">
                             <ExternalLink className="h-3 w-3" />
                             Top up in Resmi.ID Dashboard
