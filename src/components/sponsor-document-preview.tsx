@@ -548,11 +548,14 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
                   <div>
                     <span className="text-zinc-500">Printed name:</span>{" "}
                     <span className="font-bold text-zinc-900">
-                      {doc.sponsor_signed_name || doc.contact_name || "____________________"}
+                      {doc.sponsor_signed_name || doc.partner_signer_name || doc.contact_name || "____________________"}
                     </span>
                   </div>
                   <div className="text-zinc-600">
-                    {doc.sponsor_signed_title || doc.contact_title || `Sponsor : ${companyDisplay}`}
+                    {doc.sponsor_signed_title ||
+                      doc.partner_signer_title ||
+                      doc.contact_title ||
+                      `Sponsor : ${companyDisplay}`}
                   </div>
                 </div>
               </div>
@@ -748,10 +751,10 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
               </div>
               <div className="text-xs pt-1 space-y-0.5">
                 <div className="font-bold text-zinc-900">
-                  {doc.sponsor_signed_name || doc.contact_name || "____________________"}
+                  {doc.sponsor_signed_name || doc.partner_signer_name || doc.contact_name || "____________________"}
                 </div>
                 <div className="text-zinc-600">
-                  {doc.sponsor_signed_title || doc.contact_title || "Authorized Signatory"}
+                  {doc.sponsor_signed_title || doc.partner_signer_title || doc.contact_title || "Authorized Signatory"}
                 </div>
                 {doc.sponsor_signed_at && (
                   <div className="text-[11px] text-zinc-500">
@@ -831,14 +834,16 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
           </div>
 
           {/* Intro Paragraph */}
-          <p className="text-xs text-zinc-800 leading-relaxed">{interpolateLoaTokens(mouIntro, loaTokens)}</p>
+          <p className="text-xs text-zinc-800 leading-relaxed whitespace-pre-wrap">
+            {interpolateLoaTokens(mouIntro, loaTokens)}
+          </p>
 
           {/* Numbered Clauses 1 - 6 */}
           <ol className="list-decimal pl-5 space-y-2.5 text-xs text-zinc-800 leading-relaxed">
             {/* Clause 1: Purpose & Event Scope */}
             <li>
               <span className="font-semibold">Purpose &amp; Event Scope: </span>
-              {interpolateLoaTokens(mouClause1, loaTokens)}
+              <span className="whitespace-pre-wrap">{interpolateLoaTokens(mouClause1, loaTokens)}</span>
             </li>
 
             {/* Clause 2: Organizer Responsibilities / Benefits for Partner */}
@@ -884,19 +889,19 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
             {/* Clause 4: Brand Assets & Intellectual Property */}
             <li>
               <span className="font-semibold">Brand Assets &amp; Intellectual Property: </span>
-              {interpolateLoaTokens(mouClause4, loaTokens)}
+              <span className="whitespace-pre-wrap">{interpolateLoaTokens(mouClause4, loaTokens)}</span>
             </li>
 
             {/* Clause 5: Effective Term & Validity */}
             <li>
               <span className="font-semibold">Term &amp; Validity: </span>
-              {interpolateLoaTokens(mouClause5, loaTokens)}
+              <span className="whitespace-pre-wrap">{interpolateLoaTokens(mouClause5, loaTokens)}</span>
             </li>
 
             {/* Clause 6: Non-Financial & Mutual Understanding */}
             <li>
               <span className="font-semibold">General Understanding &amp; Amendments: </span>
-              {interpolateLoaTokens(mouClause6, loaTokens)}
+              <span className="whitespace-pre-wrap">{interpolateLoaTokens(mouClause6, loaTokens)}</span>
             </li>
           </ol>
 
@@ -928,7 +933,7 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
           <hr className="border-zinc-400 my-3" />
 
           {/* Disclaimer */}
-          <p className="text-xs italic text-zinc-700 leading-relaxed">{mouDisclaimer}</p>
+          <p className="text-xs italic text-zinc-700 leading-relaxed whitespace-pre-wrap">{mouDisclaimer}</p>
 
           {/* Dual Signature Block */}
           <div className="grid grid-cols-2 gap-10 pt-3">
@@ -949,10 +954,13 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
               </div>
               <div className="text-xs pt-1 space-y-0.5">
                 <div className="font-bold text-zinc-900">
-                  {doc.sponsor_signed_name || doc.contact_name || "____________________"}
+                  {doc.sponsor_signed_name || doc.partner_signer_name || doc.contact_name || "____________________"}
                 </div>
                 <div className="text-zinc-600">
-                  {doc.sponsor_signed_title || doc.contact_title || "Authorized Representative"}
+                  {doc.sponsor_signed_title ||
+                    doc.partner_signer_title ||
+                    doc.contact_title ||
+                    "Authorized Representative"}
                 </div>
                 {doc.sponsor_signed_at && (
                   <div className="text-[11px] text-zinc-500">

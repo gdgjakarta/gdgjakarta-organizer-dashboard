@@ -228,6 +228,8 @@ export interface SponsorDocument {
   organizer_signer_title: string;
   organizer_signature_url?: string;
   document_date: string;
+  partner_signer_name?: string;
+  partner_signer_title?: string;
   sponsor_signed_name?: string;
   sponsor_signed_title?: string;
   sponsor_signed_at?: string;

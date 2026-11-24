@@ -944,6 +944,27 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                         />
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-1 border-t border-border/60">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Signatory Name (Optional)</Label>
+                        <Input
+                          value={editingDoc.partner_signer_name || ""}
+                          onChange={(e) => setEditingDoc({ ...editingDoc, partner_signer_name: e.target.value })}
+                          placeholder={editingDoc.contact_name || "Defaults to Contact Person"}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Signatory Title (Optional)</Label>
+                        <Input
+                          value={editingDoc.partner_signer_title || ""}
+                          onChange={(e) => setEditingDoc({ ...editingDoc, partner_signer_title: e.target.value })}
+                          placeholder={editingDoc.contact_title || "Defaults to Position / Title"}
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   {/* Line Items */}

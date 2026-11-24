@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.59] - 2026-11-24
+
+### Added
+- **Separate Partner Signatory Fields (`partner_signer_name` / `partner_signer_title`)**: Added optional **Signatory Name** and **Signatory Title** inputs under **Sponsor Billing & Signatory Info** in `SponsorDocumentsDialog` so the partner's authorized signatory can differ from the main Contact Person while falling back to Contact Person / Title when left blank. Updated Quotation, LOA, and MOU signature blocks in `SponsorDocumentPreview`, `saveSponsorDocumentAction`, and the public counter-signature portal pre-fill.
+
+### Fixed
+- **MOU Clause Line Breaks & Indentation**: Applied `whitespace-pre-wrap` to the MOU intro, Clauses 1, 4, 5, and 6, and disclaimer in `SponsorDocumentPreview` so multi-line formatting and bullet indentation render accurately in both the live preview and public PDF view.
+
+---
+
 ## [1.0.58] - 2026-11-24
 
 ### Added

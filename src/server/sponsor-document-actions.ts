@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { validateEmailRecipients } from "@/lib/email-recipients";
 import { extractApiMessage } from "@/lib/utils";
 import type {
   SponsorCategory,
@@ -13,7 +14,6 @@ import type {
 } from "@/types/sponsor";
 
 import { isAuthorizedOrganizerSession } from "./auth-guard";
-import { validateEmailRecipients } from "@/lib/email-recipients";
 import { sendEmailDirectInternal } from "./email-template-actions";
 import { deleteFirestoreDoc, getFirestoreDoc, patchFirestoreDoc, queryFirestoreDocs } from "./firestore-admin";
 import { randomBytes } from "node:crypto";
@@ -496,6 +496,8 @@ export async function saveSponsorDocumentAction(
         docInput.document_date ||
         existing?.document_date ||
         new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }),
+      partner_signer_name: docInput.partner_signer_name ?? existing?.partner_signer_name ?? "",
+      partner_signer_title: docInput.partner_signer_title ?? existing?.partner_signer_title ?? "",
       sponsor_signed_name: docInput.sponsor_signed_name ?? existing?.sponsor_signed_name ?? "",
       sponsor_signed_title: docInput.sponsor_signed_title ?? existing?.sponsor_signed_title ?? "",
       sponsor_signed_at: docInput.sponsor_signed_at ?? existing?.sponsor_signed_at ?? "",

@@ -32,10 +32,10 @@ export function PublicSponsorDocumentPortal({ initialDocument, templatesConfig }
   const [isSignModalOpen, setIsSignModalOpen] = useState(false);
 
   const [signedName, setSignedName] = useState(
-    initialDocument.sponsor_signed_name || initialDocument.contact_name || "",
+    initialDocument.sponsor_signed_name || initialDocument.partner_signer_name || initialDocument.contact_name || "",
   );
   const [signedTitle, setSignedTitle] = useState(
-    initialDocument.sponsor_signed_title || initialDocument.contact_title || "",
+    initialDocument.sponsor_signed_title || initialDocument.partner_signer_title || initialDocument.contact_title || "",
   );
   const [signatureDataUrl, setSignatureDataUrl] = useState<string>(initialDocument.sponsor_signature_data_url || "");
 
