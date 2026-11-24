@@ -474,13 +474,14 @@ export function SignDocumentsTab({
       return;
     }
 
-    const widthPct = 0.22;
-    const heightPct = 0.08;
+    // Official PERURI live e-Meterai is a fixed ~71x71 pt (2.5x2.5 cm) square (~12% x 8.5% on A4)
+    const widthPct = 0.12;
+    const heightPct = 0.085;
     const newMeterai: PdfPlacement = {
       id: `plc_emeterai_${Date.now().toString(36)}`,
       kind: "emeterai",
       pageIndex: activePageIndex,
-      xPct: 0.74,
+      xPct: 0.84,
       yPct: 0.88,
       widthPct,
       heightPct,
@@ -490,7 +491,7 @@ export function SignDocumentsTab({
     setPlacements((prev) => [...prev, newMeterai]);
     setSelectedPlacementId(newMeterai.id);
     toast.success(`e-Meterai placed on Page ${activePageIndex + 1}`, {
-      description: "Drag anywhere or use TL/TR/BL/BR corner snaps.",
+      description: "Drag beside your signature (fixed ~2.5×2.5 cm PERURI square).",
     });
   };
 
@@ -502,10 +503,13 @@ export function SignDocumentsTab({
       return;
     }
 
-    const centeredX = emeteraiPlacement.xPct + (emeteraiPlacement.widthPct - targetSig.widthPct) / 2;
-    const nextX = Math.min(Math.max(0, centeredX), 1 - targetSig.widthPct);
-    // Position just above / slightly overlapping the top edge so the PERURI QR remains readable
-    const nextY = Math.max(0, emeteraiPlacement.yPct - targetSig.heightPct * 0.65);
+    const gap = 0.012;
+    const rightX = emeteraiPlacement.xPct + emeteraiPlacement.widthPct + gap;
+    const leftX = emeteraiPlacement.xPct - targetSig.widthPct - gap;
+    // Place beside e-Meterai (prefer right; fall back to left if near right page edge) so PERURI QR stays uncovered
+    const nextX = rightX + targetSig.widthPct <= 0.99 ? rightX : Math.max(0.01, leftX);
+    const centeredY = emeteraiPlacement.yPct + (emeteraiPlacement.heightPct - targetSig.heightPct) / 2;
+    const nextY = Math.min(Math.max(0, centeredY), 1 - targetSig.heightPct);
 
     setActivePageIndex(emeteraiPlacement.pageIndex);
     setPlacements((prev) =>
@@ -521,7 +525,7 @@ export function SignDocumentsTab({
       ),
     );
     setSelectedPlacementId(targetSig.id);
-    toast.success(`Aligned signature above e-Meterai on Page ${emeteraiPlacement.pageIndex + 1}`);
+    toast.success(`Aligned signature beside e-Meterai on Page ${emeteraiPlacement.pageIndex + 1}`);
   };
 
   const handleUpdatePlacement = (id: string, patch: Partial<PdfPlacement>) => {
@@ -1507,12 +1511,13 @@ export function SignDocumentsTab({
                           className="w-full h-7 text-[11px] gap-1.5 border-emerald-500/40 bg-background hover:bg-emerald-500/10"
                         >
                           <PenTool className="h-3 w-3 text-emerald-600" />
-                          Place Signature Above e-Meterai
+                          Place Signature Beside e-Meterai
                         </Button>
                       )}
 
                       <p className="text-[10px] text-muted-foreground leading-snug">
-                        Tip: Keep the e-Meterai QR code uncovered so PERURI verification scanners can read it.
+                        PERURI rules prohibit overlapping the e-Meterai QR code (and modifying a PDF after e-Meterai
+                        breaks PERURI&apos;s cryptographic signature). Keep your signature beside the stamp.
                       </p>
                     </div>
                   )}

@@ -545,19 +545,14 @@ export function PdfPlacementCanvas({
                       className="block h-full w-full touch-none cursor-grab active:cursor-grabbing rounded focus:outline-hidden"
                     >
                       {placement.kind === "emeterai" ? (
-                        <div className="flex h-full w-full items-center justify-between gap-2 overflow-hidden rounded border-2 border-dashed border-emerald-600 bg-emerald-50/95 px-2 py-1 text-left shadow-2xs">
-                          <div className="flex min-w-0 flex-1 flex-col justify-center">
-                            <span className="truncate text-[8px] font-bold uppercase tracking-wide text-emerald-700">
-                              PERURI Official Stamp
-                            </span>
-                            <span className="truncate text-[10px] font-bold text-emerald-950">e-Meterai Rp10.000</span>
-                            <span className="truncate text-[8px] text-emerald-700/80">
-                              {placement.emeteraiCorner
-                                ? `Preset: ${placement.emeteraiCorner.replace("_", " ")}`
-                                : "Resmi.ID Position"}
-                            </span>
-                          </div>
-                          <QrCode className="h-6 w-6 shrink-0 text-emerald-700" />
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 overflow-hidden rounded border-2 border-dashed border-pink-600 bg-white/95 p-1 text-center shadow-2xs">
+                          <QrCode className="h-5 w-5 shrink-0 text-pink-600" />
+                          <span className="w-full truncate text-[8px] font-bold leading-tight text-pink-700">
+                            e-Meterai
+                          </span>
+                          <span className="w-full truncate text-[7px] font-semibold leading-tight text-pink-900/80">
+                            Rp10.000
+                          </span>
                         </div>
                       ) : placement.kind === "text_stamp" ? (
                         <div className="flex h-full w-full items-center justify-between gap-2 overflow-hidden rounded border border-blue-200 bg-sky-50/95 pl-2 pr-2 py-1 text-left shadow-2xs border-l-4 border-l-blue-600">
@@ -669,19 +664,21 @@ export function PdfPlacementCanvas({
                       </div>
                     )}
 
-                    {/* Bottom-Right Resize Handle */}
-                    <button
-                      type="button"
-                      aria-label="Resize placement"
-                      onPointerDown={(e) => startPointerDrag(e, placement, "resize")}
-                      onPointerMove={handlePointerMoveOverlay}
-                      onPointerUp={handlePointerEndOverlay}
-                      onPointerCancel={handlePointerEndOverlay}
-                      title="Drag to resize"
-                      className={`absolute -bottom-1.5 -right-1.5 size-3.5 touch-none rounded-full border-2 border-white bg-primary shadow-sm cursor-nwse-resize ${
-                        isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                      }`}
-                    />
+                    {/* Bottom-Right Resize Handle (hidden for fixed-size PERURI e-Meterai) */}
+                    {placement.kind !== "emeterai" && (
+                      <button
+                        type="button"
+                        aria-label="Resize placement"
+                        onPointerDown={(e) => startPointerDrag(e, placement, "resize")}
+                        onPointerMove={handlePointerMoveOverlay}
+                        onPointerUp={handlePointerEndOverlay}
+                        onPointerCancel={handlePointerEndOverlay}
+                        title="Drag to resize"
+                        className={`absolute -bottom-1.5 -right-1.5 size-3.5 touch-none rounded-full border-2 border-white bg-primary shadow-sm cursor-nwse-resize ${
+                          isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                        }`}
+                      />
+                    )}
                   </div>
                 );
               })}
