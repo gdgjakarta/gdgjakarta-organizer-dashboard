@@ -20,6 +20,22 @@ import { randomBytes } from "node:crypto";
 
 const ROMAN_MONTHS = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getSponsorDocTypeLabel(docType: SponsorDocumentType): string {
+  if (docType === "invoice") return "Official Invoice";
+  if (docType === "quotation") return "Sponsorship Quotation";
+  if (docType === "mou") return "Partnership Memorandum of Understanding (MOU)";
+  return "Sponsorship Letter of Agreement (LOA)";
+}
+
 export async function getDefaultSponsorDocumentTemplatesConfig(): Promise<SponsorDocumentTemplatesConfig> {
   return {
     org_name: "Google Developer Group Jakarta",
@@ -566,6 +582,122 @@ export async function deleteSponsorDocumentAction(docId: string): Promise<{
   }
 }
 
+async function notifyOrganizerDocumentSigned(doc: SponsorDocument): Promise<void> {
+  try {
+    const configRes = await getSponsorDocumentTemplatesConfigAction();
+    const orgEmail = configRes.config?.org_email || "info@gdgjakarta.org";
+    const toValidation = validateEmailRecipients(orgEmail, { required: true, label: "Organizer email" });
+    if (!toValidation.valid) {
+      console.error("[SponsorDocument] Skipping signed notification — invalid org_email:", orgEmail);
+      return;
+    }
+
+    const docTypeLabel = getSponsorDocTypeLabel(doc.doc_type);
+    const orgDisplay = doc.company_legal_name || doc.company_name || "Partner";
+    const signerName = doc.sponsor_signed_name || "Partner Representative";
+    const signerTitle = doc.sponsor_signed_title || "";
+    const signedAtWib = new Date(doc.sponsor_signed_at || new Date().toISOString()).toLocaleString("en-GB", {
+      timeZone: "Asia/Jakarta",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const publicUrl = `https://gdgjakarta.com/partnership/documents/${encodeURIComponent(doc.token)}`;
+    const subject = `Document Signed: ${docTypeLabel} [${doc.doc_number}] — ${orgDisplay}`;
+
+    const safeDocType = escapeHtml(docTypeLabel);
+    const safeDocNumber = escapeHtml(doc.doc_number);
+    const safeOrg = escapeHtml(orgDisplay);
+    const safeEvent = doc.event_title ? escapeHtml(doc.event_title) : "";
+    const safeSigner = escapeHtml(signerName);
+    const safeSignerTitle = signerTitle ? escapeHtml(signerTitle) : "";
+    const safeSignedAt = escapeHtml(`${signedAtWib} WIB`);
+
+    const htmlBody = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escapeHtml(subject)}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f6f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2937;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f9;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 4px 12px rgba(0,0,0,0.04);">
+          <tr>
+            <td style="padding:28px 32px;background:linear-gradient(135deg,#0f9d58 0%,#0b8043 100%);color:#ffffff;">
+              <div style="font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;opacity:0.9;">GDG Jakarta Partnership</div>
+              <h1 style="margin:8px 0 0 0;font-size:22px;font-weight:700;line-height:1.3;">Partner Signed Document</h1>
+              <p style="margin:4px 0 0 0;font-size:13px;opacity:0.9;">${safeDocType} · ${safeDocNumber}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px;">
+              <p style="margin:0 0 20px 0;font-size:14px;line-height:1.6;color:#374151;">
+                <strong>${safeOrg}</strong> has counter-signed <strong>${safeDocType}</strong> (<code>${safeDocNumber}</code>) online.
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:24px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" style="font-size:13px;line-height:1.8;">
+                      <tr>
+                        <td style="color:#64748b;width:36%;">Document:</td>
+                        <td style="font-weight:600;color:#0f172a;">${safeDocType} (${safeDocNumber})</td>
+                      </tr>
+                      <tr>
+                        <td style="color:#64748b;">Organization:</td>
+                        <td style="font-weight:600;color:#0f172a;">${safeOrg}</td>
+                      </tr>
+                      ${safeEvent ? `<tr><td style="color:#64748b;">Event:</td><td style="font-weight:600;color:#0f172a;">${safeEvent}</td></tr>` : ""}
+                      <tr>
+                        <td style="color:#64748b;">Signed By:</td>
+                        <td style="font-weight:600;color:#0f172a;">${safeSigner}${safeSignerTitle ? ` (${safeSignerTitle})` : ""}</td>
+                      </tr>
+                      <tr>
+                        <td style="color:#64748b;">Signed At:</td>
+                        <td style="font-weight:600;color:#0f172a;">${safeSignedAt}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="${publicUrl}" target="_blank" style="display:inline-block;background-color:#1a73e8;color:#ffffff;font-weight:600;font-size:14px;text-decoration:none;padding:12px 24px;border-radius:8px;">
+                      View Signed Document
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    const sendRes = await sendEmailDirectInternal({
+      first_name: "GDG Jakarta",
+      last_name: "Organizer",
+      email: toValidation.formatted,
+      subjectEmail: subject,
+      bodyEmail: htmlBody,
+    });
+
+    if (!sendRes.success) {
+      console.error("[SponsorDocument] Failed to send organizer signed notification:", sendRes.error);
+    }
+  } catch (err) {
+    console.error("[SponsorDocument] Error sending organizer signed notification:", err);
+  }
+}
+
 /**
  * Public: Counter-sign a Quotation or LOA online via /partnership/documents/[token]
  */
@@ -610,15 +742,20 @@ export async function signSponsorDocumentPublicAction(input: {
       return { success: false, error: "Failed to record signature." };
     }
 
+    const signedDocument: SponsorDocument = {
+      ...existing,
+      ...updates,
+    };
+
+    // Await inside try/catch so Cloudflare Workers doesn't drop the webhook before completion
+    await notifyOrganizerDocumentSigned(signedDocument);
+
     revalidatePath(`/partnership/documents/${cleanToken}`);
     revalidatePath("/dashboard/partnership");
 
     return {
       success: true,
-      document: {
-        ...existing,
-        ...updates,
-      },
+      document: signedDocument,
     };
   } catch (err) {
     return {
@@ -672,14 +809,7 @@ export async function sendSponsorDocumentEmailAction(
     }
     const targetEmail = toValidation.formatted;
 
-    const docTypeLabel =
-      doc.doc_type === "invoice"
-        ? "Official Invoice"
-        : doc.doc_type === "quotation"
-          ? "Sponsorship Quotation"
-          : doc.doc_type === "mou"
-            ? "Partnership Memorandum of Understanding (MOU)"
-            : "Sponsorship Letter of Agreement (LOA)";
+    const docTypeLabel = getSponsorDocTypeLabel(doc.doc_type);
 
     const publicUrl = `https://gdgjakarta.com/partnership/documents/${doc.token}`;
     const formattedTotal =

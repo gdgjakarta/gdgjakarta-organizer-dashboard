@@ -324,20 +324,24 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
                 <table className="text-xs w-full">
                   <tbody>
                     <tr>
-                      <td className="py-0.5 text-zinc-600 w-40">Bank Name</td>
-                      <td className="py-0.5 font-semibold text-zinc-900">: {bankName}</td>
+                      <td className="py-0.5 align-top text-zinc-600 w-40">Bank Name</td>
+                      <td className="py-0.5 pr-1 align-top font-semibold text-zinc-900 w-2">:</td>
+                      <td className="py-0.5 align-top font-semibold text-zinc-900">{bankName}</td>
                     </tr>
                     <tr>
-                      <td className="py-0.5 text-zinc-600">Bank Account Number</td>
-                      <td className="py-0.5 font-mono font-semibold text-zinc-900">: {bankAccountNumber}</td>
+                      <td className="py-0.5 align-top text-zinc-600">Bank Account Number</td>
+                      <td className="py-0.5 pr-1 align-top font-semibold text-zinc-900">:</td>
+                      <td className="py-0.5 align-top font-mono font-semibold text-zinc-900">{bankAccountNumber}</td>
                     </tr>
                     <tr>
-                      <td className="py-0.5 text-zinc-600">Bank Account Name</td>
-                      <td className="py-0.5 font-semibold text-zinc-900">: {bankAccountName}</td>
+                      <td className="py-0.5 align-top text-zinc-600">Bank Account Name</td>
+                      <td className="py-0.5 pr-1 align-top font-semibold text-zinc-900">:</td>
+                      <td className="py-0.5 align-top font-semibold text-zinc-900">{bankAccountName}</td>
                     </tr>
                     <tr>
-                      <td className="py-0.5 text-zinc-600">Swift Code</td>
-                      <td className="py-0.5 font-mono font-semibold text-zinc-900">: {bankSwiftCode}</td>
+                      <td className="py-0.5 align-top text-zinc-600">Swift Code</td>
+                      <td className="py-0.5 pr-1 align-top font-semibold text-zinc-900">:</td>
+                      <td className="py-0.5 align-top font-mono font-semibold text-zinc-900">{bankSwiftCode}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -640,20 +644,24 @@ export function SponsorDocumentPreview({ document: doc, templatesConfig, classNa
               <table className="text-xs ml-2">
                 <tbody>
                   <tr>
-                    <td className="py-0.5 pr-4 font-medium text-zinc-700">Bank Name</td>
-                    <td className="py-0.5 font-semibold text-zinc-900">: {bankName}</td>
+                    <td className="py-0.5 pr-4 align-top font-medium text-zinc-700">Bank Name</td>
+                    <td className="py-0.5 pr-1 align-top font-semibold text-zinc-900">:</td>
+                    <td className="py-0.5 align-top font-semibold text-zinc-900">{bankName}</td>
                   </tr>
                   <tr>
-                    <td className="py-0.5 pr-4 font-medium text-zinc-700">Account Name</td>
-                    <td className="py-0.5 font-semibold text-zinc-900">: {bankAccountName}</td>
+                    <td className="py-0.5 pr-4 align-top font-medium text-zinc-700">Account Name</td>
+                    <td className="py-0.5 pr-1 align-top font-semibold text-zinc-900">:</td>
+                    <td className="py-0.5 align-top font-semibold text-zinc-900">{bankAccountName}</td>
                   </tr>
                   <tr>
-                    <td className="py-0.5 pr-4 font-medium text-zinc-700">Account Number</td>
-                    <td className="py-0.5 font-mono font-semibold text-zinc-900">: {bankAccountNumber}</td>
+                    <td className="py-0.5 pr-4 align-top font-medium text-zinc-700">Account Number</td>
+                    <td className="py-0.5 pr-1 align-top font-semibold text-zinc-900">:</td>
+                    <td className="py-0.5 align-top font-mono font-semibold text-zinc-900">{bankAccountNumber}</td>
                   </tr>
                   <tr>
-                    <td className="py-0.5 pr-4 font-medium text-zinc-700">Swift code</td>
-                    <td className="py-0.5 font-mono font-semibold text-zinc-900">: {bankSwiftCode}</td>
+                    <td className="py-0.5 pr-4 align-top font-medium text-zinc-700">Swift code</td>
+                    <td className="py-0.5 pr-1 align-top font-semibold text-zinc-900">:</td>
+                    <td className="py-0.5 align-top font-mono font-semibold text-zinc-900">{bankSwiftCode}</td>
                   </tr>
                 </tbody>
               </table>
