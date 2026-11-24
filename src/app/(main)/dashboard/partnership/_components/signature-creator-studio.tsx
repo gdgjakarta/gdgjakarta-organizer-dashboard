@@ -265,7 +265,7 @@ export function SignatureCreatorStudio({
   const activeStrokeRef = useRef<DrawStroke | null>(null);
   const [strokeCount, setStrokeCount] = useState(0);
   const [drawInkColor, setDrawInkColor] = useState<string>(INK_COLORS[0].hex);
-  const [drawWidth, setDrawWidth] = useState<number>(3);
+  const [drawWidth, setDrawWidth] = useState<number>(4);
 
   const redrawCanvas = useCallback(() => {
     const canvas = drawCanvasRef.current;
@@ -368,6 +368,7 @@ export function SignatureCreatorStudio({
   const [uploadedSourceKind, setUploadedSourceKind] = useState<"upload" | "template">("upload");
   const [uploadedFileName, setUploadedFileName] = useState<string>("");
   const [removeWhiteBg, setRemoveWhiteBg] = useState(true);
+  const [boldUpload, setBoldUpload] = useState(false);
   const [processedUploadUrl, setProcessedUploadUrl] = useState<string>("");
   const [isLoadingTemplateSig, setIsLoadingTemplateSig] = useState(false);
   const processedUploadCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -418,6 +419,39 @@ export function SignatureCreatorStudio({
         ctx.putImageData(imgData, 0, 0);
       }
 
+      if (boldUpload) {
+        // 3x3 alpha dilation thickens thin scanned strokes by ~1px so signatures read clearly over/beside e-Meterai
+        const srcData = ctx.getImageData(0, 0, w, h);
+        const outData = ctx.createImageData(w, h);
+        const src = srcData.data;
+        const dst = outData.data;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = (y * w + x) * 4;
+            let maxA = src[idx + 3];
+            let bestIdx = idx;
+            for (let dy = -1; dy <= 1; dy++) {
+              const ny = y + dy;
+              if (ny < 0 || ny >= h) continue;
+              for (let dx = -1; dx <= 1; dx++) {
+                const nx = x + dx;
+                if (nx < 0 || nx >= w) continue;
+                const nIdx = (ny * w + nx) * 4;
+                if (src[nIdx + 3] > maxA) {
+                  maxA = src[nIdx + 3];
+                  bestIdx = nIdx;
+                }
+              }
+            }
+            dst[idx] = src[bestIdx];
+            dst[idx + 1] = src[bestIdx + 1];
+            dst[idx + 2] = src[bestIdx + 2];
+            dst[idx + 3] = maxA;
+          }
+        }
+        ctx.putImageData(outData, 0, 0);
+      }
+
       processedUploadCanvasRef.current = canvas;
       setProcessedUploadUrl(canvas.toDataURL("image/png"));
     };
@@ -431,7 +465,7 @@ export function SignatureCreatorStudio({
     return () => {
       cancelled = true;
     };
-  }, [uploadedImageSrc, removeWhiteBg]);
+  }, [uploadedImageSrc, removeWhiteBg, boldUpload]);
 
   const handleUploadImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -774,9 +808,9 @@ export function SignatureCreatorStudio({
             <Slider
               value={[drawWidth]}
               min={1.5}
-              max={5}
+              max={8}
               step={0.5}
-              onValueChange={(vals) => setDrawWidth(vals[0] ?? 3)}
+              onValueChange={(vals) => setDrawWidth(vals[0] ?? 4)}
             />
           </div>
 
@@ -860,6 +894,13 @@ export function SignatureCreatorStudio({
                   Remove white background (transparent PNG)
                 </Label>
                 <Switch id="remove-white-bg" checked={removeWhiteBg} onCheckedChange={setRemoveWhiteBg} />
+              </div>
+
+              <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-2.5 py-1.5">
+                <Label htmlFor="bold-upload-sig" className="text-[11px] font-medium cursor-pointer">
+                  Bold signature strokes (thicker ink)
+                </Label>
+                <Switch id="bold-upload-sig" checked={boldUpload} onCheckedChange={setBoldUpload} />
               </div>
             </div>
           ) : (

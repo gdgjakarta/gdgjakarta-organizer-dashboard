@@ -1,6 +1,45 @@
 export type SignatureInputMode = "initials" | "upload" | "draw" | "template";
 
-export type PdfPlacementKind = "signature" | "initials" | "text_stamp";
+export type PdfPlacementKind = "signature" | "initials" | "text_stamp" | "emeterai";
+
+export type EMeteraiStatus = "none" | "queued" | "processing" | "stamped" | "failed";
+
+export type EMeteraiDocumentType =
+  | "Surat Perjanjian"
+  | "Dokumen Transaksi"
+  | "Surat Keterangan"
+  | "Surat Kuasa"
+  | "Surat Pernyataan"
+  | "Dokumen Lainnya";
+
+export const EMETERAI_DOCUMENT_TYPES: readonly EMeteraiDocumentType[] = [
+  "Surat Perjanjian",
+  "Dokumen Transaksi",
+  "Surat Keterangan",
+  "Surat Kuasa",
+  "Surat Pernyataan",
+  "Dokumen Lainnya",
+] as const;
+
+export const RESMI_EMETERAI_PRICE_IDR = 10500;
+
+export type EMeteraiCorner = "top_left" | "top_right" | "bottom_left" | "bottom_right";
+
+export interface EMeteraiProviderStatus {
+  configured: boolean;
+  provider: "resmi_id";
+  mode: "live" | "test" | "unconfigured";
+  priceIdr: number;
+}
+
+export interface EMeteraiPlacementRect {
+  page: number; // 1-based page number
+  x: number; // PDF points from left
+  y: number; // PDF points from bottom
+  width: number;
+  height: number;
+  corner?: EMeteraiCorner;
+}
 
 export interface PdfPlacement {
   id: string;
@@ -15,6 +54,7 @@ export interface PdfPlacement {
   signerTitle?: string; // for text_stamp
   signedDateText?: string; // for text_stamp
   includeCertBadge?: boolean; // for text_stamp
+  emeteraiCorner?: EMeteraiCorner; // optional quick-snap preset for emeterai
 }
 
 export interface SigningCertificateMetadata {
@@ -77,6 +117,16 @@ export interface PartnerSignedDocument {
   email_status: "not_sent" | "sent" | "failed";
   email_sent_at?: string;
   email_recipient?: string;
+  emeterai_status?: EMeteraiStatus;
+  emeterai_provider?: "resmi_id";
+  emeterai_mode?: "live" | "test";
+  emeterai_request_id?: string;
+  emeterai_serial_number?: string;
+  emeterai_doc_type?: EMeteraiDocumentType;
+  emeterai_price_idr?: number;
+  emeterai_placement?: EMeteraiPlacementRect;
+  emeterai_stamped_at?: string;
+  emeterai_error?: string;
   signed_at: string;
   created_at: string;
   updated_at: string;

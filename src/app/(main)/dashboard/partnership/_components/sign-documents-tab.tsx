@@ -26,11 +26,13 @@ import {
   Mail,
   Pencil,
   PenTool,
+  QrCode,
   RefreshCw,
   Search,
   Send,
   ShieldAlert,
   ShieldCheck,
+  Stamp,
   Trash2,
   Underline,
   UploadCloud,
@@ -73,18 +75,25 @@ import { formatFileSize } from "@/lib/r2/utils";
 import { sanitizeHtml } from "@/lib/utils";
 import {
   deletePartnerSignedDocumentAction,
+  getEMeteraiProviderStatusAction,
   getPartnerSignedDocumentsAction,
   getSigningCertificateStatusAction,
+  retryPartnerEMeteraiStampAction,
   sendPartnerSignedDocumentEmailAction,
+  syncPartnerEMeteraiStatusAction,
   updatePartnerSignedDocumentMetadataAction,
 } from "@/server/partner-signage-actions";
 import { getChapterSponsorsAction } from "@/server/sponsor-actions";
 import { getSponsorDocumentTemplatesConfigAction } from "@/server/sponsor-document-actions";
-import type {
-  PartnerSignedDocument,
-  PdfPlacement,
-  SignatureInputMode,
-  SigningCertificateStatus,
+import {
+  EMETERAI_DOCUMENT_TYPES,
+  type EMeteraiDocumentType,
+  type EMeteraiProviderStatus,
+  type PartnerSignedDocument,
+  type PdfPlacement,
+  RESMI_EMETERAI_PRICE_IDR,
+  type SignatureInputMode,
+  type SigningCertificateStatus,
 } from "@/types/partner-signage";
 import type { FirestoreSponsor } from "@/types/sponsor";
 
@@ -119,6 +128,7 @@ export function SignDocumentsTab({
   availableEvents = [],
 }: SignDocumentsTabProps) {
   const [certStatus, setCertStatus] = useState<SigningCertificateStatus | null>(null);
+  const [emeteraiStatus, setEmeteraiStatus] = useState<EMeteraiProviderStatus | null>(null);
   const [signedDocs, setSignedDocs] = useState<PartnerSignedDocument[]>([]);
   const [sponsors, setSponsors] = useState<FirestoreSponsor[]>([]);
   const [savedTemplateSignatureUrl, setSavedTemplateSignatureUrl] = useState<string>("");
@@ -144,12 +154,16 @@ export function SignDocumentsTab({
   const [signerTitle, setSignerTitle] = useState("GDG Jakarta Organizer");
   const [signingReason, setSigningReason] = useState("Authorized Partnership Approval — GDG Jakarta");
   const [signingLocation, setSigningLocation] = useState("Jakarta, Indonesia");
-  const [includeCertificatePage, setIncludeCertificatePage] = useState(true);
+  const [includeCertificatePage, setIncludeCertificatePage] = useState(false);
 
   // Visual Placements & Assets
   const [placements, setPlacements] = useState<PdfPlacement[]>([]);
   const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(null);
   const [assetsById, setAssetsById] = useState<Record<string, CreatedSignatureAsset>>({});
+  const [emeteraiDocType, setEmeteraiDocType] = useState<EMeteraiDocumentType>("Surat Perjanjian");
+  const [showLiveEMeteraiConfirm, setShowLiveEMeteraiConfirm] = useState(false);
+  const [retryingDocId, setRetryingDocId] = useState<string | null>(null);
+  const pollInFlightRef = useRef(false);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const [maxPdfFitWidth, setMaxPdfFitWidth] = useState<number>(640);
 
@@ -186,8 +200,9 @@ export function SignDocumentsTab({
   const loadInitialData = useCallback(async () => {
     setIsLoadingData(true);
     try {
-      const [certRes, docsRes, sponsorsRes, cfgRes] = await Promise.allSettled([
+      const [certRes, emeteraiRes, docsRes, sponsorsRes, cfgRes] = await Promise.allSettled([
         getSigningCertificateStatusAction(),
+        getEMeteraiProviderStatusAction(),
         getPartnerSignedDocumentsAction(),
         getChapterSponsorsAction(),
         getSponsorDocumentTemplatesConfigAction(),
@@ -195,6 +210,9 @@ export function SignDocumentsTab({
 
       if (certRes.status === "fulfilled" && certRes.value.success && certRes.value.status) {
         setCertStatus(certRes.value.status);
+      }
+      if (emeteraiRes.status === "fulfilled" && emeteraiRes.value.success && emeteraiRes.value.status) {
+        setEmeteraiStatus(emeteraiRes.value.status);
       }
       if (docsRes.status === "fulfilled" && docsRes.value.success && docsRes.value.documents) {
         setSignedDocs(docsRes.value.documents);
@@ -222,6 +240,87 @@ export function SignDocumentsTab({
   useEffect(() => {
     void loadInitialData();
   }, [loadInitialData]);
+
+  const emeteraiPlacement = useMemo(() => placements.find((p) => p.kind === "emeterai") ?? null, [placements]);
+
+  const isEmailBlockedByEMeterai = (doc: PartnerSignedDocument): boolean =>
+    doc.emeterai_status === "queued" || doc.emeterai_status === "processing" || doc.emeterai_status === "failed";
+
+  const isInsufficientBalanceError = (err?: string): boolean =>
+    Boolean(err && /402|insufficient\s+.*balance/i.test(err));
+
+  const applySyncedDocUpdate = useCallback((updated: PartnerSignedDocument) => {
+    setSignedDocs((prev) => {
+      const prevDoc = prev.find((d) => d.id === updated.id);
+      if (prevDoc && prevDoc.emeterai_status !== updated.emeterai_status) {
+        if (updated.emeterai_status === "stamped") {
+          toast.success(`PERURI e-Meterai stamped on "${updated.document_title}"!`, {
+            description: updated.emeterai_serial_number ? `Serial: ${updated.emeterai_serial_number}` : undefined,
+          });
+        } else if (updated.emeterai_status === "failed") {
+          toast.error(`e-Meterai stamping failed on "${updated.document_title}"`, {
+            description: updated.emeterai_error || "You can retry stamping from the history list.",
+          });
+        }
+      }
+      return prev.map((d) => (d.id === updated.id ? updated : d));
+    });
+    setResultDialogDoc((curr) => (curr?.id === updated.id ? updated : curr));
+    setPreviewingDoc((curr) => (curr?.id === updated.id ? updated : curr));
+  }, []);
+
+  const pendingEMeteraiIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const d of signedDocs) {
+      if (d.emeterai_status === "queued" || d.emeterai_status === "processing") {
+        ids.add(d.id);
+      }
+    }
+    if (
+      resultDialogDoc &&
+      (resultDialogDoc.emeterai_status === "queued" || resultDialogDoc.emeterai_status === "processing")
+    ) {
+      ids.add(resultDialogDoc.id);
+    }
+    if (
+      previewingDoc &&
+      (previewingDoc.emeterai_status === "queued" || previewingDoc.emeterai_status === "processing")
+    ) {
+      ids.add(previewingDoc.id);
+    }
+    return Array.from(ids);
+  }, [signedDocs, resultDialogDoc, previewingDoc]);
+
+  const pendingEMeteraiIdsKey = pendingEMeteraiIds.join(",");
+
+  // Auto-poll Resmi.ID status every 3s while any signed document is awaiting PERURI e-Meterai
+  useEffect(() => {
+    if (!pendingEMeteraiIdsKey) return;
+    const ids = pendingEMeteraiIdsKey.split(",").filter(Boolean);
+
+    const pollOnce = async () => {
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
+      try {
+        for (const id of ids) {
+          const res = await syncPartnerEMeteraiStatusAction(id);
+          if (res.success && res.document) {
+            applySyncedDocUpdate(res.document);
+          }
+        }
+      } finally {
+        pollInFlightRef.current = false;
+      }
+    };
+
+    const timer = window.setInterval(() => {
+      void pollOnce();
+    }, 3000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [pendingEMeteraiIdsKey, applySyncedDocUpdate]);
 
   // Compute upper bound for PDF "fit" zoom from the outer workspace width so the PDF column can wrap its content width
   useEffect(() => {
@@ -359,6 +458,72 @@ export function SignDocumentsTab({
     toast.success(`Signer & E-Cert stamp placed on Page ${activePageIndex + 1}`);
   };
 
+  const handleAddEMeterai = () => {
+    if (!pdfFile) {
+      toast.error("Upload a PDF document first.");
+      return;
+    }
+    if (!emeteraiStatus?.configured) {
+      toast.error("Resmi.ID e-Meterai is not configured (RESMI_API_KEY missing).");
+      return;
+    }
+    if (emeteraiPlacement) {
+      setActivePageIndex(emeteraiPlacement.pageIndex);
+      setSelectedPlacementId(emeteraiPlacement.id);
+      toast.info("Only 1 e-Meterai stamp can be placed per PDF.");
+      return;
+    }
+
+    const widthPct = 0.22;
+    const heightPct = 0.085;
+    const newMeterai: PdfPlacement = {
+      id: `plc_emeterai_${Date.now().toString(36)}`,
+      kind: "emeterai",
+      pageIndex: activePageIndex,
+      xPct: 0.74,
+      yPct: 0.875,
+      widthPct,
+      heightPct,
+      emeteraiCorner: "bottom_right",
+    };
+
+    setPlacements((prev) => [...prev, newMeterai]);
+    setSelectedPlacementId(newMeterai.id);
+    toast.success(`e-Meterai placed on Page ${activePageIndex + 1}`, {
+      description: "Drag anywhere or use TL/TR/BL/BR corner snaps.",
+    });
+  };
+
+  const handlePlaceSignatureOnEMeterai = () => {
+    if (!emeteraiPlacement) return;
+    const targetSig = [...placements].reverse().find((p) => p.kind === "signature" || p.kind === "initials");
+    if (!targetSig) {
+      toast.error("Place a signature or initials mark first.");
+      return;
+    }
+
+    const centeredX = emeteraiPlacement.xPct + (emeteraiPlacement.widthPct - targetSig.widthPct) / 2;
+    const nextX = Math.min(Math.max(0, centeredX), 1 - targetSig.widthPct);
+    // Position just above / slightly overlapping the top edge so the PERURI QR remains readable
+    const nextY = Math.max(0, emeteraiPlacement.yPct - targetSig.heightPct * 0.65);
+
+    setActivePageIndex(emeteraiPlacement.pageIndex);
+    setPlacements((prev) =>
+      prev.map((p) =>
+        p.id === targetSig.id
+          ? {
+              ...p,
+              pageIndex: emeteraiPlacement.pageIndex,
+              xPct: nextX,
+              yPct: nextY,
+            }
+          : p,
+      ),
+    );
+    setSelectedPlacementId(targetSig.id);
+    toast.success(`Aligned signature above e-Meterai on Page ${emeteraiPlacement.pageIndex + 1}`);
+  };
+
   const handleUpdatePlacement = (id: string, patch: Partial<PdfPlacement>) => {
     setPlacements((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   };
@@ -370,7 +535,7 @@ export function SignDocumentsTab({
 
   const handleDuplicatePlacement = (id: string) => {
     const source = placements.find((p) => p.id === id);
-    if (!source) return;
+    if (!source || source.kind === "emeterai") return;
     const clone: PdfPlacement = {
       ...source,
       id: `plc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
@@ -383,7 +548,7 @@ export function SignDocumentsTab({
 
   const handleCopyPlacementToAllPages = (id: string) => {
     const source = placements.find((p) => p.id === id);
-    if (!source || pageCount <= 1) return;
+    if (!source || source.kind === "emeterai" || pageCount <= 1) return;
 
     const clones: PdfPlacement[] = [];
     for (let idx = 0; idx < pageCount; idx++) {
@@ -398,7 +563,7 @@ export function SignDocumentsTab({
     toast.success(`Copied placement to all ${pageCount} pages!`);
   };
 
-  const handleSignAndUpload = async () => {
+  const handleSignAndUpload = async (confirmedLiveEMeterai = false) => {
     if (!pdfFile) {
       toast.error("Please upload a PDF document first.");
       return;
@@ -419,7 +584,12 @@ export function SignDocumentsTab({
       toast.error("Place at least one signature, initial, or stamp on the PDF before certifying.");
       return;
     }
+    if (emeteraiPlacement && emeteraiStatus?.mode === "live" && !confirmedLiveEMeterai) {
+      setShowLiveEMeteraiConfirm(true);
+      return;
+    }
 
+    setShowLiveEMeteraiConfirm(false);
     setIsSigningPdf(true);
     try {
       const formData = new FormData();
@@ -460,6 +630,8 @@ export function SignDocumentsTab({
         reason: signingReason.trim() || "Authorized Partnership Approval — GDG Jakarta",
         location: signingLocation.trim() || "Jakarta, Indonesia",
         includeCertificatePage,
+        emeteraiDocumentType: emeteraiPlacement ? emeteraiDocType : undefined,
+        emeteraiCorner: emeteraiPlacement?.emeteraiCorner,
         signatureMethodsUsed: Array.from(methodsUsed),
         placements,
       };
@@ -495,15 +667,42 @@ export function SignDocumentsTab({
       setSelectedPlacementId(null);
       setAssetsById({});
 
-      toast.success(
-        editingDoc
-          ? "Document updated, re-signed & uploaded to bucket!"
-          : "PDF signed, certified & uploaded to bucket!",
-      );
+      if (json.document.emeterai_status === "queued" || json.document.emeterai_status === "processing") {
+        toast.info("PDF signed! Stamping official PERURI e-Meterai...", {
+          description: "Resmi.ID is processing the stamp. Email Partner unlocks automatically once stamped.",
+        });
+      } else if (json.document.emeterai_status === "failed") {
+        toast.warning("PDF signed, but e-Meterai submission failed", {
+          description: json.document.emeterai_error || "Click Retry Stamp in the history list.",
+        });
+      } else {
+        toast.success(
+          editingDoc
+            ? "Document updated, re-signed & uploaded to bucket!"
+            : "PDF signed, certified & uploaded to bucket!",
+        );
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to sign and upload PDF.");
     } finally {
       setIsSigningPdf(false);
+    }
+  };
+
+  const handleRetryEMeterai = async (doc: PartnerSignedDocument) => {
+    setRetryingDocId(doc.id);
+    try {
+      const res = await retryPartnerEMeteraiStampAction(doc.id);
+      if (res.document) {
+        applySyncedDocUpdate(res.document);
+      }
+      if (res.success) {
+        toast.info("e-Meterai stamp request resubmitted to Resmi.ID.");
+      } else {
+        toast.error(res.error || "Failed to retry e-Meterai stamping.");
+      }
+    } finally {
+      setRetryingDocId(null);
     }
   };
 
@@ -727,6 +926,91 @@ export function SignDocumentsTab({
             ) : (
               <Skeleton className="h-[22px] w-36 rounded-full" />
             )}
+
+            {emeteraiStatus ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button type="button" className="cursor-pointer focus:outline-hidden">
+                    {emeteraiStatus.mode === "live" ? (
+                      <Badge
+                        variant="outline"
+                        className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px]"
+                      >
+                        <Stamp className="h-3.5 w-3.5" />
+                        e-Meterai Live (Rp{RESMI_EMETERAI_PRICE_IDR.toLocaleString("id-ID")})
+                      </Badge>
+                    ) : emeteraiStatus.mode === "test" ? (
+                      <Badge
+                        variant="outline"
+                        className="gap-1 border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300 text-[11px]"
+                      >
+                        <Stamp className="h-3.5 w-3.5" />
+                        e-Meterai Sandbox
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="gap-1 border-muted-foreground/30 bg-muted/50 text-muted-foreground text-[11px]"
+                      >
+                        <Stamp className="h-3.5 w-3.5" />
+                        e-Meterai Not Configured
+                      </Badge>
+                    )}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-80 text-xs space-y-2">
+                  <PopoverHeader>
+                    <PopoverTitle className="flex items-center gap-1.5 text-sm font-semibold">
+                      <Stamp className="h-4 w-4 text-emerald-600" />
+                      Resmi.ID PERURI e-Meterai
+                    </PopoverTitle>
+                  </PopoverHeader>
+                  {emeteraiStatus.configured ? (
+                    <div className="space-y-1.5 text-[11px] text-muted-foreground">
+                      <p>
+                        Gateway:{" "}
+                        <strong className="text-foreground">
+                          {emeteraiStatus.mode === "live" ? "Production (Live)" : "Sandbox Test Mode"}
+                        </strong>
+                      </p>
+                      <p>
+                        {emeteraiStatus.mode === "live"
+                          ? `Stamping an optional e-Meterai box deducts Rp${emeteraiStatus.priceIdr.toLocaleString("id-ID")} from your Resmi.ID balance.`
+                          : "Test keys (dk_test_) simulate PERURI e-Meterai stamping with zero balance charges."}
+                      </p>
+                      <p>
+                        Webhook URL: <code className="text-[10px]">/api/webhooks/resmi-emeterai</code>
+                      </p>
+                      <Button asChild variant="outline" size="sm" className="mt-1 w-full h-7 text-[11px] gap-1.5">
+                        <a href="https://docs.resmi.id/dashboard" target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-3 w-3" />
+                          Open Resmi.ID Dashboard
+                        </a>
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 text-[11px] text-muted-foreground">
+                      <p>
+                        Optional PERURI e-Meterai stamping via Resmi.ID is disabled because <code>RESMI_API_KEY</code>{" "}
+                        is not set.
+                      </p>
+                      <p>
+                        Run <code className="rounded bg-muted px-1 py-0.5">wrangler secret put RESMI_API_KEY</code> with
+                        a <code>dk_test_</code> or <code>dk_live_</code> key to enable it.
+                      </p>
+                      <Button asChild variant="outline" size="sm" className="w-full h-7 text-[11px] gap-1.5">
+                        <a href="https://docs.resmi.id/dashboard" target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-3 w-3" />
+                          Open Resmi.ID Dashboard
+                        </a>
+                      </Button>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <Skeleton className="h-[22px] w-32 rounded-full" />
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
             Upload a partner PDF, place typed initials, drawn, or uploaded signatures across pages, protect with an
@@ -754,11 +1038,7 @@ export function SignDocumentsTab({
           >
             <History className="h-3.5 w-3.5" />
             History
-            {isLoadingData ? (
-              <Skeleton className="h-3.5 w-6 rounded-sm" />
-            ) : (
-              <span>({signedDocs.length})</span>
-            )}
+            {isLoadingData ? <Skeleton className="h-3.5 w-6 rounded-sm" /> : <span>({signedDocs.length})</span>}
           </Button>
         </div>
       </div>
@@ -1130,11 +1410,119 @@ export function SignDocumentsTab({
                   disabled={!pdfFile || isSigningPdf}
                 />
 
+                {/* Optional Official PERURI e-Meterai Section */}
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <QrCode className="h-3.5 w-3.5 text-emerald-600" />
+                      <span className="text-xs font-semibold text-foreground">Official e-Meterai (Resmi.ID)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {emeteraiStatus?.configured && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] border-emerald-500/30 text-emerald-700 dark:text-emerald-300"
+                        >
+                          {emeteraiStatus.mode === "live"
+                            ? `Rp${emeteraiStatus.priceIdr.toLocaleString("id-ID")}`
+                            : "Sandbox Free"}
+                        </Badge>
+                      )}
+                      <Button asChild variant="ghost" size="sm" className="h-6 px-1.5 text-[10px] gap-1">
+                        <a
+                          href="https://docs.resmi.id/dashboard"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Open Resmi.ID Dashboard (Balance & API Logs)"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Dashboard
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+
+                  {!emeteraiPlacement ? (
+                    <div className="space-y-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!pdfFile || isSigningPdf || !emeteraiStatus?.configured}
+                        onClick={handleAddEMeterai}
+                        className="w-full h-8 text-xs gap-1.5 border-emerald-500/40 hover:bg-emerald-500/10"
+                      >
+                        <Stamp className="h-3.5 w-3.5 text-emerald-600" />
+                        Add e-Meterai (Rp10.000)
+                      </Button>
+                      {!emeteraiStatus?.configured && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Set <code className="text-[10px]">RESMI_API_KEY</code> via{" "}
+                          <code className="text-[10px]">wrangler secret put RESMI_API_KEY</code> to enable.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-2 text-[11px]">
+                        <span className="font-medium text-emerald-700 dark:text-emerald-300">
+                          1 e-Meterai placed on Page {emeteraiPlacement.pageIndex + 1}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeletePlacement(emeteraiPlacement.id)}
+                          className="h-6 px-2 text-[11px] text-destructive hover:text-destructive"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-[11px]">PERURI Document Type</Label>
+                        <Select
+                          value={emeteraiDocType}
+                          onValueChange={(v) => setEmeteraiDocType(v as EMeteraiDocumentType)}
+                        >
+                          <SelectTrigger className="h-8 text-xs bg-background">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {EMETERAI_DOCUMENT_TYPES.map((dt) => (
+                              <SelectItem key={dt} value={dt}>
+                                {dt}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {placements.some((p) => p.kind === "signature" || p.kind === "initials") && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handlePlaceSignatureOnEMeterai}
+                          className="w-full h-7 text-[11px] gap-1.5 border-emerald-500/40 bg-background hover:bg-emerald-500/10"
+                        >
+                          <PenTool className="h-3 w-3 text-emerald-600" />
+                          Place Signature Above e-Meterai
+                        </Button>
+                      )}
+
+                      <p className="text-[10px] text-muted-foreground leading-snug">
+                        Tip: Keep the e-Meterai QR code uncovered so PERURI verification scanners can read it.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 <div className="pt-2 border-t border-border">
                   <Button
                     type="button"
                     disabled={!pdfFile || placements.length === 0 || isSigningPdf}
-                    onClick={() => void handleSignAndUpload()}
+                    onClick={() => void handleSignAndUpload(false)}
                     className="w-full h-9 text-xs font-semibold gap-1.5"
                   >
                     {isSigningPdf ? (
@@ -1164,11 +1552,7 @@ export function SignDocumentsTab({
               <CardTitle className="flex items-center gap-2 text-base">
                 <FileCheck2 className="h-4 w-4 text-primary" />
                 Signed Partner Documents
-                {isLoadingData ? (
-                  <Skeleton className="h-4 w-8 rounded-sm" />
-                ) : (
-                  <span>({signedDocs.length})</span>
-                )}
+                {isLoadingData ? <Skeleton className="h-4 w-8 rounded-sm" /> : <span>({signedDocs.length})</span>}
               </CardTitle>
               <CardDescription className="text-xs">
                 All certified PDFs stored in Cloudflare R2 (`assets.gdgjakarta.org`) with verification links.
@@ -1285,22 +1669,84 @@ export function SignDocumentsTab({
                           </div>
                         </TableCell>
                         <TableCell>
-                          {doc.ecert_status === "signed_p12" ? (
-                            <Badge
-                              variant="outline"
-                              className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px]"
-                            >
-                              <ShieldCheck className="h-3 w-3" />
-                              X.509 Certified
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px]"
-                            >
-                              SHA-256 Sealed
-                            </Badge>
-                          )}
+                          <div className="flex flex-col items-start gap-1">
+                            {doc.ecert_status === "signed_p12" ? (
+                              <Badge
+                                variant="outline"
+                                className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px]"
+                              >
+                                <ShieldCheck className="h-3 w-3" />
+                                X.509 Certified
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px]"
+                              >
+                                SHA-256 Sealed
+                              </Badge>
+                            )}
+
+                            {doc.emeterai_status === "stamped" && (
+                              <Badge
+                                variant="outline"
+                                title={
+                                  doc.emeterai_serial_number
+                                    ? `Serial: ${doc.emeterai_serial_number}`
+                                    : "PERURI e-Meterai Stamped"
+                                }
+                                className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px]"
+                              >
+                                <Stamp className="h-3 w-3" />
+                                e-Meterai Stamped
+                              </Badge>
+                            )}
+                            {(doc.emeterai_status === "queued" || doc.emeterai_status === "processing") && (
+                              <Badge
+                                variant="outline"
+                                className="gap-1 border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300 text-[10px]"
+                              >
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Stamping e-Meterai...
+                              </Badge>
+                            )}
+                            {doc.emeterai_status === "failed" && (
+                              <div className="flex flex-wrap items-center gap-1">
+                                <Badge
+                                  variant="outline"
+                                  title={doc.emeterai_error || "PERURI stamping failed"}
+                                  className="gap-1 border-destructive/30 bg-destructive/10 text-destructive text-[10px]"
+                                >
+                                  e-Meterai Failed
+                                </Badge>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={retryingDocId === doc.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleRetryEMeterai(doc);
+                                  }}
+                                  className="h-5 px-1.5 text-[10px]"
+                                >
+                                  {retryingDocId === doc.id ? "..." : "Retry"}
+                                </Button>
+                                {isInsufficientBalanceError(doc.emeterai_error) && (
+                                  <Button asChild variant="outline" size="sm" className="h-5 px-1.5 text-[10px]">
+                                    <a
+                                      href="https://docs.resmi.id/dashboard"
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      Top up in Resmi.ID Dashboard
+                                    </a>
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           {doc.email_status === "sent" ? (
@@ -1390,12 +1836,17 @@ export function SignDocumentsTab({
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="size-7 text-primary hover:text-primary"
+                              disabled={isEmailBlockedByEMeterai(doc)}
+                              className="size-7 text-primary hover:text-primary disabled:opacity-40"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 openSendEmailModal(doc);
                               }}
-                              title="Send Signed PDF URL to Partner via Email"
+                              title={
+                                isEmailBlockedByEMeterai(doc)
+                                  ? "Email locked while e-Meterai stamping is pending or failed"
+                                  : "Send Signed PDF URL to Partner via Email"
+                              }
                             >
                               <Mail className="h-3.5 w-3.5" />
                             </Button>
@@ -1445,6 +1896,32 @@ export function SignDocumentsTab({
                   className="gap-1 border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px]"
                 >
                   SHA-256 Sealed
+                </Badge>
+              )}
+              {previewingDoc?.emeterai_status === "stamped" && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px]"
+                >
+                  <Stamp className="h-3 w-3" />
+                  PERURI e-Meterai
+                </Badge>
+              )}
+              {(previewingDoc?.emeterai_status === "queued" || previewingDoc?.emeterai_status === "processing") && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300 text-[11px]"
+                >
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Stamping e-Meterai...
+                </Badge>
+              )}
+              {previewingDoc?.emeterai_status === "failed" && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-destructive/30 bg-destructive/10 text-destructive text-[11px]"
+                >
+                  e-Meterai Failed
                 </Badge>
               )}
             </DialogTitle>
@@ -1525,11 +2002,42 @@ export function SignDocumentsTab({
                     <Pencil className="h-3.5 w-3.5" />
                     Edit &amp; Replace
                   </Button>
+                  {previewingDoc.emeterai_status === "failed" && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={retryingDocId === previewingDoc.id}
+                        className="gap-1.5 text-xs border-destructive/40 text-destructive hover:text-destructive"
+                        onClick={() => void handleRetryEMeterai(previewingDoc)}
+                      >
+                        <RefreshCw
+                          className={`h-3.5 w-3.5 ${retryingDocId === previewingDoc.id ? "animate-spin" : ""}`}
+                        />
+                        Retry Stamp
+                      </Button>
+                      {isInsufficientBalanceError(previewingDoc.emeterai_error) && (
+                        <Button asChild variant="outline" size="sm" className="gap-1.5 text-xs">
+                          <a href="https://docs.resmi.id/dashboard" target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Top up in Resmi.ID Dashboard
+                          </a>
+                        </Button>
+                      )}
+                    </>
+                  )}
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
+                    disabled={isEmailBlockedByEMeterai(previewingDoc)}
                     className="gap-1.5 text-xs"
+                    title={
+                      isEmailBlockedByEMeterai(previewingDoc)
+                        ? "Email locked while e-Meterai stamping is pending or failed"
+                        : "Send signed PDF via email"
+                    }
                     onClick={() => {
                       const target = previewingDoc;
                       setPreviewingDoc(null);
@@ -1623,7 +2131,60 @@ export function SignDocumentsTab({
                   <span className="text-muted-foreground">Signed SHA-256:</span>
                   <span className="font-mono text-[11px]">{resultDialogDoc.signed_sha256.slice(0, 20)}...</span>
                 </div>
+                {resultDialogDoc.emeterai_status && resultDialogDoc.emeterai_status !== "none" && (
+                  <div className="flex justify-between gap-2 pt-1 border-t border-border/60">
+                    <span className="text-muted-foreground">PERURI e-Meterai:</span>
+                    <span className="font-medium text-right">
+                      {resultDialogDoc.emeterai_status === "stamped"
+                        ? `Stamped${resultDialogDoc.emeterai_serial_number ? ` (${resultDialogDoc.emeterai_serial_number})` : ""}`
+                        : resultDialogDoc.emeterai_status === "failed"
+                          ? `Failed: ${resultDialogDoc.emeterai_error || "Resmi.ID error"}`
+                          : "Processing via Resmi.ID..."}
+                    </span>
+                  </div>
+                )}
               </div>
+
+              {(resultDialogDoc.emeterai_status === "queued" || resultDialogDoc.emeterai_status === "processing") && (
+                <Alert className="border-sky-500/40 bg-sky-500/5 py-2.5">
+                  <Loader2 className="h-4 w-4 animate-spin text-sky-600" />
+                  <AlertTitle className="text-xs font-semibold">Stamping Official PERURI e-Meterai...</AlertTitle>
+                  <AlertDescription className="text-[11px]">
+                    Email Partner unlocks automatically as soon as Resmi.ID finishes stamping and updates the bucket
+                    PDF.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {resultDialogDoc.emeterai_status === "failed" && (
+                <Alert className="border-destructive/40 bg-destructive/5 py-2.5">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                  <AlertTitle className="text-xs font-semibold text-destructive">e-Meterai Stamping Failed</AlertTitle>
+                  <AlertDescription className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <span>{resultDialogDoc.emeterai_error || "PERURI gateway returned an error."}</span>
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                      {isInsufficientBalanceError(resultDialogDoc.emeterai_error) && (
+                        <Button asChild variant="outline" size="sm" className="h-6 px-2 text-[11px] gap-1">
+                          <a href="https://docs.resmi.id/dashboard" target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3 w-3" />
+                            Top up in Resmi.ID Dashboard
+                          </a>
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={retryingDocId === resultDialogDoc.id}
+                        onClick={() => void handleRetryEMeterai(resultDialogDoc)}
+                        className="h-6 px-2 text-[11px] shrink-0"
+                      >
+                        {retryingDocId === resultDialogDoc.id ? "Retrying..." : "Retry Stamp"}
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
           )}
 
@@ -1634,6 +2195,7 @@ export function SignDocumentsTab({
             {resultDialogDoc && (
               <Button
                 type="button"
+                disabled={isEmailBlockedByEMeterai(resultDialogDoc)}
                 onClick={() => {
                   const target = resultDialogDoc;
                   setResultDialogDoc(null);
@@ -1883,6 +2445,33 @@ export function SignDocumentsTab({
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isDeleting ? "Deleting..." : "Delete Permanently"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── LIVE E-METERAI COST CONFIRMATION DIALOG ── */}
+      <AlertDialog open={showLiveEMeteraiConfirm} onOpenChange={setShowLiveEMeteraiConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Stamp className="h-4 w-4 text-emerald-600" />
+              Confirm Live PERURI e-Meterai Stamp
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              You placed an e-Meterai box ({emeteraiDocType}) with Resmi.ID in <strong>Live Mode</strong>. Continuing
+              will stamp 1 official PERURI e-Meterai and deduct{" "}
+              <strong>Rp{RESMI_EMETERAI_PRICE_IDR.toLocaleString("id-ID")}</strong> from your Resmi.ID balance.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSigningPdf}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isSigningPdf}
+              onClick={() => void handleSignAndUpload(true)}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              Confirm &amp; Stamp (Rp{RESMI_EMETERAI_PRICE_IDR.toLocaleString("id-ID")})
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

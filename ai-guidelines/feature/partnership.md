@@ -29,11 +29,14 @@ The Partnership & Sponsorship feature enables organizers to manage both chapter-
   - `src/server/sponsor-confirmation-actions.ts`
   - `src/server/sponsor-document-actions.ts`
   - `src/server/partner-signage-actions.ts`
+  - `src/server/emeterai-finalizer.ts`
   - `src/server/public-proposal-actions.ts`
   - `src/lib/pdf/coordinate-transform.ts`
   - `src/lib/pdf/sign-pdf.ts`
+  - `src/lib/pdf/resmi-emeterai.ts`
   - `src/app/api/events/upload-sponsor-logo/route.ts`
   - `src/app/api/partnership/sign-pdf/route.ts`
+  - `src/app/api/webhooks/resmi-emeterai/route.ts`
 
 ## Architectural Invariants
 1. **Poster Logo Upload & Sanitization**:
@@ -50,3 +53,8 @@ The Partnership & Sponsorship feature enables organizers to manage both chapter-
    - Executive Organizers can upload partner-provided PDFs (`<= 15 MB`), render pages locally via `pdfjs-dist` (`/pdf.worker.min.mjs`), create transparent PNG signatures (**Initials / Typed Name**, **Freehand Draw**, or **Upload / Saved Organizer Signature** fetched via same-origin `/api/media/`), drag & resize placements across pages (`mapViewportRectToPdf` handles `0°/90°/180°/270°` rotation and `CropBox` offsets), and optionally append an A4 Certificate of Completion & QR audit trail page.
    - Server-side `signPartnerPdfBuffer` (`src/lib/pdf/sign-pdf.ts`) embeds PNGs/stamps with `pdf-lib`, saves with `useObjectStreams: false`, and embeds an `adbe.pkcs7.detached` X.509 signature via `@signpdf/signpdf` + `@signpdf/signer-p12` using Worker secrets (`PDF_SIGNING_P12_BASE64`, `PDF_SIGNING_P12_PASSPHRASE`), with automatic `hash_only` SHA-256 fallback when `.p12` secrets are absent.
    - Finalized signed PDFs are uploaded only under `community-dashboard/partnership/signed-documents/<slug>-signed-<16-hex>.pdf` in Cloudflare R2 (`https://assets.gdgjakarta.org`), recorded in `partner_signed_documents/psgn_<token>`, shareable by bucket URL / n8n email, and locally verifiable bit-for-bit via Web Crypto SHA-256 at `/partnership/signed-documents/[token]`.
+5. **Official PERURI e-Meterai via Resmi.ID (`Sign Partner PDFs`)**:
+   - Configured via Cloudflare Worker secrets `RESMI_API_KEY` (`dk_test_` sandbox or `dk_live_` production) and `RESMI_WEBHOOK_SECRET` (optional `RESMI_API_BASE_URL`).
+   - Organizers can place at most 1 draggable e-Meterai box per PDF (fixed aspect ratio with `TL`/`TR`/`BL`/`BR` corner snaps) and choose the PERURI `document_type` (default `Surat Perjanjian`); Live mode requires a Rp10.500 confirmation modal before submission.
+   - `signPartnerPdfBuffer` extracts PDF-space coordinates without drawing onto the PDF, then `/api/partnership/sign-pdf` submits asynchronously to Resmi.ID after P12 signing and R2 upload.
+   - `POST /api/webhooks/resmi-emeterai` stages stamped PDFs and JSON manifests under `community-dashboard/partnership/emeterai-staging/` in R2 (keeping `partner_signed_documents` rules strictly `hasTeamAccess()`). Organizer 3s auto-polling (`syncPartnerEMeteraiStatusAction` / `finalizeEMeteraiDocument`) and public verification reads (`getPublicPartnerSignedDocumentByTokenAction`) finalize/surface the stamped PDF and 22-digit PERURI serial number, blocking partner email dispatch until stamping succeeds (with 1-click **Retry Stamp** on failure).

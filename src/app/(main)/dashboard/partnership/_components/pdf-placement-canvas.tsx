@@ -3,11 +3,11 @@
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ChevronLeft, ChevronRight, Copy, Layers, Loader2, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Layers, Loader2, QrCode, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { PdfPlacement } from "@/types/partner-signage";
+import type { EMeteraiCorner, PdfPlacement } from "@/types/partner-signage";
 
 import type { CreatedSignatureAsset } from "./signature-creator-studio";
 
@@ -266,6 +266,12 @@ export function PdfPlacementCanvas({
     target.setPointerCapture(e.pointerId);
 
     const asset = placement.assetId ? assetsById[placement.assetId] : undefined;
+    const emeteraiAspect =
+      placement.kind === "emeterai"
+        ? (placement.widthPct * Math.max(1, viewportSize.width)) /
+          Math.max(1, placement.heightPct * viewportSize.height)
+        : undefined;
+
     dragSessionRef.current = {
       mode,
       placementId: placement.id,
@@ -277,7 +283,12 @@ export function PdfPlacementCanvas({
       startH: placement.heightPct,
       boxWidthPx: Math.max(1, viewportSize.width),
       boxHeightPx: Math.max(1, viewportSize.height),
-      aspectRatio: placement.kind === "text_stamp" ? undefined : asset?.aspectRatio,
+      aspectRatio:
+        placement.kind === "text_stamp"
+          ? undefined
+          : placement.kind === "emeterai"
+            ? emeteraiAspect
+            : asset?.aspectRatio,
     };
   };
 
@@ -294,6 +305,7 @@ export function PdfPlacementCanvas({
       onUpdatePlacement(session.placementId, {
         xPct: nextX,
         yPct: nextY,
+        emeteraiCorner: undefined,
       });
     } else {
       const minW = 0.06;
@@ -317,6 +329,7 @@ export function PdfPlacementCanvas({
       onUpdatePlacement(session.placementId, {
         widthPct: nextW,
         heightPct: nextH,
+        emeteraiCorner: undefined,
       });
     }
   };
@@ -339,17 +352,37 @@ export function PdfPlacementCanvas({
     const step = e.shiftKey ? 0.02 : 0.005;
     if (e.key === "ArrowLeft") {
       e.preventDefault();
-      onUpdatePlacement(placement.id, { xPct: Math.max(0, placement.xPct - step) });
+      onUpdatePlacement(placement.id, { xPct: Math.max(0, placement.xPct - step), emeteraiCorner: undefined });
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      onUpdatePlacement(placement.id, { xPct: Math.min(1 - placement.widthPct, placement.xPct + step) });
+      onUpdatePlacement(placement.id, {
+        xPct: Math.min(1 - placement.widthPct, placement.xPct + step),
+        emeteraiCorner: undefined,
+      });
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      onUpdatePlacement(placement.id, { yPct: Math.max(0, placement.yPct - step) });
+      onUpdatePlacement(placement.id, { yPct: Math.max(0, placement.yPct - step), emeteraiCorner: undefined });
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      onUpdatePlacement(placement.id, { yPct: Math.min(1 - placement.heightPct, placement.yPct + step) });
+      onUpdatePlacement(placement.id, {
+        yPct: Math.min(1 - placement.heightPct, placement.yPct + step),
+        emeteraiCorner: undefined,
+      });
     }
+  };
+
+  const snapEMeteraiCorner = (placement: PdfPlacement, corner: EMeteraiCorner) => {
+    const margin = 0.04;
+    const coords: Record<EMeteraiCorner, { xPct: number; yPct: number }> = {
+      top_left: { xPct: margin, yPct: margin },
+      top_right: { xPct: Math.max(0, 1 - margin - placement.widthPct), yPct: margin },
+      bottom_left: { xPct: margin, yPct: Math.max(0, 1 - margin - placement.heightPct) },
+      bottom_right: {
+        xPct: Math.max(0, 1 - margin - placement.widthPct),
+        yPct: Math.max(0, 1 - margin - placement.heightPct),
+      },
+    };
+    onUpdatePlacement(placement.id, { ...coords[corner], emeteraiCorner: corner });
   };
 
   const zoomOut = () => {
@@ -485,7 +518,9 @@ export function PdfPlacementCanvas({
                     className={`pointer-events-auto group absolute select-none rounded transition-shadow ${
                       isSelected
                         ? "ring-2 ring-primary bg-primary/5 shadow-sm z-20"
-                        : "ring-1 ring-primary/50 hover:ring-primary bg-primary/2 z-10"
+                        : placement.kind === "emeterai"
+                          ? "ring-1 ring-emerald-500/60 hover:ring-emerald-600 bg-emerald-500/5 z-[5]"
+                          : "ring-1 ring-primary/50 hover:ring-primary bg-primary/2 z-10"
                     }`}
                   >
                     <button
@@ -509,7 +544,22 @@ export function PdfPlacementCanvas({
                       onPointerCancel={handlePointerEndOverlay}
                       className="block h-full w-full touch-none cursor-grab active:cursor-grabbing rounded focus:outline-hidden"
                     >
-                      {placement.kind === "text_stamp" ? (
+                      {placement.kind === "emeterai" ? (
+                        <div className="flex h-full w-full items-center justify-between gap-2 overflow-hidden rounded border-2 border-dashed border-emerald-600 bg-emerald-50/95 px-2 py-1 text-left shadow-2xs">
+                          <div className="flex min-w-0 flex-1 flex-col justify-center">
+                            <span className="truncate text-[8px] font-bold uppercase tracking-wide text-emerald-700">
+                              PERURI Official Stamp
+                            </span>
+                            <span className="truncate text-[10px] font-bold text-emerald-950">e-Meterai Rp10.000</span>
+                            <span className="truncate text-[8px] text-emerald-700/80">
+                              {placement.emeteraiCorner
+                                ? `Preset: ${placement.emeteraiCorner.replace("_", " ")}`
+                                : "Resmi.ID Position"}
+                            </span>
+                          </div>
+                          <QrCode className="h-6 w-6 shrink-0 text-emerald-700" />
+                        </div>
+                      ) : placement.kind === "text_stamp" ? (
                         <div className="flex h-full w-full items-center justify-between gap-2 overflow-hidden rounded border border-blue-200 bg-sky-50/95 pl-2 pr-2 py-1 text-left shadow-2xs border-l-4 border-l-blue-600">
                           <div className="flex min-w-0 flex-1 flex-col justify-center">
                             {placement.includeCertBadge !== false && (
@@ -556,29 +606,56 @@ export function PdfPlacementCanvas({
                           showToolbarBelow ? "top-full mt-1.5" : "-top-8"
                         }`}
                       >
-                        {pageCount > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-1.5 text-[10px] gap-1"
-                            title="Copy this placement to all pages"
-                            onClick={() => onCopyPlacementToAllPages(placement.id)}
-                          >
-                            <Layers className="h-3 w-3 text-primary" />
-                            All Pages
-                          </Button>
+                        {placement.kind === "emeterai" ? (
+                          <>
+                            {(
+                              [
+                                { corner: "top_left", label: "TL", title: "Snap to Top Left" },
+                                { corner: "top_right", label: "TR", title: "Snap to Top Right" },
+                                { corner: "bottom_left", label: "BL", title: "Snap to Bottom Left" },
+                                { corner: "bottom_right", label: "BR", title: "Snap to Bottom Right" },
+                              ] as const
+                            ).map((preset) => (
+                              <Button
+                                key={preset.corner}
+                                type="button"
+                                variant={placement.emeteraiCorner === preset.corner ? "secondary" : "ghost"}
+                                size="sm"
+                                className="h-6 px-1.5 text-[10px] font-medium"
+                                title={preset.title}
+                                onClick={() => snapEMeteraiCorner(placement, preset.corner)}
+                              >
+                                {preset.label}
+                              </Button>
+                            ))}
+                          </>
+                        ) : (
+                          <>
+                            {pageCount > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1.5 text-[10px] gap-1"
+                                title="Copy this placement to all pages"
+                                onClick={() => onCopyPlacementToAllPages(placement.id)}
+                              >
+                                <Layers className="h-3 w-3 text-primary" />
+                                All Pages
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-6"
+                              title="Duplicate on this page"
+                              onClick={() => onDuplicatePlacement(placement.id)}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </>
                         )}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-6"
-                          title="Duplicate on this page"
-                          onClick={() => onDuplicatePlacement(placement.id)}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
                         <Button
                           type="button"
                           variant="ghost"

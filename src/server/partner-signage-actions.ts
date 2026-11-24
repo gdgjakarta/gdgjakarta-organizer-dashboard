@@ -2,18 +2,21 @@
 
 import { revalidatePath } from "next/cache";
 
+import { validateEmailRecipients } from "@/lib/email-recipients";
+import { getResmiEMeteraiInfo, inspectResmiEMeteraiStatus, submitResmiEMeteraiStamp } from "@/lib/pdf/resmi-emeterai";
 import { inspectConfiguredCertificate } from "@/lib/pdf/sign-pdf";
-import { deleteMediaObject } from "@/lib/r2/client";
+import { deleteMediaObject, getMediaBucket } from "@/lib/r2/client";
 import { extractApiMessage } from "@/lib/utils";
 import type {
+  EMeteraiProviderStatus,
   PartnerSignedDocument,
   PartnerSignedDocumentStatus,
   SigningCertificateStatus,
 } from "@/types/partner-signage";
 
 import { isAuthorizedExecutiveOrganizerSession } from "./auth-guard";
-import { validateEmailRecipients } from "@/lib/email-recipients";
 import { sendEmailDirectInternal } from "./email-template-actions";
+import { finalizeEMeteraiDocument, readStagedEMeteraiManifest } from "./emeterai-finalizer";
 import { deleteFirestoreDoc, getFirestoreDoc, patchFirestoreDoc, queryFirestoreDocs } from "./firestore-admin";
 
 function escapeHtml(input: string): string {
@@ -45,6 +48,166 @@ export async function getSigningCertificateStatusAction(): Promise<{
     return {
       success: false,
       error: extractApiMessage(err, "Failed to inspect e-certificate status."),
+    };
+  }
+}
+
+/**
+ * Organizer: Inspects Resmi.ID e-Meterai configuration status (live / test / unconfigured) without exposing keys.
+ */
+export async function getEMeteraiProviderStatusAction(): Promise<{
+  success: boolean;
+  status?: EMeteraiProviderStatus;
+  error?: string;
+}> {
+  try {
+    if (!(await isAuthorizedExecutiveOrganizerSession())) {
+      return { success: false, error: "Unauthorized." };
+    }
+    const status = inspectResmiEMeteraiStatus();
+    if (status.configured) {
+      const info = await getResmiEMeteraiInfo();
+      status.priceIdr = info.priceIdr;
+    }
+    return {
+      success: true,
+      status,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: extractApiMessage(err, "Failed to inspect Resmi.ID e-Meterai status."),
+    };
+  }
+}
+
+/**
+ * Organizer: Polls Resmi.ID (or staged R2 manifest) for a document's e-Meterai status and finalizes into R2 when ready.
+ */
+export async function syncPartnerEMeteraiStatusAction(docId: string): Promise<{
+  success: boolean;
+  document?: PartnerSignedDocument;
+  error?: string;
+}> {
+  try {
+    if (!(await isAuthorizedExecutiveOrganizerSession())) {
+      return { success: false, error: "Unauthorized." };
+    }
+
+    const res = await finalizeEMeteraiDocument(docId);
+    if (!res.ok) {
+      return { success: false, document: res.document, error: res.error };
+    }
+    return { success: true, document: res.document };
+  } catch (err) {
+    return {
+      success: false,
+      error: extractApiMessage(err, "Failed to sync e-Meterai status."),
+    };
+  }
+}
+
+/**
+ * Organizer: Retries Resmi.ID e-Meterai stamping for a failed document using the saved pre-stamped PDF in R2.
+ */
+export async function retryPartnerEMeteraiStampAction(docId: string): Promise<{
+  success: boolean;
+  document?: PartnerSignedDocument;
+  error?: string;
+}> {
+  try {
+    if (!(await isAuthorizedExecutiveOrganizerSession())) {
+      return { success: false, error: "Unauthorized." };
+    }
+
+    const cleanId = docId.trim();
+    if (!cleanId) {
+      return { success: false, error: "Document ID is required." };
+    }
+
+    const providerStatus = inspectResmiEMeteraiStatus();
+    if (!providerStatus.configured || providerStatus.mode === "unconfigured") {
+      return { success: false, error: "RESMI_API_KEY is not configured." };
+    }
+
+    const rawDoc = await getFirestoreDoc("partner_signed_documents", cleanId);
+    if (!rawDoc) {
+      return { success: false, error: "Signed document record not found." };
+    }
+    const doc = rawDoc as unknown as PartnerSignedDocument;
+
+    if (doc.emeterai_status !== "failed") {
+      return { success: false, error: "Only failed e-Meterai stamping jobs can be retried." };
+    }
+    if (!doc.emeterai_placement) {
+      return { success: false, error: "Original e-Meterai placement coordinates are missing." };
+    }
+
+    let pdfBytes: Uint8Array | null = null;
+    if (doc.signed_pdf_key) {
+      const bucket = await getMediaBucket();
+      const obj = await bucket.get(doc.signed_pdf_key);
+      if (obj) {
+        pdfBytes = new Uint8Array(await obj.arrayBuffer());
+      }
+    }
+
+    if (!pdfBytes && doc.signed_pdf_url) {
+      const res = await fetch(doc.signed_pdf_url, { cache: "no-store" });
+      if (res.ok) {
+        pdfBytes = new Uint8Array(await res.arrayBuffer());
+      }
+    }
+
+    if (!pdfBytes || pdfBytes.byteLength === 0) {
+      return { success: false, error: "Could not load pre-stamped PDF bytes from storage to retry." };
+    }
+
+    const submitRes = await submitResmiEMeteraiStamp({
+      pdfBytes,
+      fileName: doc.signed_file_name || "partner-document-signed.pdf",
+      documentType: doc.emeterai_doc_type || "Surat Perjanjian",
+      placement: doc.emeterai_placement,
+      idempotencyKey: `${doc.id}-retry-${Date.now()}`,
+    });
+
+    const now = new Date().toISOString();
+    const updates: Partial<PartnerSignedDocument> = {
+      emeterai_status: submitRes.status,
+      emeterai_provider: "resmi_id",
+      emeterai_mode: providerStatus.mode,
+      emeterai_request_id: (submitRes.requestId || doc.emeterai_request_id || "").slice(0, 150),
+      emeterai_serial_number: (submitRes.serialNumber || doc.emeterai_serial_number || "").slice(0, 128),
+      emeterai_price_idr: submitRes.priceIdr,
+      emeterai_error: (submitRes.error || "").slice(0, 500),
+      updated_at: now,
+    };
+
+    const ok = await patchFirestoreDoc("partner_signed_documents", cleanId, updates as Record<string, unknown>);
+    if (!ok) {
+      return { success: false, error: "Failed to save retry state in Firestore." };
+    }
+
+    if (submitRes.status === "stamped" && submitRes.requestId) {
+      const finalized = await finalizeEMeteraiDocument(cleanId, {
+        status: "stamped",
+        serialNumber: submitRes.serialNumber,
+      });
+      if (finalized.ok && finalized.document) {
+        return { success: true, document: finalized.document };
+      }
+    }
+
+    revalidatePath("/dashboard/partnership");
+    return {
+      success: submitRes.ok,
+      document: { ...doc, ...updates },
+      error: submitRes.error,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: extractApiMessage(err, "Failed to retry e-Meterai stamping."),
     };
   }
 }
@@ -127,6 +290,27 @@ export async function getPublicPartnerSignedDocumentByTokenAction(token: string)
       return { success: false, error: "Signed document record not found or invalid verification link." };
     }
 
+    if (doc.emeterai_request_id && (doc.emeterai_status === "queued" || doc.emeterai_status === "processing")) {
+      try {
+        const staged = await readStagedEMeteraiManifest(doc.emeterai_request_id);
+        if (staged?.status === "stamped" && staged.stagedPdfUrl && staged.stagedSha256) {
+          doc = {
+            ...doc,
+            signed_pdf_url: staged.stagedPdfUrl,
+            signed_pdf_key: staged.stagedPdfKey || doc.signed_pdf_key,
+            signed_file_name: staged.stagedFileName || doc.signed_file_name,
+            signed_pdf_size_bytes: staged.stagedSizeBytes || doc.signed_pdf_size_bytes,
+            signed_sha256: staged.stagedSha256,
+            emeterai_status: "stamped",
+            emeterai_serial_number: staged.serialNumber || doc.emeterai_serial_number || "",
+            emeterai_stamped_at: staged.stampedAt || doc.emeterai_stamped_at,
+          };
+        }
+      } catch {
+        // Never block public verification if R2 staging lookup fails
+      }
+    }
+
     return { success: true, document: doc };
   } catch (err) {
     return {
@@ -166,6 +350,14 @@ export async function sendPartnerSignedDocumentEmailAction(input: {
       return { success: false, error: "Signed document record not found." };
     }
     const doc = rawDoc as unknown as PartnerSignedDocument;
+
+    if (doc.emeterai_status === "queued" || doc.emeterai_status === "processing" || doc.emeterai_status === "failed") {
+      return {
+        success: false,
+        error:
+          "Cannot email partner while e-Meterai stamping is still in progress or failed. Wait for completion or retry stamping first.",
+      };
+    }
 
     const toValidation = validateEmailRecipients(input.recipientEmail || doc.contact_email || "", {
       required: true,

@@ -713,6 +713,16 @@ service cloud.firestore {
     //   - signed_sha256: string (required, 1-128 chars) - Signed PDF SHA-256 hex digest
     //   - ecert_status: string (required) - Digital sealing mode ('signed_p12'|'hash_only')
     //   - ecert_metadata: map|null (optional, <= 20 keys) - X.509 certificate metadata (SigningCertificateMetadata)
+    //   - emeterai_status: string|null (optional) - Official PERURI e-Meterai status ('none'|'queued'|'processing'|'stamped'|'failed')
+    //   - emeterai_provider: string|null (optional) - e-Meterai gateway provider ('resmi_id')
+    //   - emeterai_mode: string|null (optional) - e-Meterai gateway mode ('live'|'test')
+    //   - emeterai_request_id: string|null (optional, <= 150 chars) - Resmi.ID asynchronous stamping request ID
+    //   - emeterai_serial_number: string|null (optional, <= 128 chars) - Official PERURI e-Meterai serial number
+    //   - emeterai_doc_type: string|null (optional) - PERURI document classification ('Surat Perjanjian'|'Dokumen Transaksi'|'Surat Keterangan'|'Surat Kuasa'|'Surat Pernyataan'|'Dokumen Lainnya')
+    //   - emeterai_price_idr: int|float|null (optional, 0..1000000) - Resmi.ID stamp duty fee in IDR
+    //   - emeterai_placement: map|null (optional, <= 10 keys) - PDF stamp coordinate rect ({ page, x, y, width, height, corner? })
+    //   - emeterai_stamped_at: string|null (optional, <= 50 chars) - Timestamp ISO string when e-Meterai stamping finalized
+    //   - emeterai_error: string|null (optional, <= 500 chars) - Last e-Meterai stamping error message
     //   - status: string (required) - Lifecycle status ('signed'|'sent'|'revoked')
     //   - email_status: string (required) - Email delivery status ('not_sent'|'sent'|'failed')
     //   - email_sent_at: string|null (optional, <= 50 chars) - Email dispatch timestamp ISO string
@@ -1560,6 +1570,26 @@ service cloud.firestore {
       return v == null || (v is string && v.size() <= maxLen);
     }
 
+    function optEnum(data, field, allowed) {
+      let v = data.get(field, null);
+      return v == null || (v is string && (v in allowed));
+    }
+
+    // Validates optional e-Meterai placement rect map ({ page, x, y, width, height, corner? }, <= 10 keys)
+    function isValidEMeteraiPlacement(data) {
+      let p = data.get('emeterai_placement', null);
+      return p == null || (
+        p is map &&
+        p.size() <= 10 &&
+        optInt(p, 'page', 0, 1000) &&
+        optInt(p, 'x', -100000, 100000) &&
+        optInt(p, 'y', -100000, 100000) &&
+        optInt(p, 'width', 0, 100000) &&
+        optInt(p, 'height', 0, 100000) &&
+        optEnum(p, 'corner', ['top_left', 'top_right', 'bottom_left', 'bottom_right'])
+      );
+    }
+
     // Validates event_speaker_confirmations document structure, data types, and bounds
     function isValidSpeakerConfirmation(data) {
       return hasRequiredFields(data, [
@@ -1614,6 +1644,9 @@ service cloud.firestore {
           'signature_methods_used', 'page_count', 'placement_count', 'include_certificate_page',
           'signed_pdf_url', 'signed_pdf_key', 'signed_pdf_size_bytes',
           'original_sha256', 'signed_sha256', 'ecert_status', 'ecert_metadata',
+          'emeterai_status', 'emeterai_provider', 'emeterai_mode', 'emeterai_request_id',
+          'emeterai_serial_number', 'emeterai_doc_type', 'emeterai_price_idr',
+          'emeterai_placement', 'emeterai_stamped_at', 'emeterai_error',
           'status', 'email_status', 'email_sent_at', 'email_recipient',
           'signed_at', 'created_at', 'updated_at'
         ]) &&
@@ -1645,6 +1678,19 @@ service cloud.firestore {
         data.signed_sha256 is string && data.signed_sha256.size() > 0 && data.signed_sha256.size() <= 128 &&
         data.ecert_status is string && (data.ecert_status in ['signed_p12', 'hash_only']) &&
         optMap(data, 'ecert_metadata', 20) &&
+        optEnum(data, 'emeterai_status', ['none', 'queued', 'processing', 'stamped', 'failed']) &&
+        optEnum(data, 'emeterai_provider', ['resmi_id']) &&
+        optEnum(data, 'emeterai_mode', ['live', 'test']) &&
+        optStr(data, 'emeterai_request_id', 150) &&
+        optStr(data, 'emeterai_serial_number', 128) &&
+        optEnum(data, 'emeterai_doc_type', [
+          'Surat Perjanjian', 'Dokumen Transaksi', 'Surat Keterangan',
+          'Surat Kuasa', 'Surat Pernyataan', 'Dokumen Lainnya'
+        ]) &&
+        optInt(data, 'emeterai_price_idr', 0, 1000000) &&
+        isValidEMeteraiPlacement(data) &&
+        optStr(data, 'emeterai_stamped_at', 50) &&
+        optStr(data, 'emeterai_error', 500) &&
         data.status is string && (data.status in ['signed', 'sent', 'revoked']) &&
         data.email_status is string && (data.email_status in ['not_sent', 'sent', 'failed']) &&
         optStr(data, 'email_sent_at', 50) &&

@@ -228,15 +228,15 @@ export async function getFirestoreDoc(
 }
 
 /**
- * Patches a document via Firestore REST API with merge support.
+ * Patches a document via Firestore REST API with merge support and detailed error info.
  */
-export async function patchFirestoreDoc(
+export async function patchFirestoreDocDetailed(
   collectionName: string,
   docId: string,
   data: Record<string, unknown>,
   merge = true,
   token?: string,
-): Promise<boolean> {
+): Promise<{ ok: boolean; status?: number; error?: string }> {
   try {
     const searchParams = new URLSearchParams();
     searchParams.set("key", getFirebaseApiKey());
@@ -268,18 +268,37 @@ export async function patchFirestoreDoc(
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body,
       });
-      if (retryRes.ok) return true;
+      if (retryRes.ok) return { ok: true, status: retryRes.status };
     }
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
       console.warn(`[Firestore REST] PATCH ${collectionName}/${docId} returned ${res.status}: ${errText}`);
-      return false;
+      const hint = !authToken ? " (auth_token missing or expired — please refresh login)" : "";
+      return {
+        ok: false,
+        status: res.status,
+        error: `${errText || `HTTP ${res.status}`}${hint}`.slice(0, 500),
+      };
     }
-    return true;
+    return { ok: true, status: res.status };
   } catch (err) {
     console.warn(`[Firestore REST] Failed updating ${collectionName}/${docId}:`, err);
-    return false;
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/**
+ * Patches a document via Firestore REST API with merge support.
+ */
+export async function patchFirestoreDoc(
+  collectionName: string,
+  docId: string,
+  data: Record<string, unknown>,
+  merge = true,
+  token?: string,
+): Promise<boolean> {
+  const res = await patchFirestoreDocDetailed(collectionName, docId, data, merge, token);
+  return res.ok;
 }
 
 /**

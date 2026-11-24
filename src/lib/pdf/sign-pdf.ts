@@ -6,6 +6,7 @@ import { degrees, PDFDocument, type PDFFont, type PDFImage, type PDFPage, rgb, S
 
 import { buildQrMatrix } from "@/lib/printers/qr-svg";
 import type {
+  EMeteraiPlacementRect,
   PdfPlacement,
   SignatureInputMode,
   SigningCertificateMetadata,
@@ -623,6 +624,7 @@ export interface SignPartnerPdfResult {
   pageCount: number;
   ecertStatus: "signed_p12" | "hash_only";
   ecertMetadata?: SigningCertificateMetadata;
+  emeteraiPlacementRect?: EMeteraiPlacementRect;
 }
 
 /**
@@ -685,6 +687,8 @@ export async function signPartnerPdfBuffer(params: SignPartnerPdfParams): Promis
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
+  let emeteraiPlacementRect: EMeteraiPlacementRect | undefined;
+
   for (const placement of placements) {
     if (placement.pageIndex < 0 || placement.pageIndex >= originalPageCount) {
       throw new Error(`Placement references out-of-range page index ${placement.pageIndex}.`);
@@ -701,6 +705,19 @@ export async function signPartnerPdfBuffer(params: SignPartnerPdfParams): Promis
       widthPct: placement.widthPct,
       heightPct: placement.heightPct,
     });
+
+    if (placement.kind === "emeterai") {
+      // PERURI/Resmi.ID stamps the official visual seal & QR code via API; only capture PDF-space coords here.
+      emeteraiPlacementRect = {
+        page: placement.pageIndex + 1,
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        ...(placement.emeteraiCorner ? { corner: placement.emeteraiCorner } : {}),
+      };
+      continue;
+    }
 
     if (placement.kind === "text_stamp") {
       const stampImage = placement.assetId ? embeddedImages.get(placement.assetId) : undefined;
@@ -817,6 +834,7 @@ export async function signPartnerPdfBuffer(params: SignPartnerPdfParams): Promis
     pageCount: pdfDoc.getPageCount(),
     ecertStatus,
     ecertMetadata,
+    emeteraiPlacementRect,
   };
 }
 

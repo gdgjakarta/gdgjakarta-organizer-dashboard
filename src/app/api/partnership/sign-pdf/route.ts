@@ -3,12 +3,19 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { z } from "zod";
 
+import { inspectResmiEMeteraiStatus, submitResmiEMeteraiStamp } from "@/lib/pdf/resmi-emeterai";
 import { MAX_PDF_BYTES, MAX_PLACEMENTS, signPartnerPdfBuffer } from "@/lib/pdf/sign-pdf";
 import { deleteMediaObject, uploadMediaObject } from "@/lib/r2/client";
 import { sanitizeStorageName } from "@/lib/r2/utils";
 import { getAuthenticatedSessionUser, isAuthorizedExecutiveOrganizerSession } from "@/server/auth-guard";
-import { getFirestoreDoc, patchFirestoreDoc } from "@/server/firestore-admin";
-import type { PartnerSignedDocument, PdfPlacement, SignatureInputMode } from "@/types/partner-signage";
+import { finalizeEMeteraiDocument } from "@/server/emeterai-finalizer";
+import { getFirestoreDoc, patchFirestoreDocDetailed } from "@/server/firestore-admin";
+import type {
+  EMeteraiDocumentType,
+  PartnerSignedDocument,
+  PdfPlacement,
+  SignatureInputMode,
+} from "@/types/partner-signage";
 
 import { randomBytes } from "node:crypto";
 
@@ -19,7 +26,7 @@ const R2_PREFIX = "community-dashboard/partnership/signed-documents";
 
 const placementSchema = z.object({
   id: z.string().min(1).max(100),
-  kind: z.enum(["signature", "initials", "text_stamp"]),
+  kind: z.enum(["signature", "initials", "text_stamp", "emeterai"]),
   pageIndex: z.number().int().min(0).max(99),
   xPct: z.number().min(0).max(1),
   yPct: z.number().min(0).max(1),
@@ -30,6 +37,7 @@ const placementSchema = z.object({
   signerTitle: z.string().max(150).optional(),
   signedDateText: z.string().max(64).optional(),
   includeCertBadge: z.boolean().optional(),
+  emeteraiCorner: z.enum(["top_left", "top_right", "bottom_left", "bottom_right"]).optional(),
 });
 
 const signPdfPayloadSchema = z.object({
@@ -51,7 +59,18 @@ const signPdfPayloadSchema = z.object({
   signerTitle: z.string().trim().max(150).optional().default("GDG Jakarta Organizer"),
   reason: z.string().trim().max(300).optional().default("Authorized Partnership Approval — GDG Jakarta"),
   location: z.string().trim().max(150).optional().default("Jakarta, Indonesia"),
-  includeCertificatePage: z.boolean().default(true),
+  includeCertificatePage: z.boolean().default(false),
+  emeteraiDocumentType: z
+    .enum([
+      "Surat Perjanjian",
+      "Dokumen Transaksi",
+      "Surat Keterangan",
+      "Surat Kuasa",
+      "Surat Pernyataan",
+      "Dokumen Lainnya",
+    ])
+    .optional(),
+  emeteraiCorner: z.enum(["top_left", "top_right", "bottom_left", "bottom_right"]).optional(),
   signatureMethodsUsed: z
     .array(z.enum(["initials", "upload", "draw", "template"]))
     .max(10)
@@ -87,7 +106,8 @@ function hasPngMagicHeader(bytes: Uint8Array): boolean {
 /**
  * POST /api/partnership/sign-pdf
  * Signs an uploaded partner PDF with visual placements, optional audit page, and X.509 PKCS#7 e-certificate,
- * uploads the signed PDF to Cloudflare R2, and stores verification metadata in Firestore.
+ * uploads the signed PDF to Cloudflare R2, optionally submits Resmi.ID e-Meterai stamping,
+ * and stores verification metadata in Firestore.
  */
 export async function POST(request: NextRequest) {
   if (!(await isAuthorizedExecutiveOrganizerSession())) {
@@ -123,6 +143,20 @@ export async function POST(request: NextRequest) {
     }
 
     const data = parsedPayload.data;
+
+    const emeteraiPlacements = data.placements.filter((p) => p.kind === "emeterai");
+    if (emeteraiPlacements.length > 1) {
+      return NextResponse.json({ error: "Only 1 e-Meterai stamp can be placed per PDF." }, { status: 400 });
+    }
+    const hasEMeterai = emeteraiPlacements.length === 1;
+    const emeteraiProviderStatus = hasEMeterai ? inspectResmiEMeteraiStatus() : null;
+    if (hasEMeterai && (!emeteraiProviderStatus?.configured || emeteraiProviderStatus.mode === "unconfigured")) {
+      return NextResponse.json(
+        { error: "Resmi.ID e-Meterai is not configured (RESMI_API_KEY missing)." },
+        { status: 400 },
+      );
+    }
+
     const pdfBytes = new Uint8Array(await pdfEntry.arrayBuffer());
     if (!hasPdfMagicHeader(pdfBytes)) {
       return NextResponse.json(
@@ -209,6 +243,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    let emeteraiFields: Partial<PartnerSignedDocument> = {
+      emeterai_status: "none",
+    };
+
+    if (
+      hasEMeterai &&
+      signResult.emeteraiPlacementRect &&
+      emeteraiProviderStatus &&
+      emeteraiProviderStatus.mode !== "unconfigured"
+    ) {
+      const docType: EMeteraiDocumentType = data.emeteraiDocumentType || "Surat Perjanjian";
+      const placementWithCorner = {
+        ...signResult.emeteraiPlacementRect,
+        ...(data.emeteraiCorner && !signResult.emeteraiPlacementRect.corner ? { corner: data.emeteraiCorner } : {}),
+      };
+
+      const submitRes = await submitResmiEMeteraiStamp({
+        pdfBytes: new Uint8Array(signResult.signedPdfBuffer),
+        fileName: signedFileName,
+        documentType: docType,
+        placement: placementWithCorner,
+        idempotencyKey: `${docId}-${Date.now()}`,
+      });
+
+      emeteraiFields = {
+        emeterai_status: submitRes.status,
+        emeterai_provider: "resmi_id",
+        emeterai_mode: emeteraiProviderStatus.mode,
+        ...(submitRes.requestId ? { emeterai_request_id: submitRes.requestId.slice(0, 150) } : {}),
+        ...(submitRes.serialNumber ? { emeterai_serial_number: submitRes.serialNumber.slice(0, 128) } : {}),
+        emeterai_doc_type: docType,
+        emeterai_price_idr: submitRes.priceIdr,
+        emeterai_placement: placementWithCorner,
+        ...(submitRes.error ? { emeterai_error: submitRes.error.slice(0, 500) } : {}),
+      };
+    }
+
     const signedDocRecord: PartnerSignedDocument = {
       id: docId,
       token,
@@ -240,25 +311,42 @@ export async function POST(request: NextRequest) {
       email_status: existingDoc?.email_status || "not_sent",
       email_sent_at: existingDoc?.email_sent_at,
       email_recipient: existingDoc?.email_recipient,
+      ...emeteraiFields,
       signed_at: now,
       created_at: existingDoc?.created_at || now,
       updated_at: now,
     };
 
-    const savedOk = await patchFirestoreDoc(
+    const saveRes = await patchFirestoreDocDetailed(
       "partner_signed_documents",
       docId,
       signedDocRecord as unknown as Record<string, unknown>,
     );
 
-    if (!savedOk) {
+    if (!saveRes.ok) {
       // Roll back R2 upload so no orphaned file remains
       await deleteMediaObject(uploadRes.item.key).catch(() => undefined);
-      return NextResponse.json({ error: "Failed to save signed document record in Firestore." }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: `Failed to save signed document record in Firestore (${saveRes.status ?? "err"}): ${saveRes.error ?? "Unknown error"}`,
+        },
+        { status: 500 },
+      );
     }
 
     if (existingDoc?.signed_pdf_key && existingDoc.signed_pdf_key !== uploadRes.item.key) {
       await deleteMediaObject(existingDoc.signed_pdf_key).catch(() => undefined);
+    }
+
+    let finalDoc = signedDocRecord;
+    if (hasEMeterai && signedDocRecord.emeterai_status === "stamped" && signedDocRecord.emeterai_request_id) {
+      const finalized = await finalizeEMeteraiDocument(docId, {
+        status: "stamped",
+        serialNumber: signedDocRecord.emeterai_serial_number,
+      });
+      if (finalized.ok && finalized.document) {
+        finalDoc = finalized.document;
+      }
     }
 
     revalidatePath("/dashboard/partnership");
@@ -266,7 +354,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      document: signedDocRecord,
+      document: finalDoc,
       verifyUrl,
     });
   } catch (err) {

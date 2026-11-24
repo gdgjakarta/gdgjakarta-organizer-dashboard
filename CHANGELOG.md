@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.61] - 2026-11-24
+
+### Added
+- **Official PERURI e-Meterai via Resmi.ID (`Sign Partner PDFs`)**:
+  - Added optional PERURI e-Meterai stamping (`RESMI_API_KEY`, `RESMI_WEBHOOK_SECRET`, `RESMI_API_BASE_URL`) with automatic `dk_test_` (Sandbox) vs `dk_live_` (Live) detection, live pricing from `GET /emeterai/info`, and a Live-mode Rp10.500 confirmation modal.
+  - Added draggable e-Meterai canvas box (max 1 per PDF) with `TL`/`TR`/`BL`/`BR` corner snap presets, PERURI `document_type` selector (default `Surat Perjanjian`), and quick **Resmi.ID Dashboard** links (`https://docs.resmi.id/dashboard`) including direct **Top up in Resmi.ID Dashboard** prompts on HTTP `402`.
+  - Implemented async R2 webhook staging (`POST /api/webhooks/resmi-emeterai` + `emeterai-finalizer.ts`), 3s organizer auto-polling (`syncPartnerEMeteraiStatusAction`), 1-click **Retry Stamp** (`retryPartnerEMeteraiStampAction`), partner email lock until stamping completes, and **Official PERURI e-Meterai** serial verification on `/partnership/signed-documents/[token]`.
+  - Updated `firestore.rules` (`isValidPartnerSignedDocument`) to validate the 10 optional `emeterai_*` fields while keeping `list`/`create`/`update`/`delete` restricted to `hasTeamAccess()`.
+- **Bolder Signatures & e-Meterai Alignment**: Added **Bold signature strokes** (~1px ink dilation) for uploaded/saved signatures, expanded Freehand Draw pen width (`4px` default, max `8px`), and added **Place Signature Above e-Meterai** to align signatures cleanly without covering the PERURI QR code.
+
+### Changed
+- **Default Audit Page Toggle**: Changed **Append E-Certificate & Audit Page** (`includeCertificatePage`) default from `true` to `false` in `SignDocumentsTab` and `POST /api/partnership/sign-pdf`.
+
+---
+
 ## [1.0.60] - 2026-11-24
 
 ### Added
