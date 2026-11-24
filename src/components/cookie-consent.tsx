@@ -45,7 +45,7 @@ export function CookieConsent() {
       aria-live="polite"
       aria-labelledby="cookie-consent-title"
       aria-describedby="cookie-consent-description"
-      className="fade-in slide-in-from-bottom-5 fixed right-4 bottom-4 left-4 z-50 mx-auto max-w-lg animate-in duration-300 sm:right-6 sm:left-auto"
+      className="print:hidden fade-in slide-in-from-bottom-5 fixed right-4 bottom-4 left-4 z-50 mx-auto max-w-lg animate-in duration-300 sm:right-6 sm:left-auto"
     >
       <div className="rounded-2xl border border-border/80 bg-background/95 p-5 shadow-2xl backdrop-blur-xl transition-all duration-300 dark:bg-card/95">
         <div className="flex items-start justify-between gap-3">

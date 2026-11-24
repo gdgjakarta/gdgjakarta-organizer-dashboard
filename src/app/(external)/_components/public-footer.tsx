@@ -6,7 +6,7 @@ import { APP_CONFIG } from "@/config/app-config";
 
 export function PublicFooter() {
   return (
-    <footer className="border-t bg-muted/40">
+    <footer className="print:hidden border-t bg-muted/40">
       <div className="container mx-auto flex flex-col items-center justify-between gap-4 px-4 py-8 sm:px-6 md:flex-row lg:px-8">
         <div className="flex flex-col gap-1 text-center md:text-left">
           <p className="font-medium text-[14px]">{APP_CONFIG.name}</p>

@@ -64,7 +64,7 @@ export function PublicHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/85 backdrop-blur-md transition-colors supports-[backdrop-filter]:bg-background/70">
+    <header className="print:hidden sticky top-0 z-50 w-full border-b bg-background/85 backdrop-blur-md transition-colors supports-[backdrop-filter]:bg-background/70">
       <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Brand */}
         <div className="flex items-center gap-6">
