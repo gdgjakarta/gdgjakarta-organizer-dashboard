@@ -712,7 +712,8 @@ export async function signPartnerPdfBuffer(params: SignPartnerPdfParams): Promis
       const isRotated90Or270 = ((Math.round(rotationDegrees) % 180) + 180) % 180 === 90;
       const viewW = isRotated90Or270 ? cropBox.height : cropBox.width;
       const viewH = isRotated90Or270 ? cropBox.width : cropBox.height;
-      const resmiBoxW = 0.22 * viewW;
+      // Live PERURI centers the ~71pt square inside a ~104pt (~17.4% A4) widget (~16pt shift vs 0.22 sandbox box).
+      const resmiBoxW = 0.174 * viewW;
       const previewCenterX = (placement.xPct + placement.widthPct / 2) * viewW;
       const compensatedX = Math.max(0, Math.round(cropBox.x + previewCenterX - resmiBoxW / 2));
       emeteraiPlacementRect = {
