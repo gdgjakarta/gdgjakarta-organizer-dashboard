@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { BEVY_CONFIG } from "@/config/bevy-config";
 import { organizers as fallbackOrganizers } from "@/data/organizers";
+import { getAnalyticsCapabilities } from "@/lib/analytics/capabilities";
 import {
   getAllEvents,
   getBevyChapterMembers,
@@ -13,10 +14,9 @@ import {
 import type { FirestoreEvent, FirestoreMember } from "@/lib/firestore/types";
 
 import { GDGKpiCards } from "./_components/gdg-kpi-cards";
-import { GDGUpcomingEvents } from "./_components/gdg-upcoming-events";
 import { OrganizerHeader } from "./_components/organizer-header";
-import { type CommunityOrganizerItem, RecentMembersWidget } from "./_components/recent-members-widget";
-import { ReferralLeaderboardWidget } from "./_components/referral-leaderboard-widget";
+import { OrganizerMainGrid } from "./_components/organizer-main-grid";
+import type { CommunityOrganizerItem } from "./_components/recent-members-widget";
 
 export const dynamic = "force-dynamic";
 
@@ -186,6 +186,8 @@ export default async function Page() {
     console.error("[Organizer Dashboard] Error fetching data:", error);
   }
 
+  const analyticsCapabilities = getAnalyticsCapabilities();
+
   return (
     <div className="flex flex-col gap-5">
       <OrganizerHeader />
@@ -198,15 +200,12 @@ export default async function Page() {
         activeEventsCount={activeEventsCount}
       />
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-        <div className="xl:col-span-7">
-          <GDGUpcomingEvents events={events} />
-        </div>
-        <div className="flex flex-col gap-5 xl:col-span-5">
-          <RecentMembersWidget organizers={organizersList} members={members} />
-          <ReferralLeaderboardWidget />
-        </div>
-      </div>
+      <OrganizerMainGrid
+        events={events}
+        organizersList={organizersList}
+        members={members}
+        analyticsCapabilities={analyticsCapabilities}
+      />
     </div>
   );
 }

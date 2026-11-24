@@ -56,6 +56,11 @@
     // - R2_ACCESS_KEY_ID
     // - R2_SECRET_ACCESS_KEY
     // - OPS_AGENT_SECRET
+    // - CLOUDFLARE_API_TOKEN
+    // - GA4_PROPERTY_ID
+    // - GA4_SERVICE_ACCOUNT_JSON
+    // - INSTAGRAM_ACCESS_TOKEN
+    // - INSTAGRAM_BUSINESS_ACCOUNT_ID
   },
   "services": [
     {

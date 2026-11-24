@@ -1,4 +1,4 @@
-import { type Analytics, getAnalytics, isSupported, logEvent } from "firebase/analytics";
+import { type Analytics, getAnalytics, isSupported, logEvent, setUserId } from "firebase/analytics";
 
 import { app } from "@/config/firebase";
 
@@ -98,6 +98,15 @@ export function identifyTelemetryUser(userId: string, traits?: Record<string, un
   } catch (err) {
     console.warn("[Telemetry] Error identifying user:", err);
   }
+  void getFirebaseAnalytics()
+    .then((analytics) => {
+      if (analytics && userId) {
+        setUserId(analytics, userId);
+      }
+    })
+    .catch((err) => {
+      console.warn("[Telemetry] Firebase Analytics setUserId failed:", err);
+    });
 }
 
 /**
@@ -110,4 +119,13 @@ export function resetTelemetryUser(): void {
   } catch (err) {
     console.warn("[Telemetry] Error resetting user:", err);
   }
+  void getFirebaseAnalytics()
+    .then((analytics) => {
+      if (analytics) {
+        setUserId(analytics, null);
+      }
+    })
+    .catch((err) => {
+      console.warn("[Telemetry] Firebase Analytics reset setUserId failed:", err);
+    });
 }

@@ -5,10 +5,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { format, isFuture, parseISO } from "date-fns";
-import { ArrowRight, Globe, MapPin, Radio, Users } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, Globe, MapPin, Radio, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toTimezoneDate } from "@/lib/date-utils";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -86,8 +87,11 @@ function DropRateBadge({
   );
 }
 
+const PAGE_SIZE = 10;
+
 export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
   const [resolvedEvents, setResolvedEvents] = useState<FirestoreEvent[]>(events);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (events.length > 0) {
@@ -177,13 +181,16 @@ export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
     };
   }, [resolvedEvents.length]);
 
-  // Pick up to 5 upcoming or recent published events (including hidden and test events)
-  const displayedEvents = resolvedEvents
-    .filter((e) => (e.status ? e.status.toLowerCase() === "published" || e.status === "Completed" : true))
-    .slice(0, 5);
+  const eligibleEvents = resolvedEvents.filter((e) =>
+    e.status ? e.status.toLowerCase() === "published" || e.status === "Completed" : true,
+  );
+  const totalPages = Math.max(1, Math.ceil(eligibleEvents.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const startIdx = (safePage - 1) * PAGE_SIZE;
+  const displayedEvents = eligibleEvents.slice(startIdx, startIdx + PAGE_SIZE);
 
   return (
-    <Card>
+    <Card className="flex h-full flex-col">
       <CardHeader>
         <CardTitle className="text-sm">Recent & Upcoming Events</CardTitle>
         <CardAction>
@@ -195,89 +202,129 @@ export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
           </Link>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="relative flex min-h-[380px] flex-1 flex-col">
         {displayedEvents.length === 0 ? (
           <div className="py-6 text-center text-muted-foreground text-sm">No upcoming events found.</div>
         ) : (
-          displayedEvents.map((event) => {
-            let monthStr = "EVENT";
-            let dayStr = "—";
-            let isUpcoming = false;
+          <div className="flex max-h-[520px] flex-col gap-4 overflow-y-auto pr-1 xl:absolute xl:inset-x-6 xl:inset-y-0 xl:max-h-none">
+            {displayedEvents.map((event) => {
+              let monthStr = "EVENT";
+              let dayStr = "—";
+              let isUpcoming = false;
 
-            if (event.start_date) {
-              try {
-                const parsed = parseISO(event.start_date);
-                monthStr = format(toTimezoneDate(parsed), "MMM");
-                dayStr = format(toTimezoneDate(parsed), "d");
-                isUpcoming = event.status !== "Completed" && isFuture(parsed);
-              } catch {
-                // Ignore parse errors
+              if (event.start_date) {
+                try {
+                  const parsed = parseISO(event.start_date);
+                  monthStr = format(toTimezoneDate(parsed), "MMM");
+                  dayStr = format(toTimezoneDate(parsed), "d");
+                  isUpcoming = event.status !== "Completed" && isFuture(parsed);
+                } catch {
+                  // Ignore parse errors
+                }
               }
-            }
 
-            const totalAttendees =
-              event.total_registrations ||
-              event.total_approved ||
-              (event as { total_attendees?: number }).total_attendees ||
-              0;
-            const checkinCount = event.total_checked_in ?? (event as { checkin_count?: number }).checkin_count ?? 0;
+              const totalAttendees =
+                event.total_registrations ||
+                event.total_approved ||
+                (event as { total_attendees?: number }).total_attendees ||
+                0;
+              const checkinCount = event.total_checked_in ?? (event as { checkin_count?: number }).checkin_count ?? 0;
 
-            return (
-              <div key={event.id} className="flex items-center justify-between gap-3 sm:gap-4">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="size-11 shrink-0 overflow-hidden rounded-md border bg-muted/30">
-                    <div className="grid h-1/3 place-items-center border-b bg-muted/60 font-semibold text-[9px] text-muted-foreground uppercase leading-none">
-                      {monthStr}
+              return (
+                <div key={event.id} className="flex items-center justify-between gap-3 sm:gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="size-11 shrink-0 overflow-hidden rounded-md border bg-muted/30">
+                      <div className="grid h-1/3 place-items-center border-b bg-muted/60 font-semibold text-[9px] text-muted-foreground uppercase leading-none">
+                        {monthStr}
+                      </div>
+                      <div className="grid h-2/3 place-items-center font-bold text-base leading-none">{dayStr}</div>
                     </div>
-                    <div className="grid h-2/3 place-items-center font-bold text-base leading-none">{dayStr}</div>
+
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <Link
+                        href={event.id ? `/dashboard/events/${event.id}` : "/dashboard/events"}
+                        className="truncate font-medium text-sm leading-tight hover:underline"
+                        title={event.title}
+                      >
+                        {event.title}
+                      </Link>
+                      <div className="flex items-center gap-2">
+                        <AudienceBadge audienceType={event.audience_type} />
+                        {event.is_hidden ? (
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 border-amber-500/20 bg-amber-500/10 px-1.5 py-0 text-[10px] text-amber-600 dark:text-amber-400"
+                          >
+                            Hidden
+                          </Badge>
+                        ) : null}
+                        {event.is_test ? (
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 border-purple-500/20 bg-purple-500/10 px-1.5 py-0 text-[10px] text-purple-600 dark:text-purple-400"
+                          >
+                            Test
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <Link
-                      href={event.id ? `/dashboard/events/${event.id}` : "/dashboard/events"}
-                      className="truncate font-medium text-sm leading-tight hover:underline"
-                      title={event.title}
-                    >
-                      {event.title}
-                    </Link>
-                    <div className="flex items-center gap-2">
-                      <AudienceBadge audienceType={event.audience_type} />
-                      {event.is_hidden ? (
-                        <Badge
-                          variant="outline"
-                          className="shrink-0 border-amber-500/20 bg-amber-500/10 px-1.5 py-0 text-[10px] text-amber-600 dark:text-amber-400"
-                        >
-                          Hidden
-                        </Badge>
-                      ) : null}
-                      {event.is_test ? (
-                        <Badge
-                          variant="outline"
-                          className="shrink-0 border-purple-500/20 bg-purple-500/10 px-1.5 py-0 text-[10px] text-purple-600 dark:text-purple-400"
-                        >
-                          Test
-                        </Badge>
+                  <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-4">
+                    <div className="flex items-center gap-1.5 text-sm">
+                      <Users className="size-3.5 text-muted-foreground" />
+                      <span className="font-medium text-foreground">{totalAttendees}</span>
+                      {checkinCount > 0 ? (
+                        <span className="text-muted-foreground text-xs">({checkinCount} checked in)</span>
                       ) : null}
                     </div>
+
+                    <DropRateBadge
+                      totalAttendees={totalAttendees}
+                      checkinCount={checkinCount}
+                      isUpcoming={isUpcoming}
+                    />
                   </div>
                 </div>
-
-                <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-4">
-                  <div className="flex items-center gap-1.5 text-sm">
-                    <Users className="size-3.5 text-muted-foreground" />
-                    <span className="font-medium text-foreground">{totalAttendees}</span>
-                    {checkinCount > 0 ? (
-                      <span className="text-muted-foreground text-xs">({checkinCount} checked in)</span>
-                    ) : null}
-                  </div>
-
-                  <DropRateBadge totalAttendees={totalAttendees} checkinCount={checkinCount} isUpcoming={isUpcoming} />
-                </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </div>
         )}
       </CardContent>
+      {eligibleEvents.length > PAGE_SIZE ? (
+        <CardFooter className="flex items-center justify-between gap-2 pt-2 text-muted-foreground text-xs tabular-nums">
+          <span>
+            Showing {startIdx + 1}–{Math.min(startIdx + PAGE_SIZE, eligibleEvents.length)} of {eligibleEvents.length}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              disabled={safePage <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              aria-label="Previous page"
+              className="size-7"
+            >
+              <ChevronLeft className="size-3.5" />
+            </Button>
+            <span className="px-1 text-foreground">
+              {safePage} / {totalPages}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              disabled={safePage >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              aria-label="Next page"
+              className="size-7"
+            >
+              <ChevronRight className="size-3.5" />
+            </Button>
+          </div>
+        </CardFooter>
+      ) : null}
     </Card>
   );
 }

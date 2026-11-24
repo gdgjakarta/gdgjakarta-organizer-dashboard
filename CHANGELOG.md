@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.62] - 2026-11-24
+
+### Added
+- **Unified Platform & Community Analytics Hub (`/dashboard/organizer`)**:
+  - Added full-width **Platform & Community Analytics** hub with 5 data-grounded tabs (**Website**, **Events**, **Tickets**, **Members**, **Instagram** `@gdgjakarta`), **All Time** (default), **Date Range**, **Monthly**, and **Yearly** filters, and R2-backed caching (`/api/analytics/overview`).
+  - Added interactive offline **World Choropleth Map** (`world-atlas` + `d3-geo` + `topojson-client`) on the Website tab with Users/Visits vs Page Views toggle, backed by GA4 Data API, Cloudflare Web Analytics GraphQL API, and Firestore `members.last_active`.
+  - Added **Copy AI Prompt** dropdown (`prompt-builder.ts`) generating Markdown report prompts for **Sponsor Proposal**, **Partner Impact Report**, or the active tab.
+  - Added **Instagram Insights & Meta Ads Boost Tracking** (`@gdgjakarta` Meta Graph API `v25.0` + `META_AD_ACCOUNT_ID`): views, reach, interactions, followers & net change, audience split, daily reach, interaction mix, follower demographics, top posts (with media type badges, WIB date/time, iconified likes/comments/shares/saves/interactions/engagement/views), **Active Ads** & **Ad Spend** KPIs, per-post `Ads` / `Ads Active` badges, and a dedicated **Boosted Posts (Meta Ads)** list with spend breakdown.
+- **Full-Height Paginated Events Card**: Expanded `GDGUpcomingEvents` to match the side column height with 10-per-page pagination and clean scrollable overflow.
+
+---
+
 ## [1.0.61] - 2026-11-24
 
 ### Added
