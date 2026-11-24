@@ -12,6 +12,7 @@ import {
   updateBevySponsor,
 } from "@/lib/bevy/client";
 import type { BevyEventSponsorMappingPayload, BevySponsor } from "@/lib/bevy/types";
+import { validateEmailRecipients } from "@/lib/email-recipients";
 import {
   EMAIL_TEMPLATES_CONFIG,
   getCleanDefaultTemplateDataForType,
@@ -30,7 +31,6 @@ import type {
 } from "@/types/sponsor";
 
 import { isAuthorizedOrganizerSession } from "./auth-guard";
-import { validateEmailRecipients } from "@/lib/email-recipients";
 import { sendEmailDirectInternal } from "./email-template-actions";
 import {
   deleteFirestoreDoc,
@@ -84,8 +84,17 @@ export async function getChapterSponsorsAction(): Promise<{
     const activeBevyIds = new Set<number>(chapterDetails?.media_partners || []);
     const inactiveBevyIds = new Set<number>(chapterDetails?.media_partners_inactive || []);
 
-    // 2. Fetch locally persisted sponsors from Firestore
-    const docs = (await queryFirestoreDocs<FirestoreSponsor>("chapter_sponsors", [])) || [];
+    // 2. Fetch locally persisted sponsors from Firestore & deleted Bevy IDs
+    const [docsRaw, chapterConfigRaw] = await Promise.all([
+      queryFirestoreDocs<FirestoreSponsor>("chapter_sponsors", []),
+      getFirestoreDoc("system_settings", "chapter_sponsors"),
+    ]);
+    const docs = docsRaw || [];
+    const deletedBevyIds = new Set<number>(
+      Array.isArray((chapterConfigRaw as { deleted_bevy_ids?: unknown[] } | null)?.deleted_bevy_ids)
+        ? (chapterConfigRaw as { deleted_bevy_ids: unknown[] }).deleted_bevy_ids.map(Number)
+        : [],
+    );
     const docMapByBevyId = new Map<number, FirestoreSponsor>();
     const docMapByCompany = new Map<string, FirestoreSponsor>();
 
@@ -105,6 +114,7 @@ export async function getChapterSponsorsAction(): Promise<{
     if (Array.isArray(bevySponsors) && bevySponsors.length > 0) {
       for (const bSponsor of bevySponsors) {
         if (!bSponsor || !bSponsor.id) continue;
+        if (deletedBevyIds.has(Number(bSponsor.id))) continue;
         const companyKey = (bSponsor.company || "").trim().toLowerCase();
         const existing =
           docMapByBevyId.get(Number(bSponsor.id)) || (companyKey ? docMapByCompany.get(companyKey) : undefined);
@@ -209,9 +219,7 @@ export async function getChapterSponsorsAction(): Promise<{
 /**
  * Save or update sponsor in Firestore and optionally create in Bevy
  */
-export async function saveChapterSponsorAction(
-  data: Partial<FirestoreSponsor> & { company: string },
-): Promise<{
+export async function saveChapterSponsorAction(data: Partial<FirestoreSponsor> & { company: string }): Promise<{
   success: boolean;
   sponsor?: FirestoreSponsor;
   bevySynced?: boolean;
@@ -337,6 +345,22 @@ export async function deleteChapterSponsorAction(
     await deleteFirestoreDoc("chapter_sponsors", sponsorId);
 
     if (bevyId) {
+      // Record deleted Bevy ID so getChapterSponsorsAction never re-synthesizes it from Bevy's list
+      const configRes = await getOrInitChapterSponsorConfigAction();
+      if (configRes.success && configRes.config) {
+        const existingDeleted = Array.isArray((configRes.config as { deleted_bevy_ids?: number[] }).deleted_bevy_ids)
+          ? (configRes.config as { deleted_bevy_ids: number[] }).deleted_bevy_ids
+          : [];
+        if (!existingDeleted.includes(Number(bevyId))) {
+          await patchFirestoreDoc(
+            "system_settings",
+            "chapter_sponsors",
+            { deleted_bevy_ids: [...existingDeleted, Number(bevyId)] },
+            true,
+          );
+        }
+      }
+
       const bevyRes = await deleteBevySponsor(bevyId);
       if (!bevyRes.success) {
         revalidatePath("/dashboard/partnership");
