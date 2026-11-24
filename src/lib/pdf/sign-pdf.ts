@@ -707,13 +707,17 @@ export async function signPartnerPdfBuffer(params: SignPartnerPdfParams): Promis
     });
 
     if (placement.kind === "emeterai") {
-      // Resmi.ID expects top-left origin in PDF points (x from left, y from top), unlike pdf-lib's bottom-left rect.y.
+      // Resmi.ID expects top-left origin in PDF points (x from left, y from top) and allocates a 22%-wide widget box
+      // in which live PERURI horizontally centers the square QR stamp. Compensate x so the centered square matches preview.
       const isRotated90Or270 = ((Math.round(rotationDegrees) % 180) + 180) % 180 === 90;
       const viewW = isRotated90Or270 ? cropBox.height : cropBox.width;
       const viewH = isRotated90Or270 ? cropBox.width : cropBox.height;
+      const resmiBoxW = 0.22 * viewW;
+      const previewCenterX = (placement.xPct + placement.widthPct / 2) * viewW;
+      const compensatedX = Math.max(0, Math.round(cropBox.x + previewCenterX - resmiBoxW / 2));
       emeteraiPlacementRect = {
         page: placement.pageIndex + 1,
-        x: Math.round(placement.xPct * viewW),
+        x: compensatedX,
         y: Math.round(placement.yPct * viewH),
         width: Math.round(placement.widthPct * viewW),
         height: Math.round(placement.heightPct * viewH),
