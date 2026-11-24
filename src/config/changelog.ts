@@ -16,10 +16,36 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.60",
+    releaseDate: "2026-11-24",
+    title: "Prefill Invoice from Quotation",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Added 1-click Create Invoice from Quotation action on Quotation rows and a Prefill from Quotation selector in the Invoice editor to copy billing, event metadata, tier, currency, bank details, and line items.",
+      },
+    ],
+  },
+  {
+    version: "1.0.59",
+    releaseDate: "2026-11-24",
+    title: "Separate Partner Signatory Fields & MOU Clause Formatting",
+    items: [
+      {
+        category: "Added",
+        text: "Added optional Partner Signatory Name and Title fields in SponsorDocumentsDialog with fallback to Contact Person / Title.",
+      },
+      {
+        category: "Fixed",
+        text: "Preserved multi-line line breaks and indentation in MOU clauses across live preview and public PDF view.",
+      },
+    ],
+  },
+  {
     version: "1.0.58",
     releaseDate: "2026-11-24",
     title: "Badge Overflow Protection, Readable Name Fitting, Clear Queue & Watcher Flood Fix",
-    badge: "Latest",
     items: [
       {
         category: "Added",

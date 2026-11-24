@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.60] - 2026-11-24
+
+### Added
+- **Prefill Invoice from Quotation**: Added 1-click **Create Invoice from Quotation** row action on Quotations and a **Prefill from Quotation** selector inside the Invoice editor in `SponsorDocumentsDialog`, copying billing/contact/signatory details, event metadata, tier, currency, bank details, deliverables, and cloned line items/totals while persisting `source_quotation_id` and `source_quotation_number` in `sponsor_documents`.
+
+---
+
 ## [1.0.59] - 2026-11-24
 
 ### Added

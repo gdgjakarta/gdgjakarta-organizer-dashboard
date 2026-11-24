@@ -468,6 +468,14 @@ export async function saveSponsorDocumentAction(
       token,
       doc_type: docInput.doc_type,
       doc_number: docNumber,
+      source_quotation_id:
+        docInput.source_quotation_id !== undefined
+          ? docInput.source_quotation_id.trim()
+          : (existing?.source_quotation_id ?? ""),
+      source_quotation_number:
+        docInput.source_quotation_number !== undefined
+          ? docInput.source_quotation_number.trim()
+          : (existing?.source_quotation_number ?? ""),
       custom_title: docInput.custom_title !== undefined ? docInput.custom_title.trim() : (existing?.custom_title ?? ""),
       status: docInput.status || existing?.status || "draft",
       event_id: docInput.event_id !== undefined ? docInput.event_id : (existing?.event_id ?? null),

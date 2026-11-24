@@ -17,6 +17,7 @@ import {
   PenTool,
   Plus,
   Printer,
+  Receipt,
   Save,
   Send,
   Trash2,
@@ -92,6 +93,52 @@ const DOC_TYPE_LABELS: Record<SponsorDocumentType, string> = {
   invoice: "Invoice",
 };
 
+function applyQuotationToInvoice(baseInvoice: SponsorDocument, quotation: SponsorDocument): SponsorDocument {
+  const clonedItems: SponsorDocumentLineItem[] = (quotation.line_items || []).map((item, idx) => {
+    const qty = Math.max(1, Number(item.qty) || 1);
+    const unitPrice = Math.max(0, Number(item.unit_price) || 0);
+    return {
+      id: `item_${Date.now()}_${idx}`,
+      description: item.description || "",
+      qty,
+      unit_price: unitPrice,
+      total: qty * unitPrice,
+    };
+  });
+
+  const grandTotal = clonedItems.reduce((sum, item) => sum + item.total, 0);
+
+  return {
+    ...baseInvoice,
+    doc_type: "invoice",
+    source_quotation_id: quotation.id,
+    source_quotation_number: quotation.doc_number,
+    sponsor_tier: quotation.sponsor_tier || baseInvoice.sponsor_tier,
+    currency: quotation.currency || baseInvoice.currency,
+    company_name: quotation.company_name || baseInvoice.company_name,
+    company_legal_name: quotation.company_legal_name ?? baseInvoice.company_legal_name,
+    company_address: quotation.company_address ?? baseInvoice.company_address,
+    contact_name: quotation.contact_name ?? baseInvoice.contact_name,
+    contact_title: quotation.contact_title ?? baseInvoice.contact_title,
+    contact_email: quotation.contact_email ?? baseInvoice.contact_email,
+    partner_signer_name: quotation.partner_signer_name ?? baseInvoice.partner_signer_name,
+    partner_signer_title: quotation.partner_signer_title ?? baseInvoice.partner_signer_title,
+    event_id: quotation.event_id ?? baseInvoice.event_id,
+    event_title: quotation.event_title ?? baseInvoice.event_title,
+    event_date: quotation.event_date ?? baseInvoice.event_date,
+    event_location: quotation.event_location ?? baseInvoice.event_location,
+    event_website: quotation.event_website ?? baseInvoice.event_website,
+    line_items: clonedItems,
+    grand_total: grandTotal,
+    deliverables: quotation.deliverables ? [...quotation.deliverables] : baseInvoice.deliverables,
+    payment_term_days: quotation.payment_term_days ?? baseInvoice.payment_term_days,
+    bank_name: quotation.bank_name || baseInvoice.bank_name,
+    bank_account_number: quotation.bank_account_number || baseInvoice.bank_account_number,
+    bank_account_name: quotation.bank_account_name || baseInvoice.bank_account_name,
+    bank_swift_code: quotation.bank_swift_code || baseInvoice.bank_swift_code,
+  };
+}
+
 export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: SponsorDocumentsDialogProps) {
   const [documents, setDocuments] = useState<SponsorDocument[]>([]);
   const [templatesConfig, setTemplatesConfig] = useState<SponsorDocumentTemplatesConfig | null>(null);
@@ -156,7 +203,7 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
     }
   }, [open, sponsorId, loadDocumentsAndConfig]);
 
-  const handleStartCreate = async (docType: SponsorDocumentType) => {
+  const handleStartCreate = async (docType: SponsorDocumentType, sourceQuotation?: SponsorDocument) => {
     if (!sponsorContext) return;
     const cfg = templatesConfig || (await getDefaultSponsorDocumentTemplatesConfig());
 
@@ -265,9 +312,24 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
       updated_at: new Date().toISOString(),
     };
 
-    setEditingDoc(newDraft);
+    setEditingDoc(
+      sourceQuotation && docType === "invoice" ? applyQuotationToInvoice(newDraft, sourceQuotation) : newDraft,
+    );
     setViewMode("editor");
+    if (sourceQuotation && docType === "invoice") {
+      toast.success(`Invoice prefilled from Quotation ${sourceQuotation.doc_number}.`);
+    }
   };
+
+  const handlePrefillFromQuotation = (quotationId: string) => {
+    if (!editingDoc) return;
+    const quotation = documents.find((d) => d.id === quotationId && d.doc_type === "quotation");
+    if (!quotation) return;
+    setEditingDoc(applyQuotationToInvoice(editingDoc, quotation));
+    toast.success(`Invoice prefilled from Quotation ${quotation.doc_number}.`);
+  };
+
+  const quotations = documents.filter((d) => d.doc_type === "quotation");
 
   const handleEditExisting = (doc: SponsorDocument) => {
     setEditingDoc({
@@ -550,7 +612,14 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                               {DOC_TYPE_LABELS[doc.doc_type]}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-mono text-xs font-semibold">{doc.doc_number}</TableCell>
+                          <TableCell className="font-mono text-xs font-semibold">
+                            <div>{doc.doc_number}</div>
+                            {doc.source_quotation_number && (
+                              <div className="font-sans text-[10px] font-normal text-muted-foreground">
+                                From {doc.source_quotation_number}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <Badge
                               variant="outline"
@@ -590,6 +659,18 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                           </TableCell>
                           <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
+                              {doc.doc_type === "quotation" && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-primary hover:text-primary"
+                                  title="Create Invoice from Quotation"
+                                  onClick={() => handleStartCreate("invoice", doc)}
+                                >
+                                  <Receipt className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                               <Button
                                 type="button"
                                 variant="ghost"
@@ -747,6 +828,33 @@ export function SponsorDocumentsDialog({ open, onOpenChange, sponsorContext }: S
                     <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                       1. Document Metadata
                     </h3>
+
+                    {editingDoc.doc_type === "invoice" && quotations.length > 0 && (
+                      <div className="space-y-1 rounded-md border border-border bg-muted/40 p-2.5">
+                        <Label className="text-xs flex items-center gap-1.5">
+                          <Receipt className="h-3.5 w-3.5 text-primary" />
+                          Prefill from Quotation
+                        </Label>
+                        <Select value={editingDoc.source_quotation_id || ""} onValueChange={handlePrefillFromQuotation}>
+                          <SelectTrigger className="h-8 text-xs bg-background">
+                            <SelectValue placeholder="Select a quotation to copy billing, items & pricing..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {quotations.map((q) => {
+                              const totalLabel =
+                                q.currency === "USD"
+                                  ? `$${Number(q.grand_total || 0).toLocaleString("en-US")}`
+                                  : `IDR ${Number(q.grand_total || 0).toLocaleString("id-ID")}`;
+                              return (
+                                <SelectItem key={q.id} value={q.id} className="text-xs">
+                                  {q.doc_number} — {totalLabel} ({q.document_date})
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
