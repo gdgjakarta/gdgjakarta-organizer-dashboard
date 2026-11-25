@@ -16,10 +16,33 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.67",
+    releaseDate: "2026-11-25",
+    title: "Certificate Verification Badge Stamping & Firestore Rules",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Added Stamp Verification Badge & QR Code toggle and corner position selector for Attendance and Speaker certificates across Google Slides, Google Drawing, and built-in templates.",
+      },
+      {
+        category: "Added",
+        text: "Added verification_badge and qr_code placement placeholders for Google Slides (backed by slide layout coordinate inspection) and Google Drawing overlays for exact badge and QR positioning.",
+      },
+      {
+        category: "Changed",
+        text: "Standardized the certificate ID placeholder to certificate_id (keeping certificate_code backward-compatible), added a border around the Issued Certificates table, and updated the auto-unlock release label.",
+      },
+      {
+        category: "Fixed",
+        text: "Added missing Firestore security rules and schema validation for the event_certificates collection, fixing speaker and attendance certificate record persistence.",
+      },
+    ],
+  },
+  {
     version: "1.0.66",
     releaseDate: "2026-11-25",
     title: "Registrants CSV Export Column Alignment",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",

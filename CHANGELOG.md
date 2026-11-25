@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.67] - 2026-11-25
+
+### Added
+- **Certificate Verification Badge & QR Code Stamping (`/dashboard/events/[eventId]` → Certificates)**:
+  - Added **Stamp Verification Badge & QR Code** toggle and corner position selector (`Bottom Right`, `Bottom Left`, `Top Right`, `Top Left`) for Attendance and Speaker certificates, stamping the X.509 PKCS#7 Digitally Signed badge and per-recipient `SCAN TO VERIFY` QR card onto Google Slides, Google Drawing, and built-in PDFs.
+  - Added `{{verification_badge}}` and `{{qr_code}}` Google Slides placement placeholders (with live n8n `Generate Certificate API` layout inspection via `x-certificate-slots`) and a `verification_badge` overlay field for Google Drawing templates so organizers can position the badge and QR code at exact template coordinates.
+
+### Changed
+- **Certificate ID Placeholder & Certificates UI Polish**:
+  - Renamed the certificate ID placeholder to `{{certificate_id}}` / `certificate_id` while retaining `{{certificateId}}` and `{{certificate_code}}` as backward-compatible aliases.
+  - Added a rounded border around the **Issued Certificates** table and updated the wrap-up release label from `end_date` to **"Auto-unlock after event ends (with manual override)"**.
+
+### Fixed
+- **Firestore Security Rules for `event_certificates` (`firestore.rules`)**:
+  - Added `isValidEventCertificate(data)` schema validation and `match /event_certificates/{certificateId}` rules (supporting organizer/team issuance and updates, authenticated member attendance self-claim, and public token verification at `/certificates/[token]`), resolving `"Failed to save speaker certificate record in Firestore."`.
+
+---
+
 ## [1.0.66] - 2026-11-25
 
 ### Fixed
