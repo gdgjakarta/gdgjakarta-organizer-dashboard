@@ -707,19 +707,21 @@ export async function signPartnerPdfBuffer(params: SignPartnerPdfParams): Promis
     });
 
     if (placement.kind === "emeterai") {
-      // Resmi.ID expects top-left origin in PDF points (x from left, y from top) and allocates a 22%-wide widget box
-      // in which live PERURI horizontally centers the square QR stamp. Compensate x so the centered square matches preview.
+      // Resmi.ID expects top-left origin in PDF points and allocates a 22% x 8% widget box (~131x67pt on A4)
+      // in which live PERURI centers its ~59x59pt square QR stamp. Center the widget on the preview center.
       const isRotated90Or270 = ((Math.round(rotationDegrees) % 180) + 180) % 180 === 90;
       const viewW = isRotated90Or270 ? cropBox.height : cropBox.width;
       const viewH = isRotated90Or270 ? cropBox.width : cropBox.height;
-      // Live PERURI centers the ~71pt square inside a ~104pt (~17.4% A4) widget (~16pt shift vs 0.22 sandbox box).
-      const resmiBoxW = 0.174 * viewW;
+      const resmiBoxW = 0.22 * viewW;
+      const resmiBoxH = 0.08 * viewH;
       const previewCenterX = (placement.xPct + placement.widthPct / 2) * viewW;
+      const previewCenterY = (placement.yPct + placement.heightPct / 2) * viewH;
       const compensatedX = Math.max(0, Math.round(cropBox.x + previewCenterX - resmiBoxW / 2));
+      const compensatedY = Math.max(0, Math.round(previewCenterY - resmiBoxH / 2));
       emeteraiPlacementRect = {
         page: placement.pageIndex + 1,
         x: compensatedX,
-        y: Math.round(placement.yPct * viewH),
+        y: compensatedY,
         width: Math.round(placement.widthPct * viewW),
         height: Math.round(placement.heightPct * viewH),
         ...(placement.emeteraiCorner ? { corner: placement.emeteraiCorner } : {}),

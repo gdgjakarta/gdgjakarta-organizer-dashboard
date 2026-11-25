@@ -474,15 +474,15 @@ export function SignDocumentsTab({
       return;
     }
 
-    // Official PERURI live e-Meterai is a fixed ~71x71 pt (2.5x2.5 cm) square (~12% x 8.5% on A4)
-    const widthPct = 0.12;
-    const heightPct = 0.085;
+    // Measured live PERURI e-Meterai is a fixed ~59x59 pt square (~10% x 7% on A4) centered in Resmi.ID's 22% x 8% widget
+    const widthPct = 0.1;
+    const heightPct = 0.07;
     const newMeterai: PdfPlacement = {
       id: `plc_emeterai_${Date.now().toString(36)}`,
       kind: "emeterai",
       pageIndex: activePageIndex,
-      xPct: 0.84,
-      yPct: 0.88,
+      xPct: 0.86,
+      yPct: 0.89,
       widthPct,
       heightPct,
       emeteraiCorner: "bottom_right",

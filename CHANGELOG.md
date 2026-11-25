@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.65] - 2026-11-25
+
+### Fixed
+- **PERURI e-Meterai Live Placement Precision & Preview Sizing (`/dashboard/partnership` → Sign Partner PDFs)**:
+  - Calibrated the live canvas preview box to the measured PERURI e-Meterai square dimensions (`10% × 7%` on A4, `~59 × 59 pt`) and hid the resize handle on fixed-size e-Meterai overlays.
+  - Centered Resmi.ID's `22% × 8%` (`~131 × 67 pt`) widget box on the preview square's center in `sign-pdf.ts` (`x = cx - 0.11 * viewW`, `y = cy - 0.04 * viewH`), eliminating the horizontal and vertical centering offset between the live preview and stamped PERURI seal.
+  - Included prior e-Meterai post-release fixes: compacted `isValidPartnerSignedDocument` in `firestore.rules` below Firestore's 1,000 CEL expression limit, fixed Resmi.ID top-left coordinate origin and mutually exclusive `corner` vs `x`/`y` submission, aligned **"Place Signature Beside e-Meterai"** to keep the QR uncovered, and removed button underline inside `AlertDescription`.
+
+---
+
 ## [1.0.64] - 2026-11-24
 
 ### Fixed
