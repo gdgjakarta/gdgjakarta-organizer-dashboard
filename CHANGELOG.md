@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.66] - 2026-11-25
+
+### Fixed
+- **Registrants CSV Export Column Alignment (`/dashboard/events/[eventId]` → Registrants)**:
+  - Updated `handleExportCsv` to respect `visibleStandardColumns` toggles from `ColumnCustomizer` (in addition to `selectedQuestionColumns`), so hidden standard columns (Status, Check-in Rate, Reviewed By, Ticket Pass/Voucher/Referral, Merchandise, Session Track, Bevy Check-In, All Responses, Registered At) are omitted from exported CSVs while keeping `Name` and `Email` always included.
+  - Aligned exported CSV column ordering with the live Registrants table and gated `Session Track` on `hasSessions`.
+  - Properly CSV-quoted header cells so custom question labels containing commas or quotes no longer shift columns.
+
+---
+
 ## [1.0.65] - 2026-11-25
 
 ### Fixed

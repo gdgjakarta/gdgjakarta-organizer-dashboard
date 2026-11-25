@@ -4308,7 +4308,9 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     const showAllResponses = visibleStandardColumns.all_responses !== false;
     const showRegisteredAt = visibleStandardColumns.registered_at !== false;
 
-    const dynamicHeaders = selectedQuestionColumns.map((qKey) => formatQuestionLabel(qKey));
+    const exportQuestionKeys =
+      selectedQuestionColumns.length > 0 ? selectedQuestionColumns : availableQuestionFields.map((q) => q.key);
+    const dynamicHeaders = exportQuestionKeys.map((qKey) => formatQuestionLabel(qKey));
     const headers = [
       "Name",
       "Email",
@@ -4345,17 +4347,24 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         (r.answers?.session_title as string) ||
         (r.session_id ? `Session ID: ${r.session_id}` : currentEvent.default_session_name?.trim() || "Main Event");
 
-      const questionColsData = selectedQuestionColumns.map((qKey) => {
+      const questionColsData = exportQuestionKeys.map((qKey) => {
         const val = resolveAnswerValue(r.answers, qKey, questionLabelMap);
         if (val === undefined || val === null) return '""';
         const strVal = Array.isArray(val) ? val.join("; ") : String(val);
         return csvCell(strVal);
       });
 
+      const questionOrderMap = new Map(availableQuestionFields.map((q, idx) => [q.key, idx]));
       const cleanAnswers =
         showAllResponses && r.answers
           ? Object.entries(r.answers)
               .filter(([k]) => k !== "session_id" && k !== "session_title")
+              .sort(([aKey], [bKey]) => {
+                const aIdx = questionOrderMap.get(aKey) ?? Number.MAX_SAFE_INTEGER;
+                const bIdx = questionOrderMap.get(bKey) ?? Number.MAX_SAFE_INTEGER;
+                if (aIdx !== bIdx) return aIdx - bIdx;
+                return formatQuestionLabel(aKey).localeCompare(formatQuestionLabel(bKey));
+              })
               .map(([k, v]) => `${formatQuestionLabel(k)}: ${Array.isArray(v) ? v.join(", ") : String(v)}`)
               .join("; ")
           : "";

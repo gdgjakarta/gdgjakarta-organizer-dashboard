@@ -16,10 +16,25 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.66",
+    releaseDate: "2026-11-25",
+    title: "Registrants CSV Export Column Alignment",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Updated registrants CSV export to respect visible standard column toggles from Column Customizer (in addition to selected custom questions), keeping Name and Email always included.",
+      },
+      {
+        category: "Fixed",
+        text: "Aligned exported CSV column order with the Registrants table, gated Session Track on events with sessions, and CSV-quoted headers so question labels with commas or quotes do not shift columns.",
+      },
+    ],
+  },
+  {
     version: "1.0.65",
     releaseDate: "2026-11-25",
     title: "PERURI e-Meterai Live Placement Precision & Preview Sizing",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",
