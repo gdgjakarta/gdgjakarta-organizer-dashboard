@@ -4287,33 +4287,56 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     setSelectedIds(next);
   };
 
+  const hasSessions = sessions.length > 0;
+
   const handleExportCsv = () => {
     if (filtered.length === 0) {
       toast.error("No registrants to export.");
       return;
     }
 
+    const csvCell = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
+
+    const showStatus = visibleStandardColumns.status !== false;
+    const showCheckinRate = isCurationMode && visibleStandardColumns.checkin_rate !== false;
+    const showReviewedBy = isCurationMode && visibleStandardColumns.reviewed_by !== false;
+    const showTicket = (hasTickets || hasBundles) && visibleStandardColumns.ticket !== false;
+    const showMerchandise = hasMerchandise && visibleStandardColumns.merchandise !== false;
+    const showMerchandiseCollected = hasMerchandise && visibleStandardColumns.merchandise_collected !== false;
+    const showSession = hasSessions && visibleStandardColumns.session !== false;
+    const showCheckin = visibleStandardColumns.checkin !== false;
+    const showAllResponses = visibleStandardColumns.all_responses !== false;
+    const showRegisteredAt = visibleStandardColumns.registered_at !== false;
+
     const dynamicHeaders = selectedQuestionColumns.map((qKey) => formatQuestionLabel(qKey));
     const headers = [
       "Name",
       "Email",
-      "Status",
-      ...(isCurationMode ? ["Check-in Rate", "Reviewed By", "Reviewed At"] : []),
-      ...(hasTickets || hasBundles
-        ? ["Ticket Pass", "Ticket Type", "Ticket Price", "Bundle Package", "Bundle Price"]
+      ...(showStatus ? ["Status"] : []),
+      ...(showCheckinRate ? ["Check-in Rate"] : []),
+      ...(showReviewedBy ? ["Reviewed By", "Reviewed At"] : []),
+      ...(showTicket
+        ? [
+            "Ticket Pass",
+            "Ticket Type",
+            "Ticket Price",
+            "Bundle Package",
+            "Bundle Price",
+            "Voucher Code",
+            "Voucher Discount",
+            "Referral Code",
+            "Referral Belongs To",
+          ]
         : []),
-      ...(hasMerchandise
-        ? ["Merchandise Orders", "Merchandise Collected", "Merchandise Collected By", "Merchandise Collected At"]
+      ...(showMerchandise ? ["Merchandise Orders"] : []),
+      ...(showMerchandiseCollected
+        ? ["Merchandise Collected", "Merchandise Collected By", "Merchandise Collected At"]
         : []),
-      "Voucher Code",
-      "Voucher Discount",
-      "Referral Code",
-      "Referral Belongs To",
-      "Bevy Check-In",
-      "Session Track",
+      ...(showSession ? ["Session Track"] : []),
+      ...(showCheckin ? ["Bevy Check-In"] : []),
       ...dynamicHeaders,
-      "Registered At",
-      "All Responses",
+      ...(showAllResponses ? ["All Responses"] : []),
+      ...(showRegisteredAt ? ["Registered At"] : []),
     ];
 
     const rows = filtered.map((r) => {
@@ -4326,64 +4349,74 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         const val = resolveAnswerValue(r.answers, qKey, questionLabelMap);
         if (val === undefined || val === null) return '""';
         const strVal = Array.isArray(val) ? val.join("; ") : String(val);
-        return `"${strVal.replace(/"/g, '""')}"`;
+        return csvCell(strVal);
       });
 
-      const cleanAnswers = r.answers
-        ? Object.entries(r.answers)
-            .filter(([k]) => k !== "session_id" && k !== "session_title")
-            .map(([k, v]) => `${formatQuestionLabel(k)}: ${Array.isArray(v) ? v.join(", ") : String(v)}`)
-            .join("; ")
+      const cleanAnswers =
+        showAllResponses && r.answers
+          ? Object.entries(r.answers)
+              .filter(([k]) => k !== "session_id" && k !== "session_title")
+              .map(([k, v]) => `${formatQuestionLabel(k)}: ${Array.isArray(v) ? v.join(", ") : String(v)}`)
+              .join("; ")
+          : "";
+
+      const merchText = showMerchandise
+        ? (r.selected_merchandise ?? []).map((m) => formatMerchandiseSummary(m, r.answers)).join("; ")
         : "";
 
-      const merchText = (r.selected_merchandise ?? []).map((m) => formatMerchandiseSummary(m, r.answers)).join("; ");
-
       return [
-        `"${(r.member_name || "").replace(/"/g, '""')}"`,
-        `"${(r.member_email || "").replace(/"/g, '""')}"`,
-        `"${(r.status || "").replace(/"/g, '""')}"`,
-        ...(isCurationMode
+        csvCell(r.member_name || ""),
+        csvCell(r.member_email || ""),
+        ...(showStatus ? [csvCell(r.status || "")] : []),
+        ...(showCheckinRate
           ? [
               (() => {
                 const email = r.member_email?.trim().toLowerCase();
                 const entry = email ? checkInRateCache.get(email) : undefined;
                 const val = entry?.status === "ready" ? `${entry.rate}% (${entry.checkedIn}/${entry.registered})` : "—";
-                return `"${val}"`;
+                return csvCell(val);
               })(),
-              `"${(r.reviewed_by_name || "").replace(/"/g, '""')}"`,
-              `"${formatFirestoreDate(r.reviewed_at, "yyyy-MM-dd HH:mm:ss", "").replace(/"/g, '""')}"`,
             ]
           : []),
-        ...(hasTickets || hasBundles
+        ...(showReviewedBy
+          ? [csvCell(r.reviewed_by_name || ""), csvCell(formatFirestoreDate(r.reviewed_at, "yyyy-MM-dd HH:mm:ss", ""))]
+          : []),
+        ...(showTicket
           ? [
-              `"${(r.ticket_name || "General RSVP").replace(/"/g, '""')}"`,
-              `"${(r.ticket_type || "free").replace(/"/g, '""')}"`,
-              `"${r.ticket_price || 0}"`,
-              `"${(r.bundle_name || "").replace(/"/g, '""')}"`,
-              `"${r.bundle_price || 0}"`,
+              csvCell(r.ticket_name || "General RSVP"),
+              csvCell(r.ticket_type || "free"),
+              csvCell(r.ticket_price || 0),
+              csvCell(r.bundle_name || ""),
+              csvCell(r.bundle_price || 0),
+              csvCell(r.voucher_code || ""),
+              csvCell(r.voucher_discount_amount || 0),
+              csvCell(r.referral_code || ""),
+              csvCell(r.referrer_name || ""),
             ]
           : []),
-        ...(hasMerchandise
+        ...(showMerchandise ? [csvCell(merchText)] : []),
+        ...(showMerchandiseCollected
           ? [
-              `"${merchText.replace(/"/g, '""')}"`,
-              `"${r.is_merchandise_collected ? "Collected" : r.selected_merchandise && r.selected_merchandise.length > 0 ? "Not Collected" : "N/A"}"`,
-              `"${(r.merchandise_collected_by_name || "").replace(/"/g, '""')}"`,
-              `"${formatFirestoreDate(r.merchandise_collected_at ?? undefined, "yyyy-MM-dd HH:mm:ss", "").replace(/"/g, '""')}"`,
+              csvCell(
+                r.is_merchandise_collected
+                  ? "Collected"
+                  : r.selected_merchandise && r.selected_merchandise.length > 0
+                    ? "Not Collected"
+                    : "N/A",
+              ),
+              csvCell(r.merchandise_collected_by_name || ""),
+              csvCell(formatFirestoreDate(r.merchandise_collected_at ?? undefined, "yyyy-MM-dd HH:mm:ss", "")),
             ]
           : []),
-        `"${(r.voucher_code || "").replace(/"/g, '""')}"`,
-        `"${r.voucher_discount_amount || 0}"`,
-        `"${(r.referral_code || "").replace(/"/g, '""')}"`,
-        `"${(r.referrer_name || "").replace(/"/g, '""')}"`,
-        `"${r.is_checked_in ? "Checked In" : "Not Checked In"}"`,
-        `"${sessionTitle.replace(/"/g, '""')}"`,
+        ...(showSession ? [csvCell(sessionTitle)] : []),
+        ...(showCheckin ? [csvCell(r.is_checked_in ? "Checked In" : "Not Checked In")] : []),
         ...questionColsData,
-        `"${formatFirestoreDate(r.registered_at, "yyyy-MM-dd HH:mm:ss", "").replace(/"/g, '""')}"`,
-        `"${cleanAnswers.replace(/"/g, '""')}"`,
+        ...(showAllResponses ? [csvCell(cleanAnswers)] : []),
+        ...(showRegisteredAt ? [csvCell(formatFirestoreDate(r.registered_at, "yyyy-MM-dd HH:mm:ss", ""))] : []),
       ].join(",");
     });
 
-    const csvContent = [headers.join(","), ...rows].join("\n");
+    const csvContent = [headers.map(csvCell).join(","), ...rows].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -4395,8 +4428,6 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     URL.revokeObjectURL(url);
     toast.success(`Exported ${filtered.length} registrants to CSV.`);
   };
-
-  const hasSessions = sessions.length > 0;
 
   const totalColumnCount = useMemo(() => {
     let count = 2; // Checkbox + Applicant
