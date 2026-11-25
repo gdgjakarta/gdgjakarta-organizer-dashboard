@@ -16,10 +16,105 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.65",
+    releaseDate: "2026-11-25",
+    title: "PERURI e-Meterai Live Placement Precision & Preview Sizing",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Calibrated the live canvas preview box to the measured PERURI e-Meterai square dimensions (10% × 7% on A4, ~59 × 59 pt) and hid the resize handle on fixed-size e-Meterai overlays.",
+      },
+      {
+        category: "Fixed",
+        text: "Centered Resmi.ID's 22% × 8% (~131 × 67 pt) widget box on the preview square's center in sign-pdf.ts, eliminating horizontal and vertical centering offsets between the live preview and stamped PERURI seal.",
+      },
+      {
+        category: "Fixed",
+        text: "Compacted isValidPartnerSignedDocument in firestore.rules below Firestore's 1,000 CEL expression limit, fixed Resmi.ID top-left coordinate origin and mutually exclusive corner vs x/y submission, aligned Place Signature Beside e-Meterai to keep the QR uncovered, and removed button underline inside AlertDescription.",
+      },
+    ],
+  },
+  {
+    version: "1.0.64",
+    releaseDate: "2026-11-24",
+    title: "Cloudflare Web Analytics Window & Retention Guard",
+    items: [
+      {
+        category: "Fixed",
+        text: "Enforced Cloudflare Web Analytics hard API constraints (90-day max single query span and 180-day trailing retention horizon), eliminating wider-than-13w2d errors on All Time and wide date filters.",
+      },
+      {
+        category: "Fixed",
+        text: "Added graceful zero-metric handling for historical windows before the 180-day retention horizon and bumped the website analytics cache key to v2 to invalidate stale cached error payloads.",
+      },
+    ],
+  },
+  {
+    version: "1.0.63",
+    releaseDate: "2026-11-24",
+    title: "Partner Removal Persistence",
+    items: [
+      {
+        category: "Fixed",
+        text: "Recorded deleted Bevy sponsor IDs in system_settings/chapter_sponsors and skipped them during Bevy sync so removed partners do not reappear on page refresh.",
+      },
+    ],
+  },
+  {
+    version: "1.0.62",
+    releaseDate: "2026-11-24",
+    title: "Unified Platform & Community Analytics Hub",
+    items: [
+      {
+        category: "Added",
+        text: "Added full-width Platform & Community Analytics hub on /dashboard/organizer with 5 data-grounded tabs (Website, Events, Tickets, Members, Instagram @gdgjakarta), All Time / Date Range / Monthly / Yearly filters, and R2-backed caching.",
+      },
+      {
+        category: "Added",
+        text: "Added interactive offline World Choropleth Map on the Website tab with Users/Visits vs Page Views toggle, backed by GA4 Data API, Cloudflare Web Analytics, and Firestore active members.",
+      },
+      {
+        category: "Added",
+        text: "Added Copy AI Prompt dropdown generating Markdown report prompts for Sponsor Proposal, Partner Impact Report, or the active tab.",
+      },
+      {
+        category: "Added",
+        text: "Added Instagram Insights & Meta Ads Boost Tracking with views, reach, interactions, followers, demographics, top posts, Active Ads & Ad Spend KPIs, per-post Ads badges, and a Boosted Posts spend breakdown.",
+      },
+      {
+        category: "Added",
+        text: "Expanded GDGUpcomingEvents into a full-height paginated card (10 per page) with clean scrollable overflow.",
+      },
+    ],
+  },
+  {
+    version: "1.0.61",
+    releaseDate: "2026-11-24",
+    title: "Official PERURI e-Meterai via Resmi.ID & Bolder Signatures",
+    items: [
+      {
+        category: "Added",
+        text: "Added optional PERURI e-Meterai stamping via Resmi.ID in Sign Partner PDFs with automatic Sandbox vs Live detection, live pricing, Live-mode Rp10.500 confirmation modal, draggable canvas box with corner snap presets, document type selector, and Resmi.ID Dashboard / Top-up links.",
+      },
+      {
+        category: "Added",
+        text: "Implemented async R2 webhook staging, 3s organizer auto-polling, 1-click Retry Stamp, partner email lock until stamping completes, PERURI serial verification on public signed-document pages, and Firestore rules validation for emeterai_* fields.",
+      },
+      {
+        category: "Added",
+        text: "Added Bold signature strokes (~1px ink dilation), wider Freehand Draw pen width (4px default, max 8px), and Place Signature Above e-Meterai alignment.",
+      },
+      {
+        category: "Changed",
+        text: "Changed Append E-Certificate & Audit Page default from true to false in SignDocumentsTab and /api/partnership/sign-pdf.",
+      },
+    ],
+  },
+  {
     version: "1.0.60",
     releaseDate: "2026-11-24",
     title: "Prefill Invoice from Quotation",
-    badge: "Latest",
     items: [
       {
         category: "Added",
