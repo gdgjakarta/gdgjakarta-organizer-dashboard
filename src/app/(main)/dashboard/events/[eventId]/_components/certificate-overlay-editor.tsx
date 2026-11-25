@@ -19,8 +19,9 @@ const FIELD_KEY_OPTIONS = [
   { key: "event_date", label: "Event Date", sample: "June 20, 2026" },
   { key: "role", label: "Role", sample: "Speaker" },
   { key: "talk_title", label: "Talk Title", sample: "Building AI Agents" },
-  { key: "certificate_code", label: "Certificate Code", sample: "GDGJKT-2026-A8F3K2" },
+  { key: "certificate_id", label: "Certificate ID", sample: "GDGJKT-2026-A8F3K2" },
   { key: "qr_code", label: "Verification QR Code", sample: "[QR]" },
+  { key: "verification_badge", label: "Verification Badge + QR", sample: "[X.509 Badge + QR]" },
 ] as const;
 
 interface CertificateOverlayEditorProps {
@@ -86,7 +87,7 @@ export function CertificateOverlayEditor({ type, backgroundPdfUrl, fields, onCha
       key: unused.key,
       x: 0.15,
       y: 0.5,
-      width: unused.key === "qr_code" ? 0.09 : 0.7,
+      width: unused.key === "qr_code" ? 0.09 : unused.key === "verification_badge" ? 0.35 : 0.7,
       font_size: 16,
       align: "center",
       bold: false,
@@ -255,7 +256,7 @@ export function CertificateOverlayEditor({ type, backgroundPdfUrl, fields, onCha
                 </div>
               </div>
 
-              {selected.key !== "qr_code" && (
+              {selected.key !== "qr_code" && selected.key !== "verification_badge" && (
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <Label className="text-[11px]">Font (pt)</Label>
@@ -296,7 +297,7 @@ export function CertificateOverlayEditor({ type, backgroundPdfUrl, fields, onCha
                 </div>
               )}
 
-              {selected.key !== "qr_code" && (
+              {selected.key !== "qr_code" && selected.key !== "verification_badge" && (
                 <div className="flex items-center gap-2 text-xs">
                   <Checkbox
                     id="overlay-field-bold"

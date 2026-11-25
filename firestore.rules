@@ -745,6 +745,44 @@ service cloud.firestore {
     //   - list: Team members only (`hasTeamAccess()`).
     //   - create, update, delete: Team members only (`hasTeamAccess()`).
     //
+    // Collection: event_certificates
+    // Document ID: certificateId (`cert_<32-hex>` opaque verification token)
+    // Fields:
+    //   - id: string (required, immutable, must match certificateId, 1-128 chars) - Certificate document ID (`cert_<32-hex>`)
+    //   - token: string (required, immutable, must match certificateId, 1-128 chars) - Opaque verification token (same as id)
+    //   - certificate_code: string|null (optional, <= 64 chars) - Human-readable certificate code (e.g. GDGJKT-2026-A8F3K2)
+    //   - certificate_type: string (required, immutable) - Certificate category ('attendance'|'speaker')
+    //   - event_id: string (required, immutable, 1-128 chars) - Associated event ID
+    //   - event_title: string (required, 1-300 chars) - Event title snapshot
+    //   - event_date: string|null (optional, <= 50 chars) - Event start date snapshot
+    //   - registration_id: string|null (optional, <= 200 chars) - Associated event_registrations doc ID (attendance certificates)
+    //   - speaker_confirmation_id: string|null (optional, <= 200 chars) - Associated event_speaker_confirmations doc ID (speaker certificates)
+    //   - member_id: string|null (optional, <= 128 chars) - Recipient Firebase Auth UID
+    //   - recipient_name: string (required, 1-200 chars) - Recipient display name
+    //   - recipient_email: string|null (optional, <= 150 chars) - Recipient email (never exposed publicly)
+    //   - presenter_role: string|null (optional, <= 100 chars) - Presenter or attendee role label
+    //   - talk_title: string|null (optional, <= 500 chars) - Speaker session title
+    //   - engine: string (required) - Rendering engine ('google_slides'|'google_drawing')
+    //   - pdf_url: string (required, 1-2000 chars) - Certificate PDF R2 public URL
+    //   - pdf_key: string (required, 1-500 chars) - Certificate PDF R2 object storage key
+    //   - sha256: string (required, 1-128 chars) - SHA-256 hex digest of generated PDF
+    //   - ecert_status: string|null (optional) - Digital sealing mode ('signed_p12'|'hash_only')
+    //   - status: string (required) - Certificate lifecycle status ('active'|'revoked')
+    //   - issued_at: string (required, <= 50 chars) - Issuance timestamp ISO string
+    //   - issued_at_millis: int|float (required, > 0) - Issuance epoch timestamp in milliseconds
+    //   - revoked_at: string|null (optional, <= 50 chars) - Revocation timestamp ISO string
+    //   - email_status: string|null (optional) - Email delivery status ('sent'|'not_sent'|'failed'|'pending')
+    //   - email_sent_at: string|null (optional, <= 50 chars) - Email dispatch timestamp ISO string
+    //   - email_sent_count: int|float|null (optional, >= 0) - Number of emails dispatched
+    //   - email_error: string|null (optional, <= 1000 chars) - Last email dispatch error message
+    //   - updated_at: string (required, <= 50 chars) - Last update timestamp ISO string
+    // Permissions:
+    //   - get: Public lookup (`if true;`) strictly by unguessable `cert_<32-hex>` token ID for /certificates/[token].
+    //   - list: Team members (`hasTeamAccess()`) or authenticated members querying their own certificates (`member_id == request.auth.uid` or `recipient_email == request.auth.token.email.lower()`).
+    //   - create: Team members (`hasTeamAccess()`) or authenticated members claiming their own `'attendance'` certificate with strict schema & initial-state checks.
+    //   - update: Team members (`hasTeamAccess()`) validating schema/bounds and preserving immutable identity fields (`id`, `token`, `event_id`, `certificate_type`).
+    //   - delete: Organizers only (`isOrganizer()`).
+    //
     //
     // ===============================================================
 
@@ -1655,6 +1693,55 @@ service cloud.firestore {
         (epl == null || (epl is map && epl.size() <= 10));
     }
 
+    // Validates event_certificates document structure, data types, and bounds.
+    // Uses compact optional helpers to stay well below Firestore's 1,000 CEL expression and 10 let-binding limits.
+    function isValidEventCertificate(data) {
+      let keys = data.keys();
+      return keys.hasAll([
+        'id', 'token', 'certificate_type', 'event_id', 'event_title',
+        'recipient_name', 'engine', 'pdf_url', 'pdf_key', 'sha256',
+        'status', 'issued_at', 'issued_at_millis', 'updated_at'
+      ]) &&
+        keys.hasOnly([
+          'id', 'token', 'certificate_code', 'certificate_type',
+          'event_id', 'event_title', 'event_date',
+          'registration_id', 'speaker_confirmation_id', 'member_id',
+          'recipient_name', 'recipient_email', 'presenter_role', 'talk_title',
+          'engine', 'pdf_url', 'pdf_key', 'sha256', 'ecert_status',
+          'status', 'issued_at', 'issued_at_millis', 'revoked_at',
+          'email_status', 'email_sent_at', 'email_sent_count', 'email_error',
+          'updated_at'
+        ]) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+        data.token is string && data.token.size() > 0 && data.token.size() <= 128 &&
+        data.certificate_type in ['attendance', 'speaker'] &&
+        data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 128 &&
+        data.event_title is string && data.event_title.size() > 0 && data.event_title.size() <= 300 &&
+        data.recipient_name is string && data.recipient_name.size() > 0 && data.recipient_name.size() <= 200 &&
+        data.engine in ['google_slides', 'google_drawing'] &&
+        data.pdf_url is string && data.pdf_url.size() > 0 && data.pdf_url.size() <= 2000 &&
+        data.pdf_key is string && data.pdf_key.size() > 0 && data.pdf_key.size() <= 500 &&
+        data.sha256 is string && data.sha256.size() > 0 && data.sha256.size() <= 128 &&
+        data.status in ['active', 'revoked'] &&
+        data.issued_at is string && data.issued_at.size() <= 50 &&
+        (data.issued_at_millis is int || data.issued_at_millis is float) && data.issued_at_millis > 0 &&
+        data.updated_at is string && data.updated_at.size() <= 50 &&
+        optStr(data, 'certificate_code', 64) &&
+        optStr(data, 'event_date', 50) &&
+        optStr(data, 'registration_id', 200) &&
+        optStr(data, 'speaker_confirmation_id', 200) &&
+        optStr(data, 'member_id', 128) &&
+        optStr(data, 'recipient_email', 150) &&
+        optStr(data, 'presenter_role', 100) &&
+        optStr(data, 'talk_title', 500) &&
+        optEnum(data, 'ecert_status', ['signed_p12', 'hash_only']) &&
+        optStr(data, 'revoked_at', 50) &&
+        optEnum(data, 'email_status', ['sent', 'not_sent', 'failed', 'pending']) &&
+        optStr(data, 'email_sent_at', 50) &&
+        optInt(data, 'email_sent_count', 0, 100000) &&
+        optStr(data, 'email_error', 1000);
+    }
+
     // ===============================================================
     // Collection Security Rules
     // ===============================================================
@@ -2346,6 +2433,52 @@ service cloud.firestore {
 
       // Create, Update, Delete: Restricted strictly to team members (Organizers & Staff).
       allow create, update, delete: if hasTeamAccess();
+    }
+
+    // -------------------------------------------------------------
+    // Event Certificates Collection (Attendance & Speaker Appreciation PDFs)
+    // -------------------------------------------------------------
+    match /event_certificates/{certificateId} {
+      // Get: Public single-document lookup strictly by unguessable cert_<32-hex> document ID
+      // so /certificates/[token] (getPublicCertificateByTokenAction) works without auth, without enabling collection enumeration.
+      allow get: if true;
+
+      // List: Authenticated members querying their own certificates (by member_id or lowercased recipient_email,
+      // e.g. claimAttendanceCertificateAction), or team members (Organizers & Staff) listing event/speaker certificates.
+      allow list: if (isAuthenticated() && (
+          resource.data.member_id == request.auth.uid ||
+          (request.auth.token.email != null && resource.data.recipient_email == request.auth.token.email.lower())
+        )) || hasTeamAccess();
+
+      // Create: Authenticated members claiming their own active attendance certificate (evaluated before hasTeamAccess
+      // to avoid unnecessary member lookups), or team members (Organizers & Staff) issuing speaker/attendance certificates.
+      allow create: if isValidEventCertificate(request.resource.data) &&
+        request.resource.data.id == certificateId &&
+        request.resource.data.token == certificateId && (
+          (
+            isAuthenticated() &&
+            request.resource.data.certificate_type == 'attendance' &&
+            request.resource.data.member_id == request.auth.uid &&
+            request.resource.data.status == 'active' &&
+            request.resource.data.get('email_status', null) == 'not_sent' &&
+            request.resource.data.get('email_sent_count', null) == 0 &&
+            request.auth.token.email != null &&
+            request.resource.data.get('recipient_email', '') == request.auth.token.email.lower()
+          ) ||
+          hasTeamAccess()
+        );
+
+      // Update: Team members (Organizers & Staff) regenerating, revoking, or updating email dispatch metadata,
+      // validating schema/bounds and preserving immutable identity fields.
+      allow update: if hasTeamAccess() &&
+        isValidEventCertificate(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.token == resource.data.token &&
+        request.resource.data.event_id == resource.data.event_id &&
+        request.resource.data.certificate_type == resource.data.certificate_type;
+
+      // Delete: Organizers only.
+      allow delete: if isOrganizer();
     }
   }
 }

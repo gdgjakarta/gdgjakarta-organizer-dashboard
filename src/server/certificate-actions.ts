@@ -13,7 +13,11 @@ import {
   isEventWrappedUpForCertificates,
   isRegistrationEligibleForAttendanceCertificate,
 } from "@/lib/events/certificate-utils";
-import { callGenerateCertificateWebhook, callSendCertificateEmailWebhook } from "@/lib/events/certificate-webhooks";
+import {
+  callGenerateCertificateWebhook,
+  callGenerateCertificateWebhookWithMeta,
+  callSendCertificateEmailWebhook,
+} from "@/lib/events/certificate-webhooks";
 import { buildRenderedEmailForAttendee } from "@/lib/events/email-templates";
 import type {
   CertificateType,
@@ -24,7 +28,12 @@ import type {
   FirestoreEvent,
   FirestoreRegistration,
 } from "@/lib/firestore/types";
-import { renderBuiltInCertificatePdf, renderCertificateOverlayPdf } from "@/lib/pdf/certificate-overlay";
+import {
+  renderBuiltInCertificatePdf,
+  renderCertificateOverlayPdf,
+  stampCertificateSlotsOnPdf,
+  stampVerificationBadgeOnPdf,
+} from "@/lib/pdf/certificate-overlay";
 import { signRawPdfBytesWithEnvP12 } from "@/lib/pdf/sign-pdf";
 import { uploadMediaObject } from "@/lib/r2/client";
 import { extractApiMessage } from "@/lib/utils";
@@ -79,6 +88,7 @@ async function generatePdfBytesForTemplate(params: {
         certificateCode: params.certificateCode,
         issuedDate: formatCertificateDate(new Date().toISOString()),
         verifyUrl: params.verifyUrl,
+        showVerificationBadge: templateCfg.show_verification_badge,
         signerName: templateCfg.signer_name,
         signerTitle: templateCfg.signer_title,
       });
@@ -131,13 +141,15 @@ async function generatePdfBytesForTemplate(params: {
         role: params.role,
         talk_title: params.talkTitle || "",
         talkTitle: params.talkTitle || "",
+        certificate_id: params.certificateCode,
+        certificateId: params.certificateCode,
         certificate_code: params.certificateCode,
         certificateCode: params.certificateCode,
         issued_date: formatCertificateDate(new Date().toISOString()),
         verify_url: params.verifyUrl,
       };
 
-      return await renderCertificateOverlayPdf({
+      const overlaidBytes = await renderCertificateOverlayPdf({
         backgroundPdfBytes: backgroundBytes,
         fields,
         values,
@@ -147,6 +159,16 @@ async function generatePdfBytesForTemplate(params: {
           subject: params.eventTitle,
         },
       });
+
+      const hasExplicitBadgeField = fields.some((f) => f.key === "verification_badge");
+      if (templateCfg.show_verification_badge && !hasExplicitBadgeField) {
+        return await stampVerificationBadgeOnPdf({
+          pdfBytes: overlaidBytes,
+          verifyUrl: params.verifyUrl,
+          position: templateCfg.verification_badge_position,
+        });
+      }
+      return overlaidBytes;
     }
 
     // Default: google_slides via n8n
@@ -164,13 +186,37 @@ async function generatePdfBytesForTemplate(params: {
       verifyUrl: params.verifyUrl,
     });
 
-    return await callGenerateCertificateWebhook({
+    const { pdfBytes: slidesPdfBytes, slots } = await callGenerateCertificateWebhookWithMeta({
       mode: "google_slides",
       templateFileId: fileId,
       outputFileName: `${type}-${sanitizeSlug(params.recipientName)}`,
       tempFolderId: templateCfg.temp_folder_id || undefined,
       replacements,
     });
+
+    const activeSlots = slots.filter(
+      (s) => s.key === "qr_code" || (s.key === "verification_badge" && templateCfg.show_verification_badge !== false),
+    );
+    const hasBadgeSlot = activeSlots.some((s) => s.key === "verification_badge");
+
+    let finalSlidesPdf = slidesPdfBytes;
+    if (activeSlots.length > 0) {
+      finalSlidesPdf = await stampCertificateSlotsOnPdf({
+        pdfBytes: finalSlidesPdf,
+        verifyUrl: params.verifyUrl,
+        slots: activeSlots,
+      });
+    }
+
+    if (templateCfg.show_verification_badge && !hasBadgeSlot) {
+      finalSlidesPdf = await stampVerificationBadgeOnPdf({
+        pdfBytes: finalSlidesPdf,
+        verifyUrl: params.verifyUrl,
+        position: templateCfg.verification_badge_position,
+      });
+    }
+
+    return finalSlidesPdf;
   })();
 
   // Cryptographically sign with Cloudflare Worker PKCS#7 X.509 secrets (graceful hash_only fallback if unconfigured)

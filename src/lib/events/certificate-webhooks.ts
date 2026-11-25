@@ -56,11 +56,41 @@ export interface GenerateCertificateWebhookPayload {
   replacements?: Record<string, string>;
 }
 
+export interface CertificateSlideSlot {
+  key: "verification_badge" | "qr_code";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function parseCertificateSlotsHeader(raw: string | null): CertificateSlideSlot[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is CertificateSlideSlot =>
+        Boolean(item) &&
+        typeof item === "object" &&
+        ((item as CertificateSlideSlot).key === "verification_badge" ||
+          (item as CertificateSlideSlot).key === "qr_code") &&
+        typeof (item as CertificateSlideSlot).x === "number" &&
+        typeof (item as CertificateSlideSlot).y === "number" &&
+        typeof (item as CertificateSlideSlot).width === "number" &&
+        typeof (item as CertificateSlideSlot).height === "number",
+    );
+  } catch {
+    return [];
+  }
+}
+
 /**
- * Calls the n8n /webhook/api/generate-certificate endpoint and returns raw PDF bytes.
- * Supports both direct binary application/pdf responses and JSON { pdfBase64 } responses.
+ * Calls the n8n /webhook/api/generate-certificate endpoint and returns raw PDF bytes + optional slide placement slots.
  */
-export async function callGenerateCertificateWebhook(payload: GenerateCertificateWebhookPayload): Promise<Uint8Array> {
+export async function callGenerateCertificateWebhookWithMeta(
+  payload: GenerateCertificateWebhookPayload,
+): Promise<{ pdfBytes: Uint8Array; slots: CertificateSlideSlot[] }> {
   const url = resolveGenerateCertificateWebhookUrl();
   const res = await fetch(url, {
     method: "POST",
@@ -74,6 +104,7 @@ export async function callGenerateCertificateWebhook(payload: GenerateCertificat
     throw new Error(`Certificate generator webhook failed (${res.status}): ${errText.slice(0, 300)}`);
   }
 
+  const slots = parseCertificateSlotsHeader(res.headers.get("x-certificate-slots"));
   const contentType = (res.headers.get("content-type") || "").toLowerCase();
   let pdfBytes: Uint8Array;
 
@@ -81,6 +112,7 @@ export async function callGenerateCertificateWebhook(payload: GenerateCertificat
     const json = (await res.json()) as {
       success?: boolean;
       pdfBase64?: string;
+      slots?: CertificateSlideSlot[];
       message?: string;
       error?: string;
     };
@@ -88,6 +120,9 @@ export async function callGenerateCertificateWebhook(payload: GenerateCertificat
       throw new Error(json.message || json.error || "Certificate generator did not return PDF data.");
     }
     pdfBytes = new Uint8Array(Buffer.from(json.pdfBase64, "base64"));
+    if (slots.length === 0 && Array.isArray(json.slots)) {
+      return { pdfBytes, slots: parseCertificateSlotsHeader(JSON.stringify(json.slots)) };
+    }
   } else {
     const ab = await res.arrayBuffer();
     pdfBytes = new Uint8Array(ab);
@@ -100,6 +135,15 @@ export async function callGenerateCertificateWebhook(payload: GenerateCertificat
     throw new Error("Generated certificate PDF exceeds the 10 MB limit.");
   }
 
+  return { pdfBytes, slots };
+}
+
+/**
+ * Calls the n8n /webhook/api/generate-certificate endpoint and returns raw PDF bytes.
+ * Supports both direct binary application/pdf responses and JSON { pdfBase64 } responses.
+ */
+export async function callGenerateCertificateWebhook(payload: GenerateCertificateWebhookPayload): Promise<Uint8Array> {
+  const { pdfBytes } = await callGenerateCertificateWebhookWithMeta(payload);
   return pdfBytes;
 }
 

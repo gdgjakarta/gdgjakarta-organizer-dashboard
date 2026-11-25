@@ -41,6 +41,7 @@ import {
 import type {
   CertificateEngine,
   CertificateType,
+  CertificateVerificationBadgePosition,
   EventCertificateConfig,
   EventCertificateRecord,
   EventCertificateTemplateConfig,
@@ -68,6 +69,7 @@ function createDefaultTemplateConfig(type: CertificateType): EventCertificateTem
     overlay_fields: buildDefaultOverlayFields(type),
     background_pdf_url: null,
     background_synced_at: null,
+    verification_badge_position: "bottom-right",
   };
 }
 
@@ -316,6 +318,8 @@ export function CertificatesTab({ event, registrations }: CertificatesTabProps) 
   const renderTemplatePanel = (type: CertificateType) => {
     const tpl = (type === "attendance" ? config.attendance : config.speaker) ?? createDefaultTemplateConfig(type);
     const isSlides = tpl.engine === "google_slides";
+    const hasCustomTemplate = Boolean(tpl.template_file_id || tpl.background_pdf_url);
+    const showVerificationBadge = Boolean(tpl.show_verification_badge ?? !hasCustomTemplate);
 
     return (
       <div className="space-y-4">
@@ -370,9 +374,7 @@ export function CertificatesTab({ event, registrations }: CertificatesTabProps) 
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="auto_on_event_end">
-                    Auto-unlock after event end_date (with manual override)
-                  </SelectItem>
+                  <SelectItem value="auto_on_event_end">Auto-unlock after event ends (with manual override)</SelectItem>
                   <SelectItem value="manual_release">Manual release only (organizer clicks Wrap Up)</SelectItem>
                 </SelectContent>
               </Select>
@@ -470,6 +472,40 @@ export function CertificatesTab({ event, registrations }: CertificatesTabProps) 
             />
           </div>
         )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Stamp Verification Badge &amp; QR Code</p>
+            <p className="text-xs text-muted-foreground">
+              Adds the X.509 PKCS#7 Digitally Signed badge and per-recipient Scan to Verify QR code onto the generated
+              PDF.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {showVerificationBadge && hasCustomTemplate && (
+              <Select
+                value={tpl.verification_badge_position ?? "bottom-right"}
+                onValueChange={(v) =>
+                  updateTemplate(type, { verification_badge_position: v as CertificateVerificationBadgePosition })
+                }
+              >
+                <SelectTrigger className="h-8 w-36 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bottom-right">Bottom Right</SelectItem>
+                  <SelectItem value="bottom-left">Bottom Left</SelectItem>
+                  <SelectItem value="top-right">Top Right</SelectItem>
+                  <SelectItem value="top-left">Top Left</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+            <Switch
+              checked={showVerificationBadge}
+              onCheckedChange={(checked) => updateTemplate(type, { show_verification_badge: checked })}
+            />
+          </div>
+        </div>
 
         <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -666,7 +702,7 @@ export function CertificatesTab({ event, registrations }: CertificatesTabProps) 
           ) : filteredCertificates.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">No certificates issued yet.</div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>

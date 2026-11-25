@@ -1,7 +1,7 @@
 import fontkit from "@pdf-lib/fontkit";
-import { PDFDocument, type PDFFont, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, type PDFFont, type PDFPage, rgb, StandardFonts } from "pdf-lib";
 
-import type { CertificateOverlayField } from "@/lib/firestore/types";
+import type { CertificateOverlayField, CertificateVerificationBadgePosition } from "@/lib/firestore/types";
 import { buildQrMatrix } from "@/lib/printers/qr-svg";
 
 const PLUS_JAKARTA_SANS_URLS = {
@@ -72,6 +72,240 @@ function parseHexColor(hex?: string): ReturnType<typeof rgb> {
 }
 
 /**
+ * Draws the X.509 PKCS#7 Digital Signature Trust Badge + Verification QR Card (base geometry: 256 x 90 pt, origin at bottom-left of the cards; caption sits 10 pt below).
+ */
+function drawVerificationStamp(params: {
+  page: PDFPage;
+  x: number;
+  y: number;
+  width: number;
+  verifyUrl: string;
+  fonts: { regular: PDFFont; semiBold: PDFFont; bold: PDFFont };
+}): void {
+  const { page, x, y, verifyUrl, fonts } = params;
+  const s = params.width / 256;
+
+  const cMat = parseHexColor("#F8FAFC");
+  const cSurface = parseHexColor("#FFFFFF");
+  const cBorderOuter = parseHexColor("#E2E8F0");
+  const cQrBorder = parseHexColor("#DADCE0");
+  const cInkPrimary = parseHexColor("#202124");
+  const cInkMuted = parseHexColor("#5F6368");
+  const cInkSubtle = parseHexColor("#80868B");
+  const cBrandBlue = parseHexColor("#1A73E8");
+  const cTrustGreen = parseHexColor("#137333");
+  const cGGreen = parseHexColor("#34A853");
+
+  // Left card: X.509 Digital Signature Trust Badge (164 x 80)
+  page.drawRectangle({
+    x,
+    y,
+    width: 164 * s,
+    height: 80 * s,
+    color: cMat,
+    borderColor: cBorderOuter,
+    borderWidth: 0.75 * s,
+  });
+  page.drawCircle({ x: x + 14 * s, y: y + 66 * s, size: 3 * s, color: cGGreen });
+  page.drawText("DIGITALLY SIGNED", {
+    x: x + 22 * s,
+    y: y + 63 * s,
+    size: 7.5 * s,
+    font: fonts.bold,
+    color: cTrustGreen,
+  });
+  page.drawText("X.509 PKCS#7 Verified", {
+    x: x + 10 * s,
+    y: y + 47 * s,
+    size: 8.5 * s,
+    font: fonts.semiBold,
+    color: cInkPrimary,
+  });
+
+  let verifyHost = "gdgjakarta.com";
+  try {
+    verifyHost = new URL(verifyUrl).host || "gdgjakarta.com";
+  } catch {
+    verifyHost = "gdgjakarta.com";
+  }
+
+  page.drawText("Scan QR or visit", {
+    x: x + 10 * s,
+    y: y + 31 * s,
+    size: 7.5 * s,
+    font: fonts.regular,
+    color: cInkMuted,
+  });
+  page.drawText(`${verifyHost}/certificates`, {
+    x: x + 10 * s,
+    y: y + 20 * s,
+    size: 7.5 * s,
+    font: fonts.semiBold,
+    color: cBrandBlue,
+  });
+  page.drawText("Tamper-evident PDF", {
+    x: x + 10 * s,
+    y: y + 7 * s,
+    size: 7 * s,
+    font: fonts.regular,
+    color: cInkSubtle,
+  });
+
+  // Right card: Verification QR Card (80 x 80, 12 pt gap)
+  const qrCardX = x + 176 * s;
+  page.drawRectangle({
+    x: qrCardX,
+    y,
+    width: 80 * s,
+    height: 80 * s,
+    color: cSurface,
+    borderColor: cQrBorder,
+    borderWidth: 0.75 * s,
+  });
+
+  const matrix = buildQrMatrix(verifyUrl);
+  if (matrix && matrix.length > 0) {
+    const boxSize = 68 * s;
+    const startX = qrCardX + 6 * s;
+    const startY = y + 6 * s;
+    const modules = matrix.length;
+    const cellSize = boxSize / modules;
+
+    for (let row = 0; row < modules; row++) {
+      for (let col = 0; col < modules; col++) {
+        if (matrix[row][col] === 1) {
+          page.drawRectangle({
+            x: startX + col * cellSize,
+            y: startY + (modules - 1 - row) * cellSize,
+            width: cellSize + 0.15,
+            height: cellSize + 0.15,
+            color: cInkPrimary,
+          });
+        }
+      }
+    }
+  }
+
+  const qrCaption = "SCAN TO VERIFY";
+  const capSize = 6.5 * s;
+  const capW = fonts.bold.widthOfTextAtSize(qrCaption, capSize);
+  page.drawText(qrCaption, {
+    x: qrCardX + 40 * s - capW / 2,
+    y: y - 10 * s,
+    size: capSize,
+    font: fonts.bold,
+    color: cInkMuted,
+  });
+}
+
+/**
+ * Stamps the X.509 Verification Badge + QR Card onto the first page of an existing PDF (e.g. Google Slides export).
+ */
+export async function stampVerificationBadgeOnPdf(params: {
+  pdfBytes: Uint8Array;
+  verifyUrl: string;
+  position?: CertificateVerificationBadgePosition;
+}): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.load(params.pdfBytes);
+  const pages = pdfDoc.getPages();
+  if (pages.length === 0) return params.pdfBytes;
+
+  const page = pages[0];
+  const { width: pageWidth, height: pageHeight } = page.getSize();
+  const fonts = await embedPlusJakartaSansOrFallback(pdfDoc);
+
+  // Scale cleanly to page width (~33% of page width, clamped to readable bounds)
+  const stampWidth = Math.max(180, Math.min(256, pageWidth * 0.34));
+  const s = stampWidth / 256;
+  const cardHeight = 80 * s;
+  const captionDrop = 12 * s;
+  const marginX = Math.max(24, pageWidth * 0.045);
+  const marginY = Math.max(22, pageHeight * 0.055);
+
+  const pos = params.position ?? "bottom-right";
+  const x = pos.endsWith("left") ? marginX : pageWidth - marginX - stampWidth;
+  const y = pos.startsWith("top") ? pageHeight - marginY - cardHeight : marginY + captionDrop;
+
+  drawVerificationStamp({ page, x, y, width: stampWidth, verifyUrl: params.verifyUrl, fonts });
+  return pdfDoc.save();
+}
+
+/**
+ * Stamps {{verification_badge}} and/or {{qr_code}} at exact normalized Google Slides placeholder boxes.
+ */
+export async function stampCertificateSlotsOnPdf(params: {
+  pdfBytes: Uint8Array;
+  verifyUrl: string;
+  slots: Array<{ key: "verification_badge" | "qr_code"; x: number; y: number; width: number; height: number }>;
+}): Promise<Uint8Array> {
+  if (params.slots.length === 0) return params.pdfBytes;
+
+  const pdfDoc = await PDFDocument.load(params.pdfBytes);
+  const pages = pdfDoc.getPages();
+  if (pages.length === 0) return params.pdfBytes;
+
+  const page = pages[0];
+  const { width: pageWidth, height: pageHeight } = page.getSize();
+  const fonts = await embedPlusJakartaSansOrFallback(pdfDoc);
+
+  for (const slot of params.slots) {
+    if (slot.key === "verification_badge") {
+      const stampWidth = Math.max(180, Math.min(280, slot.width * pageWidth));
+      const s = stampWidth / 256;
+      const cardHeight = 80 * s;
+      const captionDrop = 12 * s;
+      const rawX = slot.x * pageWidth;
+      const topY = pageHeight - slot.y * pageHeight;
+      const x = Math.max(12, Math.min(pageWidth - stampWidth - 12, rawX));
+      const y = Math.max(captionDrop + 6, Math.min(pageHeight - cardHeight - 12, topY - cardHeight));
+
+      drawVerificationStamp({ page, x, y, width: stampWidth, verifyUrl: params.verifyUrl, fonts });
+      continue;
+    }
+
+    if (slot.key === "qr_code") {
+      const matrix = buildQrMatrix(params.verifyUrl);
+      if (!matrix || matrix.length === 0) continue;
+
+      const boxSize = Math.max(48, Math.min(140, slot.width * pageWidth));
+      const rawX = slot.x * pageWidth;
+      const topY = pageHeight - slot.y * pageHeight;
+      const startX = Math.max(12, Math.min(pageWidth - boxSize - 12, rawX));
+      const startY = Math.max(12, Math.min(pageHeight - boxSize - 12, topY - boxSize));
+      const modules = matrix.length;
+      const cellSize = boxSize / modules;
+
+      page.drawRectangle({
+        x: startX - 4,
+        y: startY - 4,
+        width: boxSize + 8,
+        height: boxSize + 8,
+        color: rgb(1, 1, 1),
+        borderColor: parseHexColor("#DADCE0"),
+        borderWidth: 0.75,
+      });
+
+      const qrColor = parseHexColor("#202124");
+      for (let row = 0; row < modules; row++) {
+        for (let col = 0; col < modules; col++) {
+          if (matrix[row][col] === 1) {
+            page.drawRectangle({
+              x: startX + col * cellSize,
+              y: startY + (modules - 1 - row) * cellSize,
+              width: cellSize + 0.15,
+              height: cellSize + 0.15,
+              color: qrColor,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return pdfDoc.save();
+}
+
+/**
  * Stamps text fields and optional vector QR code onto a Google Drawing PDF background.
  * shortcut: uses pdf-lib StandardFonts (Helvetica) instead of @pdf-lib/fontkit to avoid variable-font & workerd ESM issues; upgrade if Cloudflare Workers supports static TTF subsetting cleanly.
  */
@@ -98,6 +332,22 @@ export async function renderCertificateOverlayPdf(params: {
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
   for (const field of params.fields) {
+    if (field.key === "verification_badge") {
+      const stampWidth = Math.max(140, field.width * pageWidth);
+      const cardHeight = (80 / 256) * stampWidth;
+      const startX = field.x * pageWidth;
+      const topY = pageHeight - field.y * pageHeight;
+      drawVerificationStamp({
+        page,
+        x: startX,
+        y: Math.max(16, topY - cardHeight),
+        width: stampWidth,
+        verifyUrl: params.verifyUrl,
+        fonts: { regular: fontRegular, semiBold: fontBold, bold: fontBold },
+      });
+      continue;
+    }
+
     if (field.key === "qr_code" || field.key === "qrCode") {
       const matrix = buildQrMatrix(params.verifyUrl);
       if (!matrix || matrix.length === 0) continue;
@@ -196,6 +446,7 @@ export async function renderBuiltInCertificatePdf(params: {
   certificateCode: string;
   issuedDate: string;
   verifyUrl: string;
+  showVerificationBadge?: boolean;
   signerName?: string | null;
   signerTitle?: string | null;
 }): Promise<Uint8Array> {
@@ -204,8 +455,7 @@ export async function renderBuiltInCertificatePdf(params: {
   const pageHeight = 540;
   const page = pdfDoc.addPage([pageWidth, pageHeight]);
 
-  const { regular: fontRegular, semiBold: fontSemiBold, bold: fontBold } =
-    await embedPlusJakartaSansOrFallback(pdfDoc);
+  const { regular: fontRegular, semiBold: fontSemiBold, bold: fontBold } = await embedPlusJakartaSansOrFallback(pdfDoc);
 
   // Palette tokens (GDG Jakarta Executive 4:3 Spec)
   const cMat = parseHexColor("#F8FAFC");
@@ -218,9 +468,7 @@ export async function renderBuiltInCertificatePdf(params: {
   const cInkPrimary = parseHexColor("#202124");
   const cInkBody = parseHexColor("#3C4043");
   const cInkMuted = parseHexColor("#5F6368");
-  const cInkSubtle = parseHexColor("#80868B");
   const cBrandBlue = parseHexColor("#1A73E8");
-  const cTrustGreen = parseHexColor("#137333");
   const cGBlue = parseHexColor("#4285F4");
   const cGRed = parseHexColor("#EA4335");
   const cGYellow = parseHexColor("#FBBC04");
@@ -355,65 +603,17 @@ export async function renderBuiltInCertificatePdf(params: {
     color: cInkMuted,
   });
 
-  // Right Column: X.509 Digital Signature Trust Badge
-  page.drawRectangle({
-    x: 408,
-    y: 56,
-    width: 164,
-    height: 80,
-    color: cMat,
-    borderColor: cBorderOuter,
-    borderWidth: 0.75,
-  });
-  page.drawCircle({ x: 422, y: 122, size: 3, color: cGGreen });
-  page.drawText("DIGITALLY SIGNED", { x: 430, y: 119, size: 7.5, font: fontBold, color: cTrustGreen });
-  page.drawText("X.509 PKCS#7 Verified", { x: 418, y: 103, size: 8.5, font: fontSemiBold, color: cInkPrimary });
-  let verifyHost = "gdgjakarta.com";
-  try {
-    verifyHost = new URL(params.verifyUrl).host || "gdgjakarta.com";
-  } catch {
-    verifyHost = "gdgjakarta.com";
+  // Right Column: X.509 Digital Signature Trust Badge + Verification QR Card
+  if (params.showVerificationBadge !== false) {
+    drawVerificationStamp({
+      page,
+      x: 408,
+      y: 56,
+      width: 256,
+      verifyUrl: params.verifyUrl,
+      fonts: { regular: fontRegular, semiBold: fontSemiBold, bold: fontBold },
+    });
   }
-
-  page.drawText("Scan QR or visit", { x: 418, y: 87, size: 7.5, font: fontRegular, color: cInkMuted });
-  page.drawText(`${verifyHost}/certificates`, { x: 418, y: 76, size: 7.5, font: fontSemiBold, color: cBrandBlue });
-  page.drawText("Tamper-evident PDF", { x: 418, y: 63, size: 7, font: fontRegular, color: cInkSubtle });
-
-  // Right Column: Verification QR Card
-  page.drawRectangle({
-    x: 584,
-    y: 56,
-    width: 80,
-    height: 80,
-    color: cSurface,
-    borderColor: cQrBorder,
-    borderWidth: 0.75,
-  });
-  const matrix = buildQrMatrix(params.verifyUrl);
-  if (matrix && matrix.length > 0) {
-    const boxSize = 68;
-    const startX = 590;
-    const startY = 62;
-    const modules = matrix.length;
-    const cellSize = boxSize / modules;
-
-    for (let row = 0; row < modules; row++) {
-      for (let col = 0; col < modules; col++) {
-        if (matrix[row][col] === 1) {
-          page.drawRectangle({
-            x: startX + col * cellSize,
-            y: startY + (modules - 1 - row) * cellSize,
-            width: cellSize + 0.15,
-            height: cellSize + 0.15,
-            color: cInkPrimary,
-          });
-        }
-      }
-    }
-  }
-  const qrCaption = "SCAN TO VERIFY";
-  const capW = fontBold.widthOfTextAtSize(qrCaption, 6.5);
-  page.drawText(qrCaption, { x: 624 - capW / 2, y: 46, size: 6.5, font: fontBold, color: cInkMuted });
 
   pdfDoc.setTitle(toWinAnsiSafe(`${heading} - ${params.recipientName}`));
   pdfDoc.setAuthor("GDG Jakarta");

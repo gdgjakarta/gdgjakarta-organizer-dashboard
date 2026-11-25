@@ -25,9 +25,11 @@ export const CERTIFICATE_PLACEHOLDERS = [
   "{{event_date}}",
   "{{role}}",
   "{{talk_title}}",
-  "{{certificate_code}}",
+  "{{certificate_id}}",
   "{{issued_date}}",
   "{{verify_url}}",
+  "{{verification_badge}}",
+  "{{qr_code}}",
 ] as const;
 
 /**
@@ -121,7 +123,7 @@ export function buildCertificateVerifyUrl(token: string): string {
   const baseUrl =
     typeof window !== "undefined"
       ? window.location.origin
-      : (process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "") || "https://gdgjakarta.com");
+      : process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "") || "https://gdgjakarta.com";
   return `${baseUrl}/certificates/${encodeURIComponent(token)}`;
 }
 
@@ -193,6 +195,8 @@ export function buildCertificatePlaceholderMap(params: {
     "{{event_date}}": formatCertificateDate(params.eventDate),
     "{{role}}": params.role,
     "{{talk_title}}": params.talkTitle || "",
+    "{{certificate_id}}": params.certificateCode,
+    "{{certificateId}}": params.certificateCode,
     "{{certificate_code}}": params.certificateCode,
     "{{issued_date}}": formatCertificateDate(params.issuedDate),
     "{{verify_url}}": params.verifyUrl,
@@ -235,7 +239,7 @@ export function buildDefaultOverlayFields(type: CertificateType): CertificateOve
       color: "#5f6368",
     },
     {
-      key: "certificate_code",
+      key: "certificate_id",
       x: 0.06,
       y: 0.91,
       width: 0.4,

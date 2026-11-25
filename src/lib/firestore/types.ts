@@ -353,10 +353,11 @@ export type EmailTemplateKey =
 // --- Attendance & Speaker Certificates ---
 export type CertificateEngine = "google_slides" | "google_drawing";
 export type CertificateType = "attendance" | "speaker";
+export type CertificateVerificationBadgePosition = "bottom-right" | "bottom-left" | "top-right" | "top-left";
 
 /** Text/QR stamped onto a cached Google Drawing PDF background. Coordinates are 0..1 fractions of page size (origin top-left). */
 export interface CertificateOverlayField {
-  key: string; // placeholder key, e.g. "recipientName", or "qrCode"
+  key: string; // placeholder key, e.g. "recipient_name", "certificate_id", "qr_code", or "verification_badge"
   x: number;
   y: number;
   width: number;
@@ -376,6 +377,8 @@ export interface EventCertificateTemplateConfig {
   background_pdf_url?: string | null; // cached Drawing PDF in R2
   background_pdf_key?: string | null;
   background_synced_at?: string | null;
+  show_verification_badge?: boolean;
+  verification_badge_position?: CertificateVerificationBadgePosition;
   signer_name?: string | null;
   signer_title?: string | null;
 }
