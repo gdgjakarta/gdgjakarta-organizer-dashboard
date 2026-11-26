@@ -16,10 +16,21 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.71",
+    releaseDate: "2026-11-26",
+    title: "Event Short Link Canonical Destination Fix",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Updated event live-page destination URLs to gdgjakarta.com so Short.io shortlink lookups, generation, and slug updates match existing gdgjakarta.org shortlinks.",
+      },
+    ],
+  },
+  {
     version: "1.0.70",
     releaseDate: "2026-11-26",
     title: "Auth Loop Fix, Dynamic Organizer RBAC & Firestore Rules Hardening",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",

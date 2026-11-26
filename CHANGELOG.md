@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.71] - 2026-11-26
+
+### Fixed
+- **Event Short Link Lookup & Canonical Destination URL (`EventShortLinkButton`, `shortio-actions.ts`, `events-columns.tsx`)**:
+  - Updated live event page destination URLs from `https://gdgjakarta.org/events/<id>` to `https://gdgjakarta.com/events/<id>` so Short.io lookups, generation, and slug updates match the canonical web app domain while keeping shortlinks on `gdgjakarta.org`.
+
+---
+
 ## [1.0.70] - 2026-11-26
 
 ### Fixed
