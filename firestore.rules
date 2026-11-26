@@ -783,6 +783,36 @@ service cloud.firestore {
     //   - update: Team members (`hasTeamAccess()`) validating schema/bounds and preserving immutable identity fields (`id`, `token`, `event_id`, `certificate_type`).
     //   - delete: Organizers only (`isOrganizer()`).
     //
+    // Collection: event_streams
+    // Document ID: eventId
+    // Permissions:
+    //   - get: Public (`if true;`) for watch page SSR/server actions reading safe metadata, sealed_video_id, and whitelist_email_hashes.
+    //   - list, delete: Team members only (`hasTeamAccess()`).
+    //   - create, update: Team members only (`hasTeamAccess()`) with strict schema validation and `event_id == eventId`.
+    // Subcollection: event_streams/{eventId}/whitelist/{emailHash}
+    //   - get: Public O(1) lookup by 64-char hex HMAC-SHA256 email hash (`^[a-f0-9]{64}$`).
+    //   - list, delete: Team members only (`hasTeamAccess()`).
+    //   - create, update: Team members only (`hasTeamAccess()`) validating 64-char hex ID and matching `event_id` and `email_hash`.
+    //
+    // Collection: event_streams_private
+    // Document ID: eventId
+    // Permissions:
+    //   - read, write: Team members only (`hasTeamAccess()`) — holds plaintext youtube_url, youtube_video_id, and manual_whitelist_emails.
+    //
+    // Collection: event_stream_codes
+    // Document ID: codeDocId (`^stcode_[a-f0-9]{64}$`)
+    // Permissions:
+    //   - get: Public lookup (`if true;`) by unguessable HMAC ID during OTP request/redemption.
+    //   - list, delete: Team members only (`hasTeamAccess()`).
+    //   - create, update: Validated OTP lifecycle by unguessable HMAC ID (preserving immutable id, event_id, email_hash on update) or team members.
+    //
+    // Collection: event_stream_sessions
+    // Document ID: sessionId (`^strm_[a-f0-9]{32}$`)
+    // Permissions:
+    //   - get: Public lookup (`if true;`) by unguessable session ID for heartbeat and leave beacon.
+    //   - list, delete: Team members only (`hasTeamAccess()`).
+    //   - create: Validated active session creation with matching `^strm_[a-f0-9]{32}$` ID.
+    //   - update: Team members (`hasTeamAccess()`) or session heartbeat/termination updates restricted to status, last_heartbeat_at, ended_at.
     //
     // ===============================================================
 
@@ -1742,6 +1772,49 @@ service cloud.firestore {
         optStr(data, 'email_error', 1000);
     }
 
+    // Validates event_streams document structure, data types, and bounds.
+    function isValidEventStream(data) {
+      return data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 100 &&
+        data.enabled is bool &&
+        data.title is string && data.title.size() <= 200 &&
+        data.access_mode in ['public', 'whitelisted'] &&
+        data.watermark_enabled is bool &&
+        data.include_approved_registrants is bool &&
+        (!('public_youtube_video_id' in data) || data.public_youtube_video_id == null || (data.public_youtube_video_id is string && data.public_youtube_video_id.size() <= 32)) &&
+        (!('sealed_video_id' in data) || data.sealed_video_id == null || (data.sealed_video_id is string && data.sealed_video_id.size() <= 512)) &&
+        (!('whitelist_email_hashes' in data) || (data.whitelist_email_hashes is list && data.whitelist_email_hashes.size() <= 10000)) &&
+        (!('whitelist_count' in data) || (data.whitelist_count is int && data.whitelist_count >= 0 && data.whitelist_count <= 10000)) &&
+        (!('whitelist_storage' in data) || data.whitelist_storage in ['inline', 'subcollection']) &&
+        data.updated_at is string && data.updated_at.size() <= 60 &&
+        (!('updated_by' in data) || data.updated_by == null || (data.updated_by is string && data.updated_by.size() <= 200));
+    }
+
+    // Validates event_stream_codes document structure, data types, and bounds.
+    function isValidEventStreamCode(data) {
+      return data.id is string && data.id.matches('^stcode_[a-f0-9]{64}$') &&
+        data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 100 &&
+        data.email_hash is string && data.email_hash.size() == 64 &&
+        data.code_hash is string && data.code_hash.size() == 64 &&
+        data.status in ['pending', 'redeemed', 'revoked', 'expired'] &&
+        data.attempts is int && data.attempts >= 0 && data.attempts <= 10 &&
+        data.expires_at is int &&
+        data.created_at is int &&
+        data.rate_limit_timestamps is list && data.rate_limit_timestamps.size() <= 10 &&
+        (!('active_session_id' in data) || data.active_session_id == null || (data.active_session_id is string && data.active_session_id.size() <= 80)) &&
+        (!('redeemed_at' in data) || data.redeemed_at == null || data.redeemed_at is int);
+    }
+
+    // Validates event_stream_sessions document structure, data types, and bounds.
+    function isValidEventStreamSession(data) {
+      return data.id is string && data.id.matches('^strm_[a-f0-9]{32}$') &&
+        data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 100 &&
+        data.viewer_email_masked is string && data.viewer_email_masked.size() > 0 && data.viewer_email_masked.size() <= 160 &&
+        data.status in ['active', 'expired', 'revoked'] &&
+        data.started_at is int &&
+        data.last_heartbeat_at is int &&
+        (!('ended_at' in data) || data.ended_at == null || data.ended_at is int);
+    }
+
     // ===============================================================
     // Collection Security Rules
     // ===============================================================
@@ -2479,6 +2552,92 @@ service cloud.firestore {
 
       // Delete: Organizers only.
       allow delete: if isOrganizer();
+    }
+
+    // -------------------------------------------------------------
+    // Event Streams Collection (Public Stream Metadata & Whitelist Hashes)
+    // -------------------------------------------------------------
+    match /event_streams/{eventId} {
+      // Get: Public watch page SSR/server actions read safe metadata, encrypted sealed_video_id, and whitelist_email_hashes via Firestore REST.
+      allow get: if true;
+
+      // List, Delete: Restricted strictly to team members (Organizers & Staff).
+      allow list, delete: if hasTeamAccess();
+
+      // Create, Update: Team members only, validating schema/bounds and event_id match.
+      allow create, update: if hasTeamAccess() &&
+        isValidEventStream(request.resource.data) &&
+        request.resource.data.event_id == eventId;
+
+      // Subcollection storing O(1) HMAC-SHA256 email hash membership docs
+      match /whitelist/{emailHash} {
+        allow get: if emailHash.matches('^[a-f0-9]{64}$');
+        allow list, delete: if hasTeamAccess();
+        allow create, update: if hasTeamAccess() &&
+          emailHash.matches('^[a-f0-9]{64}$') &&
+          request.resource.data.event_id == eventId &&
+          request.resource.data.email_hash == emailHash;
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Event Streams Private Collection (Plaintext YouTube URL & Manual Whitelist)
+    // -------------------------------------------------------------
+    match /event_streams_private/{eventId} {
+      // Read, Write: Organizer/team-only private config holding plaintext youtube_url, youtube_video_id, and manual_whitelist_emails.
+      allow read, write: if hasTeamAccess();
+    }
+
+    // -------------------------------------------------------------
+    // Event Stream Codes Collection (Unguessable HMAC OTP Records)
+    // -------------------------------------------------------------
+    match /event_stream_codes/{codeDocId} {
+      // Get: Server actions read by unguessable HMAC ID during OTP request/redemption without exposing list.
+      allow get: if true;
+
+      // List, Delete: Restricted strictly to team members (Organizers & Staff).
+      allow list, delete: if hasTeamAccess();
+
+      // Create: Validated OTP record creation with matching unguessable HMAC ID.
+      allow create: if codeDocId.matches('^stcode_[a-f0-9]{64}$') &&
+        isValidEventStreamCode(request.resource.data) &&
+        request.resource.data.id == codeDocId;
+
+      // Update: Team members or validated OTP lifecycle updates preserving immutable id, event_id, and email_hash.
+      allow update: if hasTeamAccess() || (
+        codeDocId.matches('^stcode_[a-f0-9]{64}$') &&
+        isValidEventStreamCode(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.event_id == resource.data.event_id &&
+        request.resource.data.email_hash == resource.data.email_hash
+      );
+    }
+
+    // -------------------------------------------------------------
+    // Event Stream Sessions Collection (Active Viewer Sessions & Heartbeats)
+    // -------------------------------------------------------------
+    match /event_stream_sessions/{sessionId} {
+      // Get: Heartbeat and leave beacon look up by unguessable session ID.
+      allow get: if true;
+
+      // List, Delete: Restricted strictly to team members (Organizers & Staff).
+      allow list, delete: if hasTeamAccess();
+
+      // Create: Validated active session creation with matching unguessable session ID.
+      allow create: if sessionId.matches('^strm_[a-f0-9]{32}$') &&
+        isValidEventStreamSession(request.resource.data) &&
+        request.resource.data.id == sessionId &&
+        request.resource.data.status == 'active';
+
+      // Update: Team members or session heartbeat/termination updates strictly limited to status, last_heartbeat_at, and ended_at.
+      allow update: if hasTeamAccess() || (
+        sessionId.matches('^strm_[a-f0-9]{32}$') &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'last_heartbeat_at', 'ended_at']) &&
+        request.resource.data.status in ['active', 'expired', 'revoked'] &&
+        (resource.data.status == 'active' || request.resource.data.status == resource.data.status) &&
+        request.resource.data.last_heartbeat_at is int &&
+        (!('ended_at' in request.resource.data) || request.resource.data.ended_at == null || request.resource.data.ended_at is int)
+      );
     }
   }
 }

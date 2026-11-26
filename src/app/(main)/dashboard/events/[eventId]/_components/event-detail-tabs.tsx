@@ -14,6 +14,7 @@ import {
   Package,
   PackageCheck,
   Printer,
+  Radio,
   RotateCcw,
   ShoppingBag,
   Sparkles,
@@ -53,6 +54,7 @@ import { RefundsTab } from "./refunds-tab";
 import { RegistrantsTab } from "./registrants-tab";
 import { SpeakersTab } from "./speakers-tab";
 import { SponsorsTab } from "./sponsors-tab";
+import { StreamAccessTab } from "./stream-access-tab";
 import { TicketsTab } from "./tickets-tab";
 import { VouchersTab } from "./vouchers-tab";
 
@@ -533,6 +535,15 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
                 <Award className="size-4" />
                 Certificates
               </TabsTrigger>
+              <TabsTrigger
+                id="tab-trigger-stream"
+                data-value="stream"
+                value="stream"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
+                <Radio className="size-4" />
+                Stream
+              </TabsTrigger>
             </>
           )}
         </TabsList>
@@ -629,6 +640,10 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
 
           <TabsContent value="certificates" className="space-y-4">
             <CertificatesTab event={activeEvent} registrations={activeRegistrations} />
+          </TabsContent>
+
+          <TabsContent value="stream" className="space-y-4">
+            <StreamAccessTab eventId={eventId} event={activeEvent} />
           </TabsContent>
         </>
       )}

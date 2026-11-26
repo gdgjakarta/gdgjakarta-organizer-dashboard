@@ -20,9 +20,12 @@ export function parseVideoUrl(rawUrl?: string | null): ParsedVideo | null {
   const url = rawUrl.trim();
   if (!url) return null;
 
-  // 1. YouTube (Standard, Shortened youtu.be, Shorts, Embeds)
+  // Reject unsafe schemes (e.g. javascript:, data:)
+  if (!/^https?:\/\//i.test(url)) return null;
+
+  // 1. YouTube (Standard, Shortened youtu.be, Shorts, Live, Embeds, youtube-nocookie.com)
   const ytMatch = url.match(
-    /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([a-zA-Z0-9_-]{11})/,
+    /^https?:\/\/(?:www\.|m\.)?(?:youtu\.be\/|(?:youtube\.com|youtube-nocookie\.com)\/(?:embed\/|v\/|watch\?v=|watch\?[^#]*&v=|shorts\/|live\/))([a-zA-Z0-9_-]{11})(?=$|[?&#/])/,
   );
   if (ytMatch?.[1]) {
     const videoId = ytMatch[1];

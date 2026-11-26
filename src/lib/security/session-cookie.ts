@@ -5,8 +5,10 @@
  */
 
 function getSecretKeyBytes(): Uint8Array {
-  const secret =
-    process.env.SESSION_SECRET || process.env.PAYMENT_WEBHOOK_SECRET || "gdg-jakarta-secure-hmac-session-secret-2026";
+  const secret = (process.env.SESSION_SECRET || process.env.PAYMENT_WEBHOOK_SECRET || "").trim();
+  if (!secret) {
+    throw new Error("SESSION_SECRET is not configured.");
+  }
   return new TextEncoder().encode(secret);
 }
 

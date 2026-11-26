@@ -228,6 +228,165 @@ export async function getFirestoreDoc(
 }
 
 /**
+ * Fetches a single document along with its server `updateTime` for atomic optimistic concurrency (SEC-1).
+ */
+export async function getFirestoreDocWithMeta(
+  collectionName: string,
+  docId: string,
+  token?: string,
+): Promise<{ data: Record<string, unknown> | null; updateTime: string | null }> {
+  try {
+    const url = `${getFirestoreBaseUrl()}/${collectionName}/${encodeURIComponent(docId)}?key=${getFirebaseApiKey()}`;
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const authToken = await resolveAuthToken(token);
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+    const res = await fetch(url, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+      signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
+    });
+    if (res.status === 404) return { data: null, updateTime: null };
+    if (res.status === 401 && authToken) {
+      const retryRes = await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
+      });
+      if (retryRes.ok) {
+        const raw = (await retryRes.json()) as { fields?: Record<string, unknown>; updateTime?: string };
+        return { data: decodeFirestoreDoc(raw), updateTime: raw.updateTime ?? null };
+      }
+    }
+    if (!res.ok) return { data: null, updateTime: null };
+    const raw = (await res.json()) as { fields?: Record<string, unknown>; updateTime?: string };
+    return { data: decodeFirestoreDoc(raw), updateTime: raw.updateTime ?? null };
+  } catch (err) {
+    console.warn(`[Firestore REST] Failed fetching with meta ${collectionName}/${docId}:`, err);
+    return { data: null, updateTime: null };
+  }
+}
+
+/**
+ * Atomically patches/creates a document only if its Firestore precondition matches:
+ * - `expectedUpdateTime === null` => requires `currentDocument.exists=false` (atomic create)
+ * - `expectedUpdateTime` string => requires `currentDocument.updateTime=<expectedUpdateTime>` (atomic CAS)
+ */
+export async function commitFirestoreDocIfMatch(
+  collectionName: string,
+  docId: string,
+  data: Record<string, unknown>,
+  expectedUpdateTime: string | null,
+  merge = false,
+  token?: string,
+): Promise<{ ok: boolean; conflict?: boolean; status?: number; error?: string }> {
+  try {
+    const searchParams = new URLSearchParams();
+    searchParams.set("key", getFirebaseApiKey());
+    if (expectedUpdateTime === null) {
+      searchParams.set("currentDocument.exists", "false");
+    } else {
+      searchParams.set("currentDocument.updateTime", expectedUpdateTime);
+    }
+    if (merge) {
+      for (const k of Object.keys(data).filter((key) => data[key] !== undefined)) {
+        searchParams.append("updateMask.fieldPaths", k);
+      }
+    }
+    const url = `${getFirestoreBaseUrl()}/${collectionName}/${encodeURIComponent(docId)}?${searchParams.toString()}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    const authToken = await resolveAuthToken(token);
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+    const body = JSON.stringify({ fields: encodeFirestoreFields(data) });
+    let res = await fetch(url, { method: "PATCH", headers, body });
+    if (res.status === 401 && authToken) {
+      res = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body,
+      });
+    }
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      const isConflict =
+        res.status === 409 ||
+        res.status === 412 ||
+        (res.status === 400 && /FAILED_PRECONDITION|ALREADY_EXISTS/i.test(errText));
+      return {
+        ok: false,
+        conflict: isConflict,
+        status: res.status,
+        error: errText || `HTTP ${res.status}`,
+      };
+    }
+    return { ok: true, status: res.status };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Executes chunked Firestore REST `:commit` batch writes (up to 500 ops per request).
+ */
+export async function batchCommitFirestoreWrites(
+  ops: Array<
+    | { type: "set"; docPath: string; data: Record<string, unknown> }
+    | { type: "delete"; docPath: string }
+  >,
+  token?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (ops.length === 0) return { ok: true };
+  try {
+    const projectId = getFirebaseProjectId();
+    const docRoot = `projects/${projectId}/databases/(default)/documents`;
+    const url = `${getFirestoreBaseUrl()}:commit?key=${getFirebaseApiKey()}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    const authToken = await resolveAuthToken(token);
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+
+    const CHUNK_SIZE = 450;
+    for (let i = 0; i < ops.length; i += CHUNK_SIZE) {
+      const chunk = ops.slice(i, i + CHUNK_SIZE);
+      const writes = chunk.map((op) =>
+        op.type === "delete"
+          ? { delete: `${docRoot}/${op.docPath}` }
+          : {
+              update: {
+                name: `${docRoot}/${op.docPath}`,
+                fields: encodeFirestoreFields(op.data),
+              },
+            },
+      );
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ writes }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        return { ok: false, error: errText || `HTTP ${res.status}` };
+      }
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
  * Patches a document via Firestore REST API with merge support and detailed error info.
  */
 export async function patchFirestoreDocDetailed(
@@ -391,9 +550,17 @@ export async function queryFirestoreDocs<T = Record<string, unknown>>(
   }>,
   limit?: number,
   token?: string,
+  options?: {
+    selectFields?: string[];
+    offset?: number;
+    parentPath?: string;
+  },
 ): Promise<T[]> {
   try {
-    const url = `${getFirestoreBaseUrl()}:runQuery?key=${getFirebaseApiKey()}`;
+    const baseUrl = options?.parentPath
+      ? `${getFirestoreBaseUrl()}/${options.parentPath}`
+      : getFirestoreBaseUrl();
+    const url = `${baseUrl}:runQuery?key=${getFirebaseApiKey()}`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Accept: "application/json",
@@ -407,6 +574,12 @@ export async function queryFirestoreDocs<T = Record<string, unknown>>(
       from: [{ collectionId }],
     };
 
+    if (options?.selectFields && options.selectFields.length > 0) {
+      structuredQuery.select = {
+        fields: options.selectFields.map((fieldPath) => ({ fieldPath })),
+      };
+    }
+
     if (filters && filters.length > 0) {
       if (filters.length === 1) {
         structuredQuery.where = filters[0];
@@ -418,6 +591,10 @@ export async function queryFirestoreDocs<T = Record<string, unknown>>(
           },
         };
       }
+    }
+
+    if (typeof options?.offset === "number" && options.offset > 0) {
+      structuredQuery.offset = options.offset;
     }
 
     if (typeof limit === "number" && limit > 0) {
