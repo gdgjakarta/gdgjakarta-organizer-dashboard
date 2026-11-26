@@ -149,8 +149,7 @@ function EventActionsMenu({ row }: { row: { original: EventRow } }) {
   });
 
   const getLiveUrl = React.useCallback(() => {
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://gdgjakarta.org";
-    return `${origin}/events/${row.original.id}`;
+    return `https://gdgjakarta.com/events/${row.original.id}`;
   }, [row.original.id]);
 
   const handleOpenChange = (open: boolean) => {

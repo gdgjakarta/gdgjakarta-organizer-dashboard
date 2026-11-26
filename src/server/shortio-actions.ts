@@ -186,7 +186,7 @@ export async function getPublicEventShortLinksAction(params: {
         idString: "",
         shortURL,
         secureShortURL: shortURL,
-        originalURL: params.liveUrl ?? `https://gdgjakarta.org/events/${params.eventId}`,
+        originalURL: params.liveUrl ?? `https://gdgjakarta.com/events/${params.eventId}`,
         path,
         createdAt: eventDoc?.updated_at ?? new Date().toISOString(),
       };
@@ -212,7 +212,7 @@ export async function getPublicEventShortLinksAction(params: {
     }
 
     // Otherwise, check Short.io directly
-    const canonicalLiveUrl = `https://gdgjakarta.org/events/${params.eventId}`;
+    const canonicalLiveUrl = `https://gdgjakarta.com/events/${params.eventId}`;
     const [fetchedLive, fetchedBevy] = await Promise.all([
       !liveShortLink
         ? (params.liveUrl ? findShortLinkByOriginalUrl(params.liveUrl) : Promise.resolve(null)).then((res) => {
@@ -321,7 +321,7 @@ export async function generateEventShortLinkAction(params: {
     // Always enforce canonical production domain for event live page to prevent localhost leakage
     let canonicalOriginalURL = params.originalURL;
     if (params.type === "live") {
-      canonicalOriginalURL = `https://gdgjakarta.org/events/${params.eventId}`;
+      canonicalOriginalURL = `https://gdgjakarta.com/events/${params.eventId}`;
     }
 
     const defaultTags = ["Event", ...(params.tags ?? [])];
@@ -404,7 +404,7 @@ export async function updateEventShortLinkAction(params: {
         if (found?.idString) linkId = found.idString;
       }
       if (!linkId) {
-        const destination = params.type === "live" ? `https://gdgjakarta.org/events/${params.eventId}` : undefined;
+        const destination = params.type === "live" ? `https://gdgjakarta.com/events/${params.eventId}` : undefined;
         if (destination) {
           const found = await findShortLinkByOriginalUrl(destination);
           if (found?.idString) linkId = found.idString;
@@ -421,7 +421,7 @@ export async function updateEventShortLinkAction(params: {
       path: cleanSlug,
     };
     if (params.type === "live") {
-      updateInput.originalURL = `https://gdgjakarta.org/events/${params.eventId}`;
+      updateInput.originalURL = `https://gdgjakarta.com/events/${params.eventId}`;
     }
 
     const updated = await updateShortLink(linkId, updateInput);

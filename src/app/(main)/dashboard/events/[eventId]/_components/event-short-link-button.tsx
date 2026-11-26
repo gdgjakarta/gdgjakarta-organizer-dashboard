@@ -69,7 +69,7 @@ export function EventShortLinkButton({ event, isOrganizer = true }: EventShortLi
 
   // Always point to production canonical URL
   const getLiveUrl = React.useCallback(() => {
-    return `https://gdgjakarta.org/events/${event.id}`;
+    return `https://gdgjakarta.com/events/${event.id}`;
   }, [event.id]);
 
   // Load existing short links on mount
