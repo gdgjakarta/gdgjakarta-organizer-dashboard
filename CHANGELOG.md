@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.70] - 2026-11-26
+
+### Fixed
+- **Sign-In Loop, Member-Dashboard Redirect Loop & Dynamic Organizer RBAC (`firestore.rules`, `auth-actions.ts`, `auth-provider.tsx`)**:
+  - Provisioned `SESSION_SECRET` and updated `setAuthSessionCookie` to fail loudly (`cookieSet: false`) so `GoogleButton` surfaces an error toast instead of looping between `/auth/login` and `/dashboard`.
+  - Refactored `firestore.rules` to eliminate `maximum of 1000 expressions to evaluate has been reached` crashes for non-hardcoded organizers, removed `isBootstrapOrganizerEmail()` and all hardcoded email allowlists (`ORGANIZER_EMAILS`), tightened masked-email matching (exact length, prefix, trailing suffix), and closed a referral-points self-update loophole.
+  - Upgraded `restoreSessionCookieAction` to O(1) UID-first Firestore reads with explicit Bearer token + `bevy_user_id` follow-up and `limit: 5` fallback, guarded `onIdTokenChanged` against Google sign-in / redirect races, prevented `"Member"` fallbacks from overwriting verified team `chapter_role` values, and removed the stale `/dashboard` → `/dashboard/admin` redirect in `next.config.mjs`.
+  - Tightened `isMaskedEmailMatch` in `sync-service.ts` (exact length + unique match) and preserved clean unmasked Firestore emails during Bevy sync.
+  - Added transient Bevy outage (`429`, `>= 500`, empty team response) fallback to the caller's own Firestore UID document in `validateBevyOrganizer`, plus unit tests in `tests/auth/auth-sync-invariants.test.mjs`.
+
+---
+
 ## [1.0.69] - 2026-11-26
 
 ### Fixed

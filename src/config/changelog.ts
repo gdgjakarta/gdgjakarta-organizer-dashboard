@@ -16,10 +16,29 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.70",
+    releaseDate: "2026-11-26",
+    title: "Auth Loop Fix, Dynamic Organizer RBAC & Firestore Rules Hardening",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Resolved sign-in and organizer-to-member redirect loops with fail-loud session cookie signaling, O(1) UID-first session restoration, auth listener race guards, and removal of the stale /dashboard to /dashboard/admin redirect.",
+      },
+      {
+        category: "Fixed",
+        text: "Refactored Firestore security rules to eliminate 1,000-expression evaluation crashes blocking community organizers and Regional Leads, removed all hardcoded organizer email allowlists, and closed a referral-points self-update edge case.",
+      },
+      {
+        category: "Improved",
+        text: "Hardened Bevy masked-email sync matching with exact length and unique-match validation so clean Firestore emails are never overwritten by masked Bevy emails, and added transient Bevy outage fallback to verified Firestore UID documents.",
+      },
+    ],
+  },
+  {
     version: "1.0.69",
     releaseDate: "2026-11-26",
     title: "High-Concurrency Registration, Check-In & Payment Counter Hardening",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",
