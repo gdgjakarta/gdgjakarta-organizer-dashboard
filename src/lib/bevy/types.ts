@@ -424,6 +424,8 @@ export type OrganizerValidationResult = {
   chapterTeamMember?: BevyChapterTeamMember;
   bevyUser?: BevyUser | null;
   wasImported?: boolean;
+  cookieSet?: boolean;
+  error?: string;
 };
 
 export interface BevyChapterSlim {

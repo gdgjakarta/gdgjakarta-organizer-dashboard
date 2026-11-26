@@ -18,21 +18,46 @@ function cleanPayload<T extends Record<string, unknown>>(obj: T): Partial<T> {
   return sanitizeFirestoreData(obj);
 }
 
-function isMaskedEmailMatch(maskedEmail: string, candidateEmail: string): boolean {
+export function isMaskedEmailMatch(maskedEmail: string, candidateEmail: string): boolean {
   if (!maskedEmail || !candidateEmail) return false;
   const c = maskedEmail.toLowerCase().trim();
   const t = candidateEmail.toLowerCase().trim();
   if (c === t) return true;
   if (!c.includes("*")) return false;
-  const [cLocal, cDomain] = c.split("@");
-  const [tLocal, tDomain] = t.split("@");
+  const cParts = c.split("@");
+  const tParts = t.split("@");
+  if (cParts.length !== 2 || tParts.length !== 2) return false;
+  const [cLocal, cDomain] = cParts;
+  const [tLocal, tDomain] = tParts;
   if (!cLocal || !cDomain || !tLocal || !tDomain || cDomain !== tDomain) return false;
+  if (cLocal.length !== tLocal.length) return false;
   const firstStar = cLocal.indexOf("*");
   const lastStar = cLocal.lastIndexOf("*");
   const prefix = cLocal.slice(0, firstStar);
   const suffix = cLocal.slice(lastStar + 1);
   if (tLocal.length < prefix.length + suffix.length + 1) return false;
-  return tLocal.startsWith(prefix) && (suffix.length === 0 || tLocal.endsWith(suffix));
+  if (!tLocal.startsWith(prefix) || (suffix.length > 0 && !tLocal.endsWith(suffix))) return false;
+  for (let i = 0; i < cLocal.length; i++) {
+    if (cLocal[i] !== "*" && cLocal[i] !== tLocal[i]) return false;
+  }
+  return true;
+}
+
+function findUniqueMaskedEmailMatch<T>(cleanEmail: string, existingByEmail: Map<string, T>): T | null {
+  if (!cleanEmail.includes("*")) return null;
+  const matches: T[] = [];
+  for (const [candidateEmail, rec] of existingByEmail.entries()) {
+    if (isMaskedEmailMatch(cleanEmail, candidateEmail)) {
+      matches.push(rec);
+    }
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function isCleanEmail(email?: string | null): boolean {
+  if (!email) return false;
+  const trimmed = email.trim().toLowerCase();
+  return Boolean(trimmed && !trimmed.includes("*") && !trimmed.startsWith("user_") && trimmed.includes("@"));
 }
 
 function resolveCanonicalTeamRole(tm: BevyChapterTeamMember): {
@@ -232,7 +257,7 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
         team: typeof data.team === "string" ? data.team : undefined,
       };
 
-      if (email && !email.includes("***") && !email.startsWith("user_") && email.includes("@")) {
+      if (isCleanEmail(email)) {
         const prev = existingByEmail.get(email);
         // Prioritize Auth UID documents
         if (!prev || (!prev.isAuthUid && isAuthUid)) {
@@ -303,9 +328,7 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
       // Determine authoritative target document ID:
       // Check if an existing member doc exists by clean email or by Bevy ID
       const existingMatch =
-        (cleanEmail && !cleanEmail.includes("***") && !cleanEmail.startsWith("user_")
-          ? existingByEmail.get(cleanEmail)
-          : null) || existingByBevyId.get(userId);
+        (isCleanEmail(cleanEmail) ? existingByEmail.get(cleanEmail) : null) || existingByBevyId.get(userId);
 
       const targetDocId = existingMatch ? existingMatch.id : userId;
 
@@ -330,9 +353,18 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
 
       const memberDocRef = doc(db, "members", targetDocId);
 
-      // Never replace a real clean email with a placeholder user_* email
+      // Always prefer a clean unmasked existingMatch.email over incoming masked/placeholder emails
+      const cleanExistingEmail =
+        existingMatch?.email &&
+        !existingMatch.email.includes("*") &&
+        !existingMatch.email.toLowerCase().startsWith("user_")
+          ? existingMatch.email
+          : "";
       const finalEmail =
-        rawEmail && !rawEmail.includes("***") ? rawEmail : existingMatch?.email || `user_${m.user.id}@community.dev`;
+        cleanExistingEmail ||
+        (rawEmail && !rawEmail.includes("*") ? rawEmail : "") ||
+        (existingMatch?.email && !existingMatch.email.includes("*") ? existingMatch.email : "") ||
+        `user_${m.user.id}@community.dev`;
 
       const rawMemberPayload: Record<string, unknown> = {
         id: targetDocId,
@@ -374,17 +406,10 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
       const cleanEmail = rawEmail.toLowerCase();
 
       let existingMatch =
-        (cleanEmail && !cleanEmail.includes("***") && !cleanEmail.startsWith("user_")
-          ? existingByEmail.get(cleanEmail)
-          : null) || existingByBevyId.get(userId);
+        (isCleanEmail(cleanEmail) ? existingByEmail.get(cleanEmail) : null) || existingByBevyId.get(userId);
 
       if (!existingMatch && cleanEmail.includes("*")) {
-        for (const [candidateEmail, rec] of existingByEmail.entries()) {
-          if (isMaskedEmailMatch(cleanEmail, candidateEmail)) {
-            existingMatch = rec;
-            break;
-          }
-        }
+        existingMatch = findUniqueMaskedEmailMatch(cleanEmail, existingByEmail) ?? undefined;
       }
 
       const targetDocId = existingMatch ? existingMatch.id : userId;
@@ -398,7 +423,18 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
       const { firstName, lastName } = splitFullName(displayName);
 
       const memberDocRef = doc(db, "members", targetDocId);
-      const finalEmail = rawEmail && !rawEmail.includes("***") ? rawEmail : existingMatch?.email || rawEmail || "";
+      const cleanExistingEmail =
+        existingMatch?.email &&
+        !existingMatch.email.includes("*") &&
+        !existingMatch.email.toLowerCase().startsWith("user_")
+          ? existingMatch.email
+          : "";
+      const finalEmail =
+        cleanExistingEmail ||
+        (rawEmail && !rawEmail.includes("*") ? rawEmail : "") ||
+        existingMatch?.email ||
+        rawEmail ||
+        "";
 
       const rawMemberPayload: Record<string, unknown> = {
         id: targetDocId,
@@ -483,7 +519,7 @@ export async function syncChapterTeamRolesToFirestore(passedTeamMembers?: BevyCh
       const bevyId = data.bevy_user_id != null ? String(data.bevy_user_id).trim() : "";
 
       const record = { id: docId, email, isAuthUid };
-      if (email && !email.includes("***") && !email.startsWith("user_") && email.includes("@")) {
+      if (isCleanEmail(email)) {
         const prev = existingByEmail.get(email);
         if (!prev || (!prev.isAuthUid && isAuthUid)) {
           existingByEmail.set(email, record);
@@ -509,17 +545,10 @@ export async function syncChapterTeamRolesToFirestore(passedTeamMembers?: BevyCh
       const cleanEmail = rawEmail.toLowerCase();
 
       let existingMatch =
-        (cleanEmail && !cleanEmail.includes("***") && !cleanEmail.startsWith("user_")
-          ? existingByEmail.get(cleanEmail)
-          : null) || existingByBevyId.get(userId);
+        (isCleanEmail(cleanEmail) ? existingByEmail.get(cleanEmail) : null) || existingByBevyId.get(userId);
 
       if (!existingMatch && cleanEmail.includes("*")) {
-        for (const [candidateEmail, rec] of existingByEmail.entries()) {
-          if (isMaskedEmailMatch(cleanEmail, candidateEmail)) {
-            existingMatch = rec;
-            break;
-          }
-        }
+        existingMatch = findUniqueMaskedEmailMatch(cleanEmail, existingByEmail) ?? undefined;
       }
 
       const targetDocId = existingMatch ? existingMatch.id : userId;
@@ -530,7 +559,18 @@ export async function syncChapterTeamRolesToFirestore(passedTeamMembers?: BevyCh
         (existingMatch?.email ? existingMatch.email.split("@")[0] : cleanEmail.split("@")[0]) ||
         "Community Organizer";
       const { firstName, lastName } = splitFullName(displayName);
-      const finalEmail = rawEmail && !rawEmail.includes("***") ? rawEmail : existingMatch?.email || rawEmail || "";
+      const cleanExistingEmail =
+        existingMatch?.email &&
+        !existingMatch.email.includes("*") &&
+        !existingMatch.email.toLowerCase().startsWith("user_")
+          ? existingMatch.email
+          : "";
+      const finalEmail =
+        cleanExistingEmail ||
+        (rawEmail && !rawEmail.includes("*") ? rawEmail : "") ||
+        existingMatch?.email ||
+        rawEmail ||
+        "";
 
       const rawMemberPayload: Record<string, unknown> = {
         id: targetDocId,

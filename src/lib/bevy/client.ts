@@ -46,6 +46,7 @@ import {
   type CheckInRateResult,
   getChapterRoleById,
   isChapterTeamRole,
+  isGooglerRole,
   type OrganizerValidationResult,
 } from "./types";
 
@@ -757,6 +758,7 @@ export interface UserChapterRoleResult {
   roleTitle: string;
   isValidOrganizer: boolean;
   teamMember?: BevyChapterTeamMember;
+  teamEmpty?: boolean;
 }
 
 /**
@@ -799,6 +801,16 @@ export async function getUserChapterRole(
   email?: string | null,
 ): Promise<UserChapterRoleResult> {
   const chapterTeams = await getChapterTeam(chapterId);
+  if (chapterTeams.length === 0) {
+    return {
+      chapterRole: ChapterRole.MEMBER,
+      roleId: null,
+      roleTitle: "Member",
+      isValidOrganizer: false,
+      teamEmpty: true,
+    };
+  }
+
   const normalizedId = bevyUserId !== undefined && bevyUserId !== null ? String(bevyUserId) : null;
   const normalizedEmail = email?.toLowerCase().trim() || null;
 
@@ -815,6 +827,7 @@ export async function getUserChapterRole(
       roleId: null,
       roleTitle: "Member",
       isValidOrganizer: false,
+      teamEmpty: false,
     };
   }
 
@@ -869,6 +882,37 @@ export async function getUserChapterRole(
   };
 }
 
+async function fetchFirestoreMemberRoleDoc(
+  uid: string,
+  token: string,
+): Promise<{ role?: string; chapter_role?: string; bevy_user_id?: string | number } | null> {
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "";
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "";
+  if (!projectId || !apiKey || !uid || !token) return null;
+
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/members/${encodeURIComponent(uid)}?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    cache: "no-store",
+    signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
+  });
+  if (!res.ok) return null;
+
+  const doc = (await res.json()) as {
+    fields?: Record<string, { stringValue?: string; integerValue?: string }>;
+  };
+  if (!doc.fields) return null;
+  return {
+    role: doc.fields.role?.stringValue,
+    chapter_role: doc.fields.chapter_role?.stringValue,
+    bevy_user_id: doc.fields.bevy_user_id?.stringValue ?? doc.fields.bevy_user_id?.integerValue,
+  };
+}
+
 /**
  * Authentication & role resolution matching KawalEvent:
  * 1. Calls Bevy API getMemberById(email) to resolve the user and their numerical Bevy ID.
@@ -883,6 +927,7 @@ export async function validateBevyOrganizer(
   displayName?: string,
   firstName?: string,
   lastName?: string,
+  options?: { uid?: string; token?: string },
 ): Promise<OrganizerValidationResult> {
   try {
     if (!email) {
@@ -1004,23 +1049,68 @@ export async function validateBevyOrganizer(
       };
     }
 
-    // Step 2.5: Environment fallback for master organizer accounts if Bevy lookup was rate limited / failed
-    const { isAuthorizedOrganizerEmail } = await import("@/config/auth-config");
-    if (await isAuthorizedOrganizerEmail(normalizedEmail)) {
-      console.log(`[Bevy Auth Flow] Authorized organizer email from config: ${normalizedEmail}`);
-      return {
-        isValidOrganizer: true,
-        role: "organizer",
-        chapterRole: "Organizer",
-        chapterRoleType: ChapterRole.ORGANIZER,
-        roleId: 1,
-        roleTitle: "GDG Organizer",
-        // Never write a fallback or synthetic Bevy ID. If Bevy hasn't returned a genuine user ID,
-        // leave it null so the member is marked as not synced yet and avoids duplicate/colliding IDs.
-        bevyUserId: bevyUserId ?? null,
-        bevyUser,
-        wasImported: false,
-      };
+    // Step 2.5: Transient Bevy outage fallback — read caller's own Firestore UID doc dynamically (zero hardcoded emails)
+    const isTransientBevyFailure =
+      Boolean(chapterRoleResult.teamEmpty) ||
+      memberResponse.status === 429 ||
+      (typeof memberResponse.status === "number" && memberResponse.status >= 500);
+
+    if (isTransientBevyFailure && options?.uid && options?.token) {
+      try {
+        const { isExecutiveOrganizer, isCoreTeamOrStaff } = await import("@/lib/auth-roles");
+        const memberDoc = await fetchFirestoreMemberRoleDoc(options.uid, options.token);
+
+        if (memberDoc) {
+          const isExec = isExecutiveOrganizer({
+            role: memberDoc.role,
+            chapterRole: memberDoc.chapter_role,
+          });
+          const isStaff = isCoreTeamOrStaff({
+            role: memberDoc.role,
+            chapterRole: memberDoc.chapter_role,
+          });
+
+          if (isExec || isStaff) {
+            const isCheckIn =
+              memberDoc.role === "check_in_staff" ||
+              (typeof memberDoc.chapter_role === "string" && memberDoc.chapter_role.toLowerCase().includes("check-in"));
+            const fallbackRole = isExec ? "organizer" : isCheckIn ? "check_in_staff" : "core_team";
+            const fallbackChapterRole =
+              memberDoc.chapter_role && memberDoc.chapter_role.toLowerCase() !== "member"
+                ? memberDoc.chapter_role
+                : isExec
+                  ? "Organizer"
+                  : isCheckIn
+                    ? "Check-in Staff"
+                    : "Core Team";
+            const fallbackRoleType = isExec
+              ? isGooglerRole(fallbackChapterRole)
+                ? ChapterRole.GOOGLER
+                : ChapterRole.ORGANIZER
+              : ChapterRole.CORE_TEAM;
+            const fallbackRoleId = isExec ? (isGooglerRole(fallbackChapterRole) ? 4 : 1) : isCheckIn ? 3 : 2;
+            const resolvedBevyUserId =
+              bevyUserId ?? (memberDoc.bevy_user_id != null ? String(memberDoc.bevy_user_id) : null);
+
+            console.warn(
+              `[Bevy Auth Flow] Transient Bevy failure for ${normalizedEmail}; falling back to Firestore UID doc (${options.uid}) -> role: "${fallbackRole}"`,
+            );
+            return {
+              isValidOrganizer: true,
+              role: fallbackRole,
+              chapterRole: fallbackChapterRole,
+              chapterRoleType: fallbackRoleType,
+              roleId: fallbackRoleId,
+              roleTitle: fallbackChapterRole,
+              bevyUserId: resolvedBevyUserId,
+              bevyUser,
+              wasImported: false,
+            };
+          }
+        }
+      } catch (fsFallbackErr) {
+        console.warn("[Bevy Auth Flow] Transient Firestore fallback lookup failed:", fsFallbackErr);
+      }
     }
 
     // Step 3: Regular Community Member (No hardcoded whitelist fallback!)

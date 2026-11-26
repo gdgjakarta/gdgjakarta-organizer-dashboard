@@ -83,6 +83,9 @@ export function GoogleButton({
       try {
         const result = await handleGoogleRedirectResult();
         if (!result || !isMounted) return;
+        if (!result.organizer?.id) {
+          throw new Error("Incomplete sign-in session. Please try again.");
+        }
 
         setIsLoading(true);
         setLoadingText("Navigating to dashboard…");
@@ -137,6 +140,9 @@ export function GoogleButton({
         console.log("[Google Button] User clicked Sign in with Google (Popup mode)");
         try {
           const result = await signInWithGoogle();
+          if (!result?.organizer?.id) {
+            throw new Error("Incomplete sign-in session. Please try again.");
+          }
           if (!redirect) {
             setIsLoading(false);
             onSuccess?.(result);

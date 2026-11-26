@@ -18,3 +18,8 @@
    - In `match /event_vouchers/{voucherDocId}`, `allow delete:` must permit both:
      a. Team access (`hasTeamAccess()`) for organizers and staff.
      b. Authenticated bundle purchasers (`isAuthenticated() && resource.data.purchaser_member_id == request.auth.uid`) deleting unused/unredeemed friend vouchers generated from their cancelled registration (`resource.data.times_used == 0`).
+
+4. **Zero Hardcoded Emails & 1,000 CEL Expression Budget Invariant**:
+   - Never hardcode organizer email allowlists (e.g. `isBootstrapOrganizerEmail()`) in `firestore.rules`. Hardcoded bypasses mask CEL-limit crashes and rule denials for all other organizers.
+   - Never call multi-`get()` or regex-heavy helpers (such as `hasCallerVerifiedBevyTeamDoc()` or `hasTeamAccess()`) multiple times inside the same rule expression; bind them once with `let` inside a helper function, normalize strings once (`lower()`), and read each referenced document at most once per rule evaluation.
+   - Before deploying `firestore.rules`, always run the Firebase Rules Simulator (`firebaserules.googleapis.com/v1/projects/<project>:test` or emulator) against **non-hardcoded** organizer `create`, `update`, `get`, and `list` requests (plus negative privilege-escalation tests) to verify zero `maximum of 1000 expressions to evaluate has been reached` errors.

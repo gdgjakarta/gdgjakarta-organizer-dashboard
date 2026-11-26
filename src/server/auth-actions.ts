@@ -274,12 +274,14 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
 
     // Security check: Validate the Firebase ID token cryptographically to prevent email spoofing
     let verifiedEmail = email ? email.toLowerCase().trim() : "";
+    let verifiedUid = uid;
     let isTokenVerified = false;
 
     if (token) {
       const tokenVerification = await verifyFirebaseIdToken(token);
       if (tokenVerification.valid && tokenVerification.email) {
         verifiedEmail = tokenVerification.email;
+        verifiedUid = tokenVerification.uid || uid;
         isTokenVerified = true;
         console.log(`[Auth Step 1.5 - Server] Successfully verified ID token for email: ${verifiedEmail}`);
       } else {
@@ -298,6 +300,8 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
         roleId: null,
         roleTitle: "Member",
         wasImported: false,
+        cookieSet: false,
+        error: "Invalid or unverified authentication token.",
       };
     }
 
@@ -309,7 +313,10 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       chapterRole: "Member",
     };
     try {
-      validation = await validateBevyOrganizer(verifiedEmail, name, firstName, lastName);
+      validation = await validateBevyOrganizer(verifiedEmail, name, firstName, lastName, {
+        uid: verifiedUid,
+        token,
+      });
     } catch (valErr) {
       console.error("[Auth Step 2 - Server] Validation error:", valErr);
     }
@@ -339,11 +346,12 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
     );
 
     // 2. Set Session Cookie if token verified
+    let cookieRes: { ok: boolean; error?: string } = { ok: false, error: "Missing auth token." };
     if (token) {
       console.log(
         `[Auth Step 3 - Server] Setting session cookies (auth_token & auth_role="${role}") for ${verifiedEmail}`,
       );
-      await setAuthSessionCookie(token, role, true);
+      cookieRes = await setAuthSessionCookie(token, role, true);
     }
 
     console.log(`[Auth Step 4 - Server] Completed post-login sync for ${verifiedEmail}`);
@@ -364,6 +372,8 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       roleId: validation.roleId ?? null,
       roleTitle: validation.roleTitle ?? chapterRole,
       wasImported: Boolean(validation.wasImported),
+      cookieSet: cookieRes.ok,
+      error: cookieRes.error,
     };
   } catch (fatalError) {
     console.error("[handleUserPostLoginAction] Unexpected server error during post-login sync:", fatalError);
@@ -376,6 +386,8 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       roleId: null,
       roleTitle: "Member",
       wasImported: false,
+      cookieSet: false,
+      error: fatalError instanceof Error ? fatalError.message : "Unexpected error during post-login sync.",
     };
   }
 }
@@ -383,7 +395,11 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
 /**
  * Internal helper to set session cookies. Not exported as a public server action.
  */
-async function setAuthSessionCookie(token: string, role: string, remember = true): Promise<void> {
+async function setAuthSessionCookie(
+  token: string,
+  role: string,
+  remember = true,
+): Promise<{ ok: boolean; error?: string }> {
   try {
     const cookieStore = await cookies();
     const signedRole = await signRoleCookie(role);
@@ -393,7 +409,7 @@ async function setAuthSessionCookie(token: string, role: string, remember = true
     const currentToken = cookieStore.get(AUTH_COOKIE)?.value;
     const currentRole = cookieStore.get(ROLE_COOKIE)?.value;
     if (currentToken === token && currentRole === signedRole) {
-      return;
+      return { ok: true };
     }
 
     const options: {
@@ -415,8 +431,13 @@ async function setAuthSessionCookie(token: string, role: string, remember = true
     console.log(`[Auth Cookie] Setting cookies: auth_token (len=${token.length}), auth_role=${role} (signed)`);
     cookieStore.set(AUTH_COOKIE, token, options);
     cookieStore.set(ROLE_COOKIE, signedRole, options);
+    return { ok: true };
   } catch (err) {
     console.error("[Auth Cookie] Error setting session cookies:", err);
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Failed to set session cookies.",
+    };
   }
 }
 
@@ -429,10 +450,12 @@ export interface SessionRestoreResult {
   roleTitle?: string;
   bevyUserId?: string | null;
   isValidOrganizer?: boolean;
+  cookieSet?: boolean;
+  error?: string;
 }
 
 /**
- * Restores HTTP-only auth cookies with server-side Bevy role re-validation
+ * Restores HTTP-only auth cookies with server-side Firestore role lookup
  * to prevent client-side privilege escalation.
  */
 export async function restoreSessionCookieAction(token: string, cachedRole?: string): Promise<SessionRestoreResult> {
@@ -440,6 +463,8 @@ export async function restoreSessionCookieAction(token: string, cachedRole?: str
     if (!token) {
       return {
         success: false,
+        cookieSet: false,
+        error: "Missing auth token.",
         role: "member",
         chapterRole: "Member",
         chapterRoleType: ChapterRole.MEMBER,
@@ -458,20 +483,20 @@ export async function restoreSessionCookieAction(token: string, cachedRole?: str
     const verifiedExistingRole = await verifyRoleCookie(existingRoleCookie);
 
     // Fast-path ONLY when existing signed role is ALREADY an organizer, core_team, or check_in_staff
-    // and matches the cachedRole. Never fast-path a "member" role because members
-    // can be assigned as organizers in Bevy at any time!
+    // and either cachedRole is not yet loaded or matches verifiedExistingRole.
     if (
       existingToken === token &&
       verifiedExistingRole &&
       (verifiedExistingRole === "organizer" ||
         verifiedExistingRole === "core_team" ||
         verifiedExistingRole === "check_in_staff") &&
-      cachedRole?.toLowerCase() === verifiedExistingRole.toLowerCase()
+      (!cachedRole || cachedRole.toLowerCase() === verifiedExistingRole.toLowerCase())
     ) {
       const isExecutive = verifiedExistingRole === "organizer";
       const isStaff = verifiedExistingRole === "check_in_staff";
       return {
         success: true,
+        cookieSet: true,
         role: verifiedExistingRole,
         chapterRole: isExecutive ? "Organizer" : isStaff ? "Check-in Staff" : "Core Team",
         chapterRoleType: isExecutive ? ChapterRole.ORGANIZER : ChapterRole.CORE_TEAM,
@@ -487,6 +512,8 @@ export async function restoreSessionCookieAction(token: string, cachedRole?: str
       console.warn("[Auth Restore] Invalid or unverified token supplied to restoreSessionCookieAction");
       return {
         success: false,
+        cookieSet: false,
+        error: "Invalid or unverified auth token.",
         role: "member",
         chapterRole: "Member",
         chapterRoleType: ChapterRole.MEMBER,
@@ -498,40 +525,97 @@ export async function restoreSessionCookieAction(token: string, cachedRole?: str
     }
 
     const verifiedEmail = tokenVerification.email.toLowerCase().trim();
+    const uid = tokenVerification.uid;
 
-    // Read role from Firestore `members` collection (Bevy API is only queried on sign-in, sync role, and sync chapter team)
-    const { queryFirestoreDocs } = await import("@/server/firestore-admin");
-    const matchedMembers = await queryFirestoreDocs<{
+    // O(1) UID-first Firestore lookup with explicit bearer token (Bevy API is only queried on sign-in, sync role, and sync chapter team)
+    const { getFirestoreDoc, queryFirestoreDocs } = await import("@/server/firestore-admin");
+    type MemberDocShape = {
       role?: string;
       chapter_role?: string;
       bevy_user_id?: string | number;
-    }>("members", [
-      {
-        fieldFilter: {
-          field: { fieldPath: "email" },
-          op: "EQUAL",
-          value: { stringValue: verifiedEmail },
-        },
-      },
-    ]);
-    const memberDoc = matchedMembers[0];
+    };
 
-    const isExecutive = isExecutiveOrganizer({
+    const docHasTeamRole = (doc: MemberDocShape | null): boolean =>
+      Boolean(
+        doc &&
+          (isExecutiveOrganizer({ role: doc.role, chapterRole: doc.chapter_role }) ||
+            isCoreTeamOrStaff({ role: doc.role, chapterRole: doc.chapter_role })),
+      );
+
+    const uidDoc = uid ? ((await getFirestoreDoc("members", uid, token)) as MemberDocShape | null) : null;
+    let memberDoc: MemberDocShape | null = uidDoc;
+
+    if (memberDoc?.bevy_user_id && !docHasTeamRole(memberDoc)) {
+      const linkedBevyDoc = (await getFirestoreDoc(
+        "members",
+        String(memberDoc.bevy_user_id),
+        token,
+      )) as MemberDocShape | null;
+      if (docHasTeamRole(linkedBevyDoc)) {
+        memberDoc = {
+          ...memberDoc,
+          role: linkedBevyDoc?.role ?? memberDoc.role,
+          chapter_role: linkedBevyDoc?.chapter_role ?? memberDoc.chapter_role,
+          bevy_user_id: linkedBevyDoc?.bevy_user_id ?? memberDoc.bevy_user_id,
+        };
+      }
+    }
+
+    if (!memberDoc) {
+      const matchedMembers = await queryFirestoreDocs<MemberDocShape>(
+        "members",
+        [
+          {
+            fieldFilter: {
+              field: { fieldPath: "email" },
+              op: "EQUAL",
+              value: { stringValue: verifiedEmail },
+            },
+          },
+        ],
+        5,
+        token,
+      );
+      memberDoc = matchedMembers.find(docHasTeamRole) ?? matchedMembers[0] ?? null;
+    }
+
+    let isExecutive = isExecutiveOrganizer({
       role: memberDoc?.role,
       chapterRole: memberDoc?.chapter_role,
     });
-    const isCoreStaff = isCoreTeamOrStaff({
+    let isCoreStaff = isCoreTeamOrStaff({
       role: memberDoc?.role,
       chapterRole: memberDoc?.chapter_role,
     });
 
-    const isAuthorizedTeam = isExecutive || isCoreStaff;
-    const isCheckInStaff =
+    let isAuthorizedTeam = isExecutive || isCoreStaff;
+    let isCheckInStaff =
       memberDoc?.role === "check_in_staff" ||
       (typeof memberDoc?.chapter_role === "string" && memberDoc.chapter_role.toLowerCase().includes("check-in"));
-    const role = isExecutive ? "organizer" : isCheckInStaff ? "check_in_staff" : isCoreStaff ? "core_team" : "member";
+    let role = isExecutive ? "organizer" : isCheckInStaff ? "check_in_staff" : isCoreStaff ? "core_team" : "member";
+
+    // Invariant #2: Never silently downgrade a verified existing team/organizer auth_role cookie on missing/member Firestore read
+    if (
+      !isAuthorizedTeam &&
+      (verifiedExistingRole === "organizer" ||
+        verifiedExistingRole === "core_team" ||
+        verifiedExistingRole === "check_in_staff")
+    ) {
+      role = verifiedExistingRole;
+      isExecutive = verifiedExistingRole === "organizer";
+      isCheckInStaff = verifiedExistingRole === "check_in_staff";
+      isCoreStaff = verifiedExistingRole === "core_team" || verifiedExistingRole === "check_in_staff";
+      isAuthorizedTeam = true;
+    }
+
     const chapterRole = isAuthorizedTeam
-      ? (memberDoc?.chapter_role ?? (isExecutive ? "Organizer" : isCheckInStaff ? "Check-in Staff" : "Core Team"))
+      ? memberDoc?.chapter_role && memberDoc.chapter_role.toLowerCase() !== "member"
+        ? memberDoc.chapter_role
+        : isExecutive
+          ? "Organizer"
+          : isCheckInStaff
+            ? "Check-in Staff"
+            : "Core Team"
       : "Member";
 
     let resolvedRoleType: ChapterRole = ChapterRole.MEMBER;
@@ -541,9 +625,11 @@ export async function restoreSessionCookieAction(token: string, cachedRole?: str
       resolvedRoleType = ChapterRole.CORE_TEAM;
     }
 
-    await setAuthSessionCookie(token, role, true);
+    const cookieRes = await setAuthSessionCookie(token, role, true);
     return {
-      success: true,
+      success: cookieRes.ok,
+      cookieSet: cookieRes.ok,
+      error: cookieRes.error,
       role,
       chapterRole,
       chapterRoleType: resolvedRoleType,
@@ -556,6 +642,8 @@ export async function restoreSessionCookieAction(token: string, cachedRole?: str
     console.error("[Auth Restore] Failed to restore session cookie:", err);
     return {
       success: false,
+      cookieSet: false,
+      error: err instanceof Error ? err.message : "Failed to restore session cookie.",
       role: "member",
       chapterRole: "Member",
       chapterRoleType: ChapterRole.MEMBER,
@@ -616,6 +704,7 @@ export async function refreshUserRoleAction(params: {
       displayName,
       firstName.trim() ? firstName : undefined,
       lastName.trim() ? lastName : undefined,
+      token ? { uid: params.uid, token } : undefined,
     );
 
     const isExecutive = isExecutiveOrganizer({
@@ -654,7 +743,18 @@ export async function refreshUserRoleAction(params: {
 
     if (token) {
       console.log(`[Clear Cache] Updating session cookies with fresh role "${role}" for ${verifiedEmail}`);
-      await setAuthSessionCookie(token, role, true);
+      const cookieRes = await setAuthSessionCookie(token, role, true);
+      if (!cookieRes.ok) {
+        return {
+          success: false,
+          role,
+          chapterRole,
+          bevyUserId: validation.bevyUserId ? String(validation.bevyUserId) : null,
+          isValidOrganizer: isAuthorizedTeam,
+          roleTitle: validation.roleTitle ?? chapterRole,
+          message: cookieRes.error ?? "Failed to update session cookie.",
+        };
+      }
     }
 
     return {

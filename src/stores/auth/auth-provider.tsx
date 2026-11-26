@@ -55,8 +55,8 @@ function mapFirebaseUserToOrganizer(user: User, validation?: OrganizerValidation
 async function syncMemberToFirestore(
   user: import("firebase/auth").User,
   validation?: import("@/lib/bevy/types").OrganizerValidationResult,
-) {
-  if (typeof window === "undefined") return;
+): Promise<{ ok: boolean; error?: unknown }> {
+  if (typeof window === "undefined") return { ok: true };
   try {
     const { saveFirestoreMember, generateUserReferralCode } = await import("@/lib/firestore/client");
     const { isCoreTeamOrStaff } = await import("@/lib/auth-roles");
@@ -68,7 +68,7 @@ async function syncMemberToFirestore(
     if (isOrg) {
       fallbackRole = "organizer";
     } else if (isStaff) {
-      fallbackRole = "Core Team";
+      fallbackRole = "core_team";
     }
 
     let fallbackChapterRole = "Member";
@@ -99,8 +99,15 @@ async function syncMemberToFirestore(
     };
     await saveFirestoreMember(memberData);
     console.log(`[Auth Flow - Client] Synced member profile to Firestore for ${email}`);
+    return { ok: true };
   } catch (fsErr) {
-    console.warn("[Auth Flow - Client] Firestore sync error (non-fatal):", fsErr);
+    const errorCode = (fsErr as { code?: string } | null)?.code;
+    if (errorCode === "permission-denied") {
+      console.error("[Auth Flow - Client] Firestore permission-denied while syncing member profile:", fsErr);
+    } else {
+      console.warn("[Auth Flow - Client] Firestore sync error (non-fatal):", fsErr);
+    }
+    return { ok: false, error: fsErr };
   }
 }
 
@@ -250,10 +257,25 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
             (isCheckInStaff || restoreRes.role === "core_team" || isDocStaff || Boolean(restoreRes.isValidOrganizer));
 
           const finalRole = isOrg ? "organizer" : isCheckInStaff ? "check_in_staff" : isStaff ? "core_team" : "member";
-          const finalChapterRole =
-            restoreRes.chapterRole ||
-            memberDoc?.chapter_role ||
-            (isOrg ? "Organizer" : isCheckInStaff ? "Check-in Staff" : isStaff ? "Core Team" : "Member");
+          const validRestoreChapterRole =
+            restoreRes.success &&
+            restoreRes.isValidOrganizer &&
+            restoreRes.chapterRole &&
+            restoreRes.chapterRole.toLowerCase() !== "member"
+              ? restoreRes.chapterRole
+              : null;
+          const validDocChapterRole =
+            memberDoc?.chapter_role && memberDoc.chapter_role.toLowerCase() !== "member"
+              ? memberDoc.chapter_role
+              : null;
+          const defaultRoleTitle = isOrg
+            ? "Organizer"
+            : isCheckInStaff
+              ? "Check-in Staff"
+              : isStaff
+                ? "Core Team"
+                : "Member";
+          const finalChapterRole = validRestoreChapterRole || validDocChapterRole || defaultRoleTitle;
           const finalChapterRoleType =
             restoreRes.chapterRoleType ??
             (isOrg ? ChapterRole.ORGANIZER : isStaff ? ChapterRole.CORE_TEAM : ChapterRole.MEMBER);
@@ -294,18 +316,20 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
             }
           })();
 
-          // Sync freshly resolved permissions or Bevy ID to Firestore if needed
-          if (!memberDoc?.bevy_user_id && finalBevyUserId) {
-            await syncBevyUserToFirestore(firebaseUser.uid, email);
-          }
-          if (finalRole !== memberDoc?.role || finalChapterRole !== memberDoc?.chapter_role) {
-            await syncMemberToFirestore(firebaseUser, {
-              isValidOrganizer: isOrg || isStaff,
-              role: finalRole,
-              chapterRole: finalChapterRole,
-              bevyUserId: finalBevyUserId ?? null,
-              roleId: finalRoleId,
-            });
+          // Sync freshly resolved permissions or Bevy ID to Firestore only when restoreRes succeeded
+          if (restoreRes.success) {
+            if (!memberDoc?.bevy_user_id && finalBevyUserId) {
+              await syncBevyUserToFirestore(firebaseUser.uid, email);
+            }
+            if (finalRole !== memberDoc?.role || finalChapterRole !== memberDoc?.chapter_role) {
+              await syncMemberToFirestore(firebaseUser, {
+                isValidOrganizer: isOrg || isStaff,
+                role: finalRole,
+                chapterRole: finalChapterRole,
+                bevyUserId: finalBevyUserId ?? null,
+                roleId: finalRoleId,
+              });
+            }
           }
         } catch (err) {
           console.error("[Auth Provider] Error during session restoration:", err);
@@ -319,6 +343,16 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
 
     const unsubscribeToken = onIdTokenChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        if (redirectResultPromise !== null) {
+          try {
+            await redirectResultPromise;
+          } catch {
+            // Proceed if redirect handling threw
+          }
+        }
+        if (isSigningInWithGoogle) {
+          return;
+        }
         try {
           const freshToken = await firebaseUser.getIdToken();
           const currentRole = store.getState().user?.role;
@@ -390,6 +424,10 @@ async function processUserCredential(
     firstName: firstName?.trim() ? firstName : undefined,
     lastName: lastName?.trim() ? lastName : undefined,
   });
+
+  if (validation.cookieSet === false) {
+    throw new Error(validation.error || "Unable to create server session cookie. Please try again.");
+  }
 
   const organizer = mapFirebaseUserToOrganizer(user, validation);
   console.log("[Auth Flow Step 4 - Client] Post-login sync response:", {

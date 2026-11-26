@@ -93,9 +93,10 @@ The authentication system combines **Firebase Authentication (Google Sign-In)** 
   - `2, 3`: `ChapterRole.CORE_TEAM`
   - `4`: `ChapterRole.GOOGLER`
   - `else`: `ChapterRole.MEMBER`
-- Fallback to whitelist `isAuthorizedOrganizerEmail(email)` if user is not in team list.
-- If verified team member: sets `auth_role="organizer"` cookie.
-- If member: sets `auth_role="member"` cookie.
+- **No hardcoded email allowlists**: `ORGANIZER_EMAILS` and `isAuthorizedOrganizerEmail` are disabled (`[]` / `false`). On transient Bevy outages (`429`, `>= 500`, or empty `/chapter/{id}/team/`), `validateBevyOrganizer` falls back dynamically to the caller's own Firestore UID doc (`getFirestoreDoc("members", uid, token)`).
+- **Explicit cookie write signaling**: `setAuthSessionCookie` returns `{ ok, error }` instead of swallowing `SESSION_SECRET` / cookie errors; `handleUserPostLoginAction` and `restoreSessionCookieAction` surface `cookieSet` and `error` so `processUserCredential` aborts navigation when session cookies cannot be persisted.
+- If verified team member: sets `auth_role` (`"organizer"`, `"core_team"`, or `"check_in_staff"`) HMAC-signed cookie.
+- If member: sets `auth_role="member"` HMAC-signed cookie.
 
 ### 2.3 Middleware Guard (`src/middleware.ts`)
 - Inspects `auth_token` and `auth_role` cookies.
@@ -113,12 +114,14 @@ The authentication system combines **Firebase Authentication (Google Sign-In)** 
 
 ### 2.5 Session Restoration & Role Sync Boundaries (`restoreSessionCookieAction`)
 - **Strict Bevy API Boundaries**: Bevy API role validation (`validateBevyOrganizer`) is ONLY executed during sign-in (`handleUserPostLoginAction`), manual role sync (`refreshUserRoleAction`), and chapter team sync.
-- **Firestore-Backed Session Restore**: When `onAuthStateChanged` or `onIdTokenChanged` invokes `restoreSessionCookieAction`, the server verifies the Firebase ID token and reads `role` and `chapter_role` directly from the Firestore `members` collection rather than querying Bevy.
+- **O(1) UID-First Firestore Restore**: When `onAuthStateChanged` or `onIdTokenChanged` invokes `restoreSessionCookieAction`, the server fast-paths when the existing token & verified team cookie already match (even before client `cachedRole` hydrates), otherwise verifies the Firebase ID token, performs an O(1) `getFirestoreDoc("members", uid, token)` lookup (following `bevy_user_id` if present), and falls back to `queryFirestoreDocs("members", ..., 5, token)` by verified email.
+- **Non-Downgrade & Write Guard Invariants**: `restoreSessionCookieAction` never silently downgrades an already verified `"organizer" | "core_team" | "check_in_staff"` cookie on transient/empty Firestore reads. Client `onIdTokenChanged` awaits `redirectResultPromise` and skips while `isSigningInWithGoogle` is active, and `onAuthStateChanged` never overwrites Firestore member docs when `!restoreRes.success`.
+- **Masked-Email Sync Hygiene**: `isMaskedEmailMatch` (`src/lib/firestore/sync-service.ts`) enforces exact local-part length + domain + unique-match checks (`matches.length === 1`) and always preserves clean unmasked `existingMatch.email` addresses over `*`-masked Bevy emails.
 
 ---
 
 ## 3. Implementation Rules
 
-1. Always validate organizer status on the server (`auth-actions.ts`) before elevating permissions or issuing cookies.
-2. Store the role in the `auth_role` HTTP-only cookie for secure middleware validation.
-3. Synchronize member profiles to the Firestore `members` collection on the browser client to maintain real-time directory data.
+1. Always validate organizer status on the server (`auth-actions.ts`) before elevating permissions or issuing cookies; never hardcode email or role allowlists.
+2. Store the role in the HMAC-signed `auth_role` HTTP-only cookie for secure middleware validation and fail closed when `SESSION_SECRET` is unset or cookie persistence fails.
+3. Synchronize member profiles to the Firestore `members` collection on the browser client to maintain real-time directory data, guarding against overwrites when session restoration fails.

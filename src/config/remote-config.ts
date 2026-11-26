@@ -254,37 +254,10 @@ export async function getBevyRefererUrl(
 }
 
 /**
- * Resolves the list of authorized organizer emails from Remote Config (`cfg_organizer_emails`).
- * Supports JSON array format: ["email1@example.com", "email2@example.com"]
- * and falls back to comma-separated string or process.env.ORGANIZER_EMAILS.
+ * Email allowlists are disabled; roles are resolved dynamically from Bevy API / Firestore.
  */
 export async function getOrganizerEmailsFromRemoteConfig(): Promise<string[]> {
-  try {
-    const raw = await getRemoteConfigValue(REMOTE_CONFIG_KEYS.ORGANIZER_EMAILS);
-    if (raw.trim()) {
-      const trimmed = raw.trim();
-      if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-        const parsed = JSON.parse(trimmed) as unknown;
-        if (Array.isArray(parsed)) {
-          return parsed.map((e) => String(e).trim().toLowerCase()).filter(Boolean);
-        }
-      }
-      // Comma-separated fallback
-      return trimmed
-        .split(",")
-        .map((e) => e.trim().toLowerCase())
-        .filter(Boolean);
-    }
-  } catch (err) {
-    console.warn("[Remote Config] Failed to parse organizer emails:", err);
-  }
-
-  const envEmails = (process.env.ORGANIZER_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-
-  return Array.from(new Set(envEmails));
+  return [];
 }
 
 /**
