@@ -10,6 +10,7 @@ import {
   getDoc,
   getDocs,
   getFirestore,
+  increment,
   limit,
   onSnapshot,
   orderBy,
@@ -1857,68 +1858,20 @@ export async function getRegistrationById(registrationId: string): Promise<Fires
   return null;
 }
 
-export async function registerMemberForEvent(
+/**
+ * Evaluates venue, session, ticket, bundle, and merchandise stock quotas against an event snapshot.
+ * Reused both as a pre-transaction fast-fail and inside `runTransaction` to prevent TOCTOU overselling.
+ */
+function evaluateRegistrationCapacityAndStock(
+  eventData: FirestoreEvent,
   registration: Omit<FirestoreRegistration, "id">,
-): Promise<{ registrationId: string; bundleVouchers?: BundleIssuedVoucher[] }> {
-  if (typeof window === "undefined") throw new Error("Registration must be performed from client");
+  authoritativeTimeMillis: number,
+  options: { initialWaitlisted: boolean; allowAutoWaitlist: boolean },
+): { isWaitlisted: boolean } {
+  let isWaitlisted = options.initialWaitlisted;
+  const allowWaitlist = options.allowAutoWaitlist && eventData.allow_waitlist !== false;
 
-  // Ensure Firebase Auth state is fully restored on client before making Firestore calls
-  if (typeof auth.authStateReady === "function") {
-    await auth.authStateReady();
-  }
-  const currentAuthUser = auth.currentUser;
-  const effectiveMemberId = currentAuthUser?.uid ?? registration.member_id;
-
-  if (!effectiveMemberId || !registration.member_email.trim()) {
-    throw new Error("You must join the community by signing in with Google before registering.");
-  }
-  const normalizedEmail = registration.member_email.trim().toLowerCase();
-  const eventIdStr = String(registration.event_id);
-
-  // 1. Check if member / email already registered for this event
-  const existing = await checkExistingRegistration(eventIdStr, effectiveMemberId, normalizedEmail);
-  if (
-    existing &&
-    existing.status !== "canceled" &&
-    existing.status !== "cancelled" &&
-    existing.refund_request?.status !== "refund_completed"
-  ) {
-    throw new Error(`Email ${normalizedEmail} is already registered for this event.`);
-  }
-
-  // 2. Validate sales window eligibility against server-authoritative clock and get NTP timestamp
-  const { validateRegistrationEligibilityAction } = await import("@/server/event-registration-actions");
-  const salesEligibility = await validateRegistrationEligibilityAction({
-    eventId: eventIdStr,
-    ticketId: registration.ticket_id,
-    bundleId: registration.bundle_id,
-    selectedMerchandise: registration.selected_merchandise,
-  });
-
-  if (!salesEligibility.valid) {
-    throw new Error(salesEligibility.error || "Event registration is currently not open.");
-  }
-
-  const authoritativeTimeIso = salesEligibility.serverTimeIso;
-  const authoritativeTimeMillis = salesEligibility.serverTimeMillis;
-
-  // 3. Fetch event document to validate session capacity and evaluate curation mode
-  let eventData: FirestoreEvent | null = null;
-  const eventRef = doc(db, "events", eventIdStr);
-  try {
-    const eventSnap = await getDoc(eventRef);
-    if (eventSnap.exists()) {
-      eventData = eventSnap.data() as FirestoreEvent;
-    }
-  } catch (eventErr) {
-    console.warn("[Firestore] Could not load event document in registerMemberForEvent:", eventErr);
-  }
-
-  // Validate venue, session, and ticket capacity
-  let isWaitlisted = registration.status === "waitlisted";
-  const allowWaitlist = eventData ? eventData.allow_waitlist !== false : true;
-
-  if (eventData && !isWaitlisted) {
+  if (!isWaitlisted) {
     // 1. Venue capacity check
     let venueCapacity: number | null = null;
     if (typeof eventData.max_attendees === "number" && eventData.max_attendees > 0) {
@@ -2110,6 +2063,79 @@ export async function registerMemberForEvent(
     }
   }
 
+  return { isWaitlisted };
+}
+
+export async function registerMemberForEvent(
+  registration: Omit<FirestoreRegistration, "id">,
+): Promise<{ registrationId: string; bundleVouchers?: BundleIssuedVoucher[]; status: RegistrationStatus }> {
+  if (typeof window === "undefined") throw new Error("Registration must be performed from client");
+
+  // Ensure Firebase Auth state is fully restored on client before making Firestore calls
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  }
+  const currentAuthUser = auth.currentUser;
+  const effectiveMemberId = currentAuthUser?.uid ?? registration.member_id;
+
+  if (!effectiveMemberId || !registration.member_email.trim()) {
+    throw new Error("You must join the community by signing in with Google before registering.");
+  }
+  const normalizedEmail = registration.member_email.trim().toLowerCase();
+  const eventIdStr = String(registration.event_id);
+
+  // 1. Check if member / email already registered for this event
+  const existing = await checkExistingRegistration(eventIdStr, effectiveMemberId, normalizedEmail);
+  if (
+    existing &&
+    existing.status !== "canceled" &&
+    existing.status !== "cancelled" &&
+    existing.refund_request?.status !== "refund_completed"
+  ) {
+    throw new Error(`Email ${normalizedEmail} is already registered for this event.`);
+  }
+
+  // 2. Validate sales window eligibility against server-authoritative clock and get NTP timestamp
+  const { validateRegistrationEligibilityAction } = await import("@/server/event-registration-actions");
+  const salesEligibility = await validateRegistrationEligibilityAction({
+    eventId: eventIdStr,
+    ticketId: registration.ticket_id,
+    bundleId: registration.bundle_id,
+    selectedMerchandise: registration.selected_merchandise,
+  });
+
+  if (!salesEligibility.valid) {
+    throw new Error(salesEligibility.error || "Event registration is currently not open.");
+  }
+
+  const authoritativeTimeIso = salesEligibility.serverTimeIso;
+  const authoritativeTimeMillis = salesEligibility.serverTimeMillis;
+
+  // 3. Fetch event document to validate session capacity and evaluate curation mode
+  let eventData: FirestoreEvent | null = null;
+  const eventRef = doc(db, "events", eventIdStr);
+  try {
+    const eventSnap = await getDoc(eventRef);
+    if (eventSnap.exists()) {
+      eventData = eventSnap.data() as FirestoreEvent;
+    }
+  } catch (eventErr) {
+    console.warn("[Firestore] Could not load event document in registerMemberForEvent:", eventErr);
+  }
+
+  // Paid submissions that already generated a DOKU invoice must reject cleanly on sold-out rather than silently waitlisting
+  const hasGeneratedPaymentLink = Boolean(registration.payment_invoice_number || registration.payment_url);
+
+  // Pre-transaction fast-fail capacity & stock check (re-verified atomically inside runTransaction)
+  let isWaitlisted = registration.status === "waitlisted";
+  if (eventData) {
+    const preCheck = evaluateRegistrationCapacityAndStock(eventData, registration, authoritativeTimeMillis, {
+      initialWaitlisted: isWaitlisted,
+      allowAutoWaitlist: !hasGeneratedPaymentLink,
+    });
+    isWaitlisted = preCheck.isWaitlisted;
+  }
+
   // 3. Enforce registration status:
   // If waitlisted, status is "waitlisted". Otherwise default is "pending".
   const resolvedStatus: RegistrationStatus = isWaitlisted ? "waitlisted" : registration.status;
@@ -2250,8 +2276,9 @@ export async function registerMemberForEvent(
   const normalizedVoucherCode = registration.voucher_code?.trim().toUpperCase();
   const vDocRef = normalizedVoucherCode ? doc(db, "event_vouchers", `${eventIdStr}_${normalizedVoucherCode}`) : null;
 
+  let finalCommittedStatus: RegistrationStatus = resolvedStatus;
   try {
-    await runTransaction(db, async (transaction) => {
+    finalCommittedStatus = await runTransaction(db, async (transaction) => {
       // 1. Transactional Reads
       let voucherData: EventVoucher | null = null;
       let purchaserRegRef: ReturnType<typeof doc> | null = null;
@@ -2305,12 +2332,39 @@ export async function registerMemberForEvent(
         ? (eventSnap.data() as FirestoreEvent)
         : eventData;
 
+      // Re-verify venue, session, ticket, bundle, and merchandise stock atomically inside the transaction
+      let txIsWaitlisted = isWaitlisted;
+      if (currentEventData) {
+        const txCheck = evaluateRegistrationCapacityAndStock(currentEventData, registration, authoritativeTimeMillis, {
+          initialWaitlisted: txIsWaitlisted,
+          allowAutoWaitlist: !hasGeneratedPaymentLink,
+        });
+        txIsWaitlisted = txCheck.isWaitlisted;
+      }
+
+      const txResolvedStatus: RegistrationStatus = txIsWaitlisted ? "waitlisted" : resolvedStatus;
+      const flippedToWaitlist = txIsWaitlisted && !isWaitlisted;
+      const txWritePayload: FirestoreRegistration = flippedToWaitlist
+        ? sanitizeFirestoreData<FirestoreRegistration>({
+            ...writePayload,
+            status: "waitlisted",
+            bundle_vouchers: undefined,
+            status_logs: [
+              {
+                ...initialStatusLog,
+                status: "waitlisted",
+                notes: "Registered on waitlist as event capacity was reached.",
+              },
+            ],
+          })
+        : writePayload;
+
       // 2. Transactional Writes
       // Write the registration document
       if (isReRegistration) {
-        transaction.set(docRef, writePayload);
+        transaction.set(docRef, txWritePayload);
       } else {
-        transaction.set(docRef, writePayload, { merge: true });
+        transaction.set(docRef, txWritePayload, { merge: true });
       }
 
       // Atomically update voucher document with +1 times_used and redemption metadata
@@ -2350,10 +2404,10 @@ export async function registerMemberForEvent(
       if (currentEventData) {
         const isCurated = Boolean(currentEventData.curation_mode ?? currentEventData.requires_approval);
         const isSeatConsumingRegistration =
-          resolvedStatus === "approved" ||
-          resolvedStatus === "paid_and_registered" ||
-          resolvedStatus === "registered" ||
-          (!isCurated && resolvedStatus !== "waitlisted" && resolvedStatus !== "rejected");
+          txResolvedStatus === "approved" ||
+          txResolvedStatus === "paid_and_registered" ||
+          txResolvedStatus === "registered" ||
+          (!isCurated && txResolvedStatus !== "waitlisted" && txResolvedStatus !== "rejected");
 
         const currentCount =
           typeof currentEventData.total_registrations === "number" ? currentEventData.total_registrations : 0;
@@ -2362,8 +2416,8 @@ export async function registerMemberForEvent(
 
         const updateData: Record<string, unknown> = {
           total_registrations: currentCount + 1,
-          ...(resolvedStatus === "approved" ? { total_approved: (currentEventData.total_approved ?? 0) + 1 } : {}),
-          ...(isWaitlisted ? { total_waitlisted: currentWaitlistCount + 1 } : {}),
+          ...(txResolvedStatus === "approved" ? { total_approved: (currentEventData.total_approved ?? 0) + 1 } : {}),
+          ...(txIsWaitlisted ? { total_waitlisted: currentWaitlistCount + 1 } : {}),
           updated_at: authoritativeTimeIso,
         };
 
@@ -2453,6 +2507,8 @@ export async function registerMemberForEvent(
 
         transaction.update(eventRef, sanitizeFirestoreData(updateData));
       }
+
+      return txResolvedStatus;
     });
   } catch (txErr) {
     console.error("[registerMemberForEvent] Failed atomic registration transaction:", txErr, {
@@ -2462,14 +2518,24 @@ export async function registerMemberForEvent(
       isReRegistration,
       voucherCode: normalizedVoucherCode,
     });
+    const errCode = (txErr as { code?: string } | null)?.code;
+    const errMessage = txErr instanceof Error ? txErr.message : String(txErr);
+    if (errCode === "aborted" || /too much contention/i.test(errMessage)) {
+      throw new Error("High registration traffic right now. Please tap Register again in a moment.");
+    }
     throw txErr;
   }
 
+  // Track final committed status (waitlist flip inside runTransaction suppresses friend voucher issuance)
+  const finalStatus: RegistrationStatus = finalCommittedStatus;
+  const finalBundleVouchers = finalStatus === "waitlisted" ? undefined : issuedBundleVouchers;
+  const friendVouchersToSave = finalStatus === "waitlisted" ? [] : newFriendVouchers;
+
   // Save newly generated friend vouchers to private event_vouchers collection
-  if (newFriendVouchers.length > 0) {
+  if (friendVouchersToSave.length > 0) {
     try {
       const friendBatch = writeBatch(db);
-      for (const fv of newFriendVouchers) {
+      for (const fv of friendVouchersToSave) {
         const fvDocRef = doc(db, "event_vouchers", `${eventIdStr}_${fv.code.trim().toUpperCase()}`);
         friendBatch.set(fvDocRef, {
           ...fv,
@@ -2506,15 +2572,12 @@ export async function registerMemberForEvent(
           const pointsAwarded =
             typeof refSettings.points_per_referral === "number" ? refSettings.points_per_referral : 10;
 
-          // 1. Increment referrer points and referrals_count
-          const currentPoints = typeof referrerData.referral_points === "number" ? referrerData.referral_points : 0;
-          const currentCount = typeof referrerData.referrals_count === "number" ? referrerData.referrals_count : 0;
-
+          // 1. Atomically increment referrer points and referrals_count
           await updateDoc(
             doc(db, "members", referrerId),
             sanitizeFirestoreData({
-              referral_points: currentPoints + pointsAwarded,
-              referrals_count: currentCount + 1,
+              referral_points: increment(pointsAwarded),
+              referrals_count: increment(1),
               updated_at: new Date().toISOString(),
             }),
           );
@@ -2567,7 +2630,8 @@ export async function registerMemberForEvent(
 
   return {
     registrationId: regId,
-    bundleVouchers: issuedBundleVouchers,
+    bundleVouchers: finalBundleVouchers,
+    status: finalStatus,
   };
 }
 
@@ -3359,10 +3423,15 @@ export async function updateRegistrationCheckIn(
     ...(attendeeCode !== undefined ? { attendee_code: attendeeCode } : {}),
   });
 
+  let wasCheckedIn = false;
+  let didWriteDoc = false;
+
   try {
     const snap = await getDoc(docRef);
     if (snap.exists()) {
+      wasCheckedIn = Boolean((snap.data() as Partial<FirestoreRegistration>)?.is_checked_in);
       await updateDoc(docRef, updatePayload);
+      didWriteDoc = true;
     } else if (fallbackRegistration) {
       // Document does not exist in Firestore yet: upsert it with available registration info
       const createPayload = sanitizeFirestoreData<FirestoreRegistration>({
@@ -3385,6 +3454,7 @@ export async function updateRegistrationCheckIn(
         ...updatePayload,
       } as FirestoreRegistration);
       await setDoc(docRef, createPayload, { merge: true });
+      didWriteDoc = true;
     }
   } catch (err) {
     if (registrationId.startsWith("bevy_")) {
@@ -3394,17 +3464,29 @@ export async function updateRegistrationCheckIn(
     throw err;
   }
 
-  // Update event checked-in counter
-  try {
-    const allRegs = await getEventRegistrations(eventId);
-    const checkedInCount = allRegs.filter((r) => Boolean(r.is_checked_in)).length;
-    const eventRef = doc(db, "events", eventId);
-    await updateDoc(eventRef, {
-      total_checked_in: checkedInCount,
-      updated_at: now,
-    });
-  } catch (err) {
-    console.warn("[Firestore] Failed to recalculate checked-in counter:", err);
+  // Update event checked-in counter in O(1) only when check-in state actually changed
+  if (didWriteDoc && wasCheckedIn !== isCheckedIn) {
+    try {
+      const eventRef = doc(db, "events", eventId);
+      if (isCheckedIn) {
+        await updateDoc(eventRef, {
+          total_checked_in: increment(1),
+          updated_at: now,
+        });
+      } else {
+        await runTransaction(db, async (transaction) => {
+          const evSnap = await transaction.get(eventRef);
+          if (!evSnap.exists()) return;
+          const current = Number((evSnap.data() as Partial<FirestoreEvent>).total_checked_in ?? 0);
+          transaction.update(eventRef, {
+            total_checked_in: Math.max(0, current - 1),
+            updated_at: now,
+          });
+        });
+      }
+    } catch (err) {
+      console.warn("[Firestore] Failed to update checked-in counter:", err);
+    }
   }
 }
 

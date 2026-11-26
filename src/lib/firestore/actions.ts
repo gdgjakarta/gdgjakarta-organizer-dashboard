@@ -135,6 +135,7 @@ export async function registerForEventAction(registration: Omit<FirestoreRegistr
       success: true,
       registrationId: regResult.registrationId,
       bundleVouchers: regResult.bundleVouchers,
+      status: regResult.status,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to register for event.";

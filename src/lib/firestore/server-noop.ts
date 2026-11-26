@@ -17,6 +17,11 @@ export const deleteField = () => ({
   _methodName: "deleteField",
 });
 
+export const increment = (n: number) => ({
+  _methodName: "increment",
+  _operand: n,
+});
+
 export const getFirestore = () => null;
 export const doc = () => ({});
 export const collection = () => ({});
@@ -56,6 +61,7 @@ export const onSnapshot = () => () => {
 
 export default {
   deleteField,
+  increment,
   getFirestore,
   doc,
   collection,

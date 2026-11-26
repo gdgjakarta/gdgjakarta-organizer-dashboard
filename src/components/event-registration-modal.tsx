@@ -113,7 +113,7 @@ import type {
   SelectedMerchandiseOrder,
 } from "@/lib/firestore/types";
 import { cn, sanitizeHtml } from "@/lib/utils";
-import { generatePaymentLinkAction } from "@/server/payment-actions";
+import { cancelPaymentLinkAction, generatePaymentLinkAction } from "@/server/payment-actions";
 import {
   approveAttendeeWebhookAction,
   dispatchRegistrationWebhookAction,
@@ -2322,19 +2322,40 @@ export function EventRegistrationModal({
         const result = await registerForEventAction(registrationPayload);
 
         if (!result.success || !result.registrationId) {
+          if (generatedInvoiceNumber) {
+            void cancelPaymentLinkAction({
+              invoiceNumber: generatedInvoiceNumber,
+              originalRequestId: generatedRequestId,
+              reason: "Event capacity or stock filled before registration could be confirmed.",
+              customer: { name: attendeeName, email: attendeeEmail, phone: attendeePhone },
+              event: { id: String(event.id), title: event.title },
+              isProduction:
+                eventConfig.payment_environment === "production"
+                  ? true
+                  : eventConfig.payment_environment === "sandbox"
+                    ? false
+                    : !eventConfig.is_test,
+            }).catch((cancelErr) => {
+              console.warn("[Registration Modal] Best-effort DOKU invoice cancel failed:", cancelErr);
+            });
+          }
           toast.error(result.error || "Failed to register. Please try again.");
           return;
         }
 
+        const effectiveStatus: RegistrationStatus = result.status ?? initialStatus;
+        const effectiveIsWaitlisted = isWaitlistMode || effectiveStatus === "waitlisted";
+
         createdRegistrationId = result.registrationId;
 
         // If the event ticket is free and no curation: call Add Bevy Attendee API directly!
-        if (!isWaitlistMode && !isCurated && !requiresPayment) {
+        if (!effectiveIsWaitlisted && !isCurated && !requiresPayment) {
           try {
             const approvePayload = buildApprovedAttendeePayload(
               {
                 ...registrationPayload,
                 id: createdRegistrationId,
+                status: effectiveStatus,
                 bundle_vouchers: result.bundleVouchers ?? registrationPayload.bundle_vouchers,
               } as FirestoreRegistration,
               eventConfig,
@@ -2388,7 +2409,7 @@ export function EventRegistrationModal({
           },
           registration: {
             id: createdRegistrationId,
-            status: initialStatus,
+            status: effectiveStatus,
             registered_at: registrationPayload.registered_at,
             session_id: selectedSession?.id,
             session_title: selectedSession?.title ?? sessionKey,
@@ -2437,7 +2458,7 @@ export function EventRegistrationModal({
           return;
         }
 
-        if (isWaitlistMode) {
+        if (effectiveIsWaitlisted) {
           toast.success("Added to waitlist! Organizers will review and notify you if a spot opens up.");
         } else if (!isCurated && requiresPayment) {
           if (!generatedPaymentUrl) {
@@ -2465,7 +2486,7 @@ export function EventRegistrationModal({
           member_id: user?.id || "",
           member_name: user?.name || "Attendee",
           member_email: attendeeEmail,
-          status: initialStatus,
+          status: effectiveStatus,
           registered_at: new Date(effectiveNow).toISOString(),
           answers: combinedAnswers,
           session_id: selectedSession?.id,

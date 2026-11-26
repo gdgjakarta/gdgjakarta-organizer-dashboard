@@ -461,6 +461,62 @@ export async function patchFirestoreDoc(
 }
 
 /**
+ * Atomically increments a numeric field via Firestore REST documents:commit fieldTransforms.
+ */
+export async function incrementFirestoreField(
+  collectionName: string,
+  docId: string,
+  fieldPath: string,
+  delta: number,
+  token?: string,
+): Promise<boolean> {
+  try {
+    const projectId = getFirebaseProjectId();
+    const url = `${getFirestoreBaseUrl()}:commit?key=${getFirebaseApiKey()}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    const authToken = await resolveAuthToken(token);
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+    const documentName = `projects/${projectId}/databases/(default)/documents/${collectionName}/${docId}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        writes: [
+          {
+            transform: {
+              document: documentName,
+              fieldTransforms: [
+                {
+                  fieldPath,
+                  increment: Number.isInteger(delta) ? { integerValue: String(delta) } : { doubleValue: delta },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.warn(
+        `[Firestore REST] INCREMENT ${collectionName}/${docId}.${fieldPath} returned ${res.status}: ${errText}`,
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[Firestore REST] Failed incrementing ${collectionName}/${docId}.${fieldPath}:`, err);
+    return false;
+  }
+}
+
+/**
  * Deletes a document via Firestore REST API.
  */
 export async function deleteFirestoreDoc(collectionName: string, docId: string, token?: string): Promise<boolean> {
@@ -1242,7 +1298,6 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
   ) {
     try {
       const evData = await getFirestoreEventByIdServer(eventIdStr);
-      const currentApproved = typeof evData?.total_approved === "number" ? evData.total_approved : 0;
 
       // Handle bundle friend voucher generation upon confirmed payment/approval
       let vouchersToIssue: BundleIssuedVoucher[] = Array.isArray(regData.bundle_vouchers)
@@ -1337,16 +1392,9 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
         }
       }
 
-      await patchFirestoreDoc(
-        "events",
-        eventIdStr,
-        {
-          total_approved: currentApproved + 1,
-          updated_at: now,
-        },
-        true,
-        token,
-      );
+      if (!wasApproved) {
+        await incrementFirestoreField("events", eventIdStr, "total_approved", 1, token);
+      }
     } catch (countErr) {
       console.warn("[updateRegistrationFromPayment] Failed to update event / bundle vouchers:", countErr);
     }
