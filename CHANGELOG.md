@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.68] - 2026-11-26
+
+### Added
+- **Restricted Event YouTube Stream Access (`/dashboard/events/[eventId]` → Stream, `/events/[eventId]/watch`)**:
+  - Added an organizer **Stream** tab on Event Details with a **Public vs. Whitelisted** access mode toggle, automatic sync of approved/paid/attended event registrants plus manual email whitelist management, dynamic viewer watermark toggle, shareable watch link, and live viewing session monitoring with 1-click **Revoke**.
+  - Added `/events/[eventId]/watch` with a server-gated 2-step email OTP flow (6-character single-use codes via n8n `/webhook/api/send-email`, 10-minute TTL, max 5 attempts, 1/60s & 5/hr rate limits, automatic revocation of prior sessions), jittered 45–60s session heartbeats with organizer kill-switch enforcement, and `navigator.sendBeacon` session expiration on page leave (`POST /api/events/[eventId]/stream/leave`).
+  - Added `ProtectedYoutubePlayer` (`youtube-nocookie.com` IFrame API) with a click-shield overlay, custom accessible playback controls, loading/retry states, and a moving dynamic viewer email/session watermark.
+  - Added O(1) Firestore whitelist subcollection (`event_streams/{eventId}/whitelist/{emailHash}`), AES-256-GCM `v2` video ID sealing bound to `eventId` AAD, atomic Firestore REST CAS preconditions (`commitFirestoreDocIfMatch`), and deployed matching `firestore.rules`.
+
+### Fixed
+- **Security & Performance Hardening**:
+  - Fixed `EMAIL_REGEX` quadratic ReDoS, hardened `parseVideoUrl` against unsafe `javascript:` schemes / spoofed hostnames (and added `youtube.com/live/` & `youtube-nocookie.com/embed/` support), removed hardcoded/third-party secret fallbacks in `stream-actions.ts` and `session-cookie.ts`, added HTML escaping for OTP emails, and added paginated projected registrant sync past 5,000 docs.
+
+---
+
 ## [1.0.67] - 2026-11-25
 
 ### Added

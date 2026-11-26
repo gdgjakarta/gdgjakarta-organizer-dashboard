@@ -16,10 +16,37 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.68",
+    releaseDate: "2026-11-26",
+    title: "Restricted Event YouTube Stream Access",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Added an organizer Stream tab on Event Details with Public and Whitelisted access modes, auto-synced approved registrant whitelists, manual email whitelists, and live viewing session monitoring with 1-click revoke.",
+      },
+      {
+        category: "Added",
+        text: "Added the public event watch page with server-gated single-use email OTP codes (10-minute expiry, rate limits, prior-session revocation), jittered session heartbeats with organizer kill-switch support, and immediate session expiration on page leave.",
+      },
+      {
+        category: "Added",
+        text: "Added ProtectedYoutubePlayer with click-shield deterrence, custom accessible playback controls, player load retry recovery, and a moving viewer email watermark.",
+      },
+      {
+        category: "Improved",
+        text: "Stored whitelisted email hashes in an O(1) Firestore subcollection with AES-256-GCM event-bound video ID sealing, atomic optimistic concurrency on OTP redemption, and paginated registrant syncing past 5,000 attendees.",
+      },
+      {
+        category: "Fixed",
+        text: "Hardened video URL parsing (adding YouTube Live and youtube-nocookie support while blocking unsafe schemes), eliminated email regex ReDoS, escaped OTP email titles, and removed insecure secret fallbacks.",
+      },
+    ],
+  },
+  {
     version: "1.0.67",
     releaseDate: "2026-11-25",
     title: "Certificate Verification Badge Stamping & Firestore Rules",
-    badge: "Latest",
     items: [
       {
         category: "Added",
@@ -793,7 +820,6 @@ export const CHANGELOG_RELEASES: ChangelogRelease[] = [
     version: "1.0.16",
     releaseDate: "2026-11-12",
     title: "Regional Lead & Community Manager Dashboard Access",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",
