@@ -16,10 +16,33 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.69",
+    releaseDate: "2026-11-26",
+    title: "High-Concurrency Registration, Check-In & Payment Counter Hardening",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Enforced venue, session, ticket, bundle, and merchandise stock quotas atomically inside Firestore transactions to eliminate overselling during flash ticket drops.",
+      },
+      {
+        category: "Fixed",
+        text: "Handled mid-submit sold-out races cleanly by auto-waitlisting free events (skipping Bevy auto-approve) and rejecting paid checkouts with best-effort DOKU invoice cancellation, plus friendly retry prompts on high contention.",
+      },
+      {
+        category: "Improved",
+        text: "Replaced full-collection check-in recounts with O(1) atomic increment on check-in and clamped 1-read decrement on undo, cutting check-in Firestore reads by over 99% at DevFest scale.",
+      },
+      {
+        category: "Fixed",
+        text: "Switched DOKU payment approval and referral point counters to atomic server increments to prevent lost updates or double-counting under concurrent webhook bursts.",
+      },
+    ],
+  },
+  {
     version: "1.0.68",
     releaseDate: "2026-11-26",
     title: "Restricted Event YouTube Stream Access",
-    badge: "Latest",
     items: [
       {
         category: "Added",

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.69] - 2026-11-26
+
+### Fixed
+- **Registration & Stock Concurrency Hardening (`registerMemberForEvent`, `EventRegistrationModal`)**:
+  - Re-verified venue, session, ticket, bundle, and merchandise/variation stock quotas atomically inside Firestore `runTransaction` to prevent TOCTOU overselling during high-concurrency ticket drops.
+  - Handled mid-submit capacity races cleanly: free events with waitlist enabled automatically flip to `waitlisted` (suppressing friend voucher issuance and Bevy auto-approve), while paid checkouts with a generated DOKU invoice reject cleanly and best-effort cancel the invoice via `cancelPaymentLinkAction`.
+  - Mapped Firestore `aborted` contention errors to a user-friendly retry prompt and switched referrer `referral_points` / `referrals_count` updates to atomic Firestore `increment()`.
+- **Atomic DOKU Payment Approval Counter (`updateRegistrationFromPayment`)**:
+  - Replaced non-atomic `GET` → `PATCH` counter updates with Firestore REST `documents:commit` `fieldTransforms` (`increment: 1`) via `incrementFirestoreField`, gated strictly on `!wasApproved` to prevent counter drift or double-incrementing during concurrent payment webhooks.
+
+### Improved
+- **O(1) Event Check-In Counter (`updateRegistrationCheckIn`)**:
+  - Replaced the $O(N)$ full-collection `getEventRegistrations` recount on every QR scan with atomic `increment(1)` on check-in and a 1-read clamped transaction decrement on undo check-in (skipping counter writes on duplicate scans), cutting check-in Firestore reads by ~99.8% on 1,000-attendee events.
+
+---
+
 ## [1.0.68] - 2026-11-26
 
 ### Added
