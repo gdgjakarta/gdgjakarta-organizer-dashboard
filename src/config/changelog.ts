@@ -16,10 +16,25 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.74",
+    releaseDate: "2026-11-27",
+    title: "Public Header Account Menu & Manage Event Shortcut",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Added a circular avatar account menu beside Dashboard in the public header showing your name and email with Dashboard and Sign out actions.",
+      },
+      {
+        category: "Added",
+        text: "Added a Manage Event button on live event pages for organizers and core team members that opens the event in the dashboard.",
+      },
+    ],
+  },
+  {
     version: "1.0.73",
     releaseDate: "2026-11-27",
     title: "Check-in Rate Optimization & Radial Ring UI",
-    badge: "Latest",
     items: [
       {
         category: "Improved",

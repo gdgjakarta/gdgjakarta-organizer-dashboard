@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.74] - 2026-11-27
+
+### Added
+- **Public Header Account Menu & Manage Event Shortcut (`public-header.tsx`, `public-event-header.tsx`)**:
+  - Signed-in users now see a circular avatar menu beside **Dashboard** in the public header showing name and email, with Dashboard and Sign out actions.
+  - Organizers and core team members viewing a live event page get a **Manage Event** button that opens the event in the dashboard.
+
+---
+
 ## [1.0.73] - 2026-11-27
 
 ### Improved
