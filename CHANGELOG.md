@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.72] - 2026-11-27
+
+### Fixed
+- **Google Maps Billing Leak Fix (`GoogleMapsPinpointDialog`)**:
+  - Decoupled `initMap` from coordinate state so the map initializes once per dialog open instead of re-creating a Dynamic Map and triggering reverse geocoding on every click or pin drag.
+  - Eliminated redundant `reverseGeocode` calls after Places Details / POI clicks and on default open, and fixed the Places Autocomplete session-token lifecycle with a 450ms debounce and 3-character minimum query length.
+- **Mixpanel & Production Fetch Logger (`mixpanel.ts`, `ApiLoggerBoot`)**:
+  - Disabled production debug mode, autocapture, and heatmaps, and defaulted session replay to `0%` (configurable via `NEXT_PUBLIC_MIXPANEL_REPLAY_PERCENT`).
+  - Restricted `ApiLoggerBoot` global `window.fetch` wrapping to `development` only.
+
+### Improved
+- **Firestore Read, Listener & TTL Optimization (`overview/route.ts`, `firestore-analytics.ts`, `content/hooks.ts`, Event Tabs, `use-print-station.ts`, `stream-actions.ts`)**:
+  - Added R2 caching to Tickets analytics (`overview/route.ts`), switched active dashboard user counts to Firestore REST `COUNT` aggregation, removed public CMS `onSnapshot` listeners, eliminated duplicate `getEventRegistrations` reads before live subscriptions across 5 event tabs, bounded unscoped print-station fallback with `limit(100)`, and added `ttl_at` timestamps for Firestore TTL auto-expiry on `event_stream_codes` and `event_stream_sessions`.
+- **Cloudflare Workers, R2, Images & Bundle Size (`wrangler.jsonc`, `next.config.mjs`, `r2/client.ts`, `package.json`, `delivery/track`, `ga4.ts`, `resmi-emeterai.ts`, Print Worker URLs)**:
+  - Added Cloudflare Workers Observability head sampling (`10%` logs / `5%` traces), set 31-day `images.minimumCacheTTL`, uninstalled `googleapis` (replaced with native `fetch`), lazy-loaded `@aws-sdk/client-s3`, routed Print Worker guide assets and macOS installers directly through R2 CDN (`assets.gdgjakarta.org`), and added caching to CekResi tracking, GA4 OAuth tokens, and Resmi.ID pricing info.
+
+---
+
 ## [1.0.71] - 2026-11-26
 
 ### Fixed

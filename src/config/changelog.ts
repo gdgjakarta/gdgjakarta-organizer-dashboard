@@ -16,10 +16,33 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.72",
+    releaseDate: "2026-11-27",
+    title: "Phase 1 Full-Stack Cost Optimization",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Fixed Google Maps Pinpoint Dialog re-creating the map and reverse-geocoding on every click or drag, eliminated duplicate geocoding after Places Details and POI selections, and tightened Places Autocomplete session-token lifecycle and debouncing.",
+      },
+      {
+        category: "Fixed",
+        text: "Disabled Mixpanel debug mode, autocapture, and heatmaps in production with session replay defaulting to 0% (overridable via env), and restricted the client API fetch logger to development only.",
+      },
+      {
+        category: "Improved",
+        text: "Cached Tickets analytics in R2, switched active dashboard user counts to Firestore REST COUNT aggregation, removed public CMS realtime listeners, eliminated duplicate initial registration reads across event tabs, bounded unscoped print-station queries, and added Firestore TTL timestamps for ephemeral stream docs.",
+      },
+      {
+        category: "Improved",
+        text: "Added Cloudflare Workers Observability sampling (10% logs, 5% traces), set 31-day image cache TTL, removed the heavy googleapis dependency in favor of native fetch, lazy-loaded @aws-sdk/client-s3, routed Print Worker assets through R2 CDN, and added caching for CekResi, GA4 OAuth tokens, and Resmi.ID info.",
+      },
+    ],
+  },
+  {
     version: "1.0.71",
     releaseDate: "2026-11-26",
     title: "Event Short Link Canonical Destination Fix",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",
