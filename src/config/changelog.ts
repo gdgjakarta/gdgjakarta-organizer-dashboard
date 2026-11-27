@@ -16,10 +16,21 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.76",
+    releaseDate: "2026-11-27",
+    title: "Open Graph Logo Tag",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Added an og:logo meta tag so shared links show the GDG Jakarta logo in richer previews.",
+      },
+    ],
+  },
+  {
     version: "1.0.75",
     releaseDate: "2026-11-27",
     title: "Default Bank Account Name Update",
-    badge: "Latest",
     items: [
       {
         category: "Changed",
