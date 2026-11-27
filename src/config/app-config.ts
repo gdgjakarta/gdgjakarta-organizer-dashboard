@@ -6,7 +6,7 @@ export const APP_CONFIG = {
   name: "GDG Jakarta",
   version: packageJson.version,
   copyright: `© ${currentYear}, GDG Jakarta.`,
-  url: process.env.NEXT_PUBLIC_APP_URL || "https://gdgjakarta.org",
+  url: process.env.NEXT_PUBLIC_APP_URL || "https://gdgjakarta.com",
   meta: {
     title: "GDG Jakarta - Google Developer Groups",
     description:

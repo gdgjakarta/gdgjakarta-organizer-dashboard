@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.77] - 2026-11-27
+
+### Fixed
+- **App Metadata Base URL (`app-config.ts`)**: Changed fallback `APP_CONFIG.url` from `https://gdgjakarta.org` to `https://gdgjakarta.com` so Open Graph image and logo URLs resolve to the web app domain.
+
+---
+
 ## [1.0.76] - 2026-11-27
 
 ### Added

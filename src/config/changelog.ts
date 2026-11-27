@@ -16,10 +16,21 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.77",
+    releaseDate: "2026-11-27",
+    title: "Open Graph Domain Fix",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Updated the fallback app URL to gdgjakarta.com so Open Graph image and logo links resolve properly.",
+      },
+    ],
+  },
+  {
     version: "1.0.76",
     releaseDate: "2026-11-27",
     title: "Open Graph Logo Tag",
-    badge: "Latest",
     items: [
       {
         category: "Added",
