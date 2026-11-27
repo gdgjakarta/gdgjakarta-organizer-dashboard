@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.73] - 2026-11-27
+
+### Improved
+- **Check-in Rate Lookup & Caching (`client.ts`, `bevy-actions.ts`)**:
+  - Added a bounded 10-minute in-memory server TTL cache (`checkInRateLkgCache`, max 2,000 entries) for `ready` and `unavailable` check-in rate results, with per-row `forceRefresh` bypass support.
+  - Batched Tier 1 Firestore member lookups into a single `IN` query with field projection (`email`, `bevy_member_id`), fixed numeric `bevy_member_id` parsing, and made Algolia config pre-warming lazy so it only runs on Tier 1 misses.
+- **Check-in Rate Radial Ring UI & Filters (`registrants-tab.tsx`, `member-detail-dialog.tsx`)**:
+  - Redesigned the curation-mode Check-in Rate cell with a compact `20x20` SVG radial progress ring, inline `rate% checkedIn/registered` readout, and a hover/focus-revealed force-refresh button.
+  - Separated `0% (No-shows)` from `No History (0/0)` in the Check-in Rate filter and added a `Hydrated first 500` indicator when progressive hydration reaches the 500-registrant cap.
+
+### Fixed
+- **Masked-Email Matching, Rate Clamping & Cancel Leak (`client.ts`, `registrants-tab.tsx`)**:
+  - Hardened `isEmailMatch` to enforce exact local-part length and non-wildcard character matching, clamped check-in rates to `[0, 100]`, and fixed `inFlightEmailsRef` / `"loading"` cache entry leaks when canceling hydration.
+
+---
+
 ## [1.0.72] - 2026-11-27
 
 ### Fixed

@@ -16,10 +16,29 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.73",
+    releaseDate: "2026-11-27",
+    title: "Check-in Rate Optimization & Radial Ring UI",
+    badge: "Latest",
+    items: [
+      {
+        category: "Improved",
+        text: "Added a 10-minute server TTL cache for Bevy check-in rates with per-row force refresh, batched Tier 1 Firestore lookups into a single IN query, fixed numeric bevy_member_id parsing, and made Algolia pre-warming lazy.",
+      },
+      {
+        category: "Improved",
+        text: "Redesigned the curation-mode Check-in Rate cell with a compact SVG radial progress ring, inline percentage and counts, hover-revealed force-refresh button, separate 0% (No-shows) vs No History (0/0) filters, and a 500-row hydration cap indicator.",
+      },
+      {
+        category: "Fixed",
+        text: "Hardened masked-email matching to enforce exact local-part length, clamped check-in rates to 0–100%, and fixed in-flight loading shimmer leaks when canceling hydration.",
+      },
+    ],
+  },
+  {
     version: "1.0.72",
     releaseDate: "2026-11-27",
     title: "Phase 1 Full-Stack Cost Optimization",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",
