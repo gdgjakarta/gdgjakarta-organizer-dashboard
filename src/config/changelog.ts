@@ -16,10 +16,21 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.75",
+    releaseDate: "2026-11-27",
+    title: "Default Bank Account Name Update",
+    badge: "Latest",
+    items: [
+      {
+        category: "Changed",
+        text: "Sponsor documents now default to FACHRIDAN TIO MUAFA as the bank account name, and saved templates using the previous name are updated automatically.",
+      },
+    ],
+  },
+  {
     version: "1.0.74",
     releaseDate: "2026-11-27",
     title: "Public Header Account Menu & Manage Event Shortcut",
-    badge: "Latest",
     items: [
       {
         category: "Added",

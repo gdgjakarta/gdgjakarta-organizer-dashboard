@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.75] - 2026-11-27
+
+### Changed
+- **Default Sponsor Document Bank Account Name (`sponsor-document-actions.ts`, `sponsor-document-preview.tsx`)**: Default bank account name is now `FACHRIDAN TIO MUAFA`; saved templates using the previous name are migrated on load.
+
+---
+
 ## [1.0.74] - 2026-11-27
 
 ### Added
