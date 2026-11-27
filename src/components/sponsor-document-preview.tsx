@@ -19,7 +19,7 @@ const DEFAULT_TEMPLATES: SponsorDocumentTemplatesConfig = {
   org_phone: "+628559996648",
   bank_name: "Bank Jago",
   bank_account_number: "509332739966",
-  bank_account_name: "Fachridan Tio Mu'afa",
+  bank_account_name: "FACHRIDAN TIO MUAFA",
   bank_swift_code: "JAGBIDJAXXX",
   invoice_signer_name: "Fachridan Tio M.",
   invoice_signer_title: "GDG Jakarta Organizer",
