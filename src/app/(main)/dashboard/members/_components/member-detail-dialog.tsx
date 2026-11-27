@@ -268,7 +268,7 @@ export function MemberDetailDialog({
   const agg = detail?.event_attendance_stats?.aggregate;
   const registered = agg?.total_events_registered ?? detail?.events_registered_count ?? member?.eventsCount ?? 0;
   const checkedIn = agg?.total_checked_in ?? 0;
-  const rate = registered > 0 ? Math.round((checkedIn / registered) * 100) : 0;
+  const rate = registered > 0 ? Math.min(100, Math.max(0, Math.round((checkedIn / registered) * 100))) : 0;
   const location = [user?.city, user?.country].filter(Boolean).join(", ");
   const jobTitle = user?.title || fsMember?.title || member?.title;
   const company = user?.company || fsMember?.company || fsMember?.company_or_institution || member?.company;

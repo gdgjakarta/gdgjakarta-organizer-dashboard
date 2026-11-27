@@ -628,7 +628,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [reviewerFilter, setReviewerFilter] = useState<string>("all");
   const [venueTicketFilter, setVenueTicketFilter] = useState<string>("all");
   const [checkInRateFilter, setCheckInRateFilter] = useState<
-    "all" | "high" | "medium" | "low" | "zero" | "unavailable"
+    "all" | "high" | "medium" | "low" | "zero" | "no_history" | "unavailable"
   >("all");
   const [checkInRateSort, setCheckInRateSort] = useState<"default" | "rate_desc" | "rate_asc">("default");
   type CheckInRateEntry = CheckInRateResult | { status: "loading" };
@@ -637,6 +637,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const inFlightEmailsRef = useRef<Set<string>>(new Set());
   const fetchGenRef = useRef(0);
   const [hydrationProgress, setHydrationProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const [hydrationCapped, setHydrationCapped] = useState(false);
   const [rateSessionExpired, setRateSessionExpired] = useState(false);
   const [rateLimitedPaused, setRateLimitedPaused] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -2345,7 +2346,8 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         if (checkInRateFilter === "high") return entry.registered > 0 && entry.rate >= 75;
         if (checkInRateFilter === "medium") return entry.registered > 0 && entry.rate >= 50 && entry.rate < 75;
         if (checkInRateFilter === "low") return entry.registered > 0 && entry.rate < 50;
-        if (checkInRateFilter === "zero") return entry.rate === 0 || entry.registered === 0;
+        if (checkInRateFilter === "zero") return entry.registered > 0 && entry.rate === 0;
+        if (checkInRateFilter === "no_history") return entry.registered === 0;
         return true;
       });
     }
@@ -2397,6 +2399,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     inFlightEmailsRef.current.clear();
     setCheckInRateCache(new Map());
     setHydrationProgress(null);
+    setHydrationCapped(false);
     setRateSessionExpired(false);
     setRateLimitedPaused(false);
   }, [eventId]);
@@ -2405,6 +2408,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     async (
       chunk: Array<{ email: string; memberId?: string; memberName?: string }>,
       gen: number,
+      options?: { forceRefresh?: boolean },
     ): Promise<"ok" | "session_expired" | "rate_limited" | "aborted"> => {
       if (fetchGenRef.current !== gen || chunk.length === 0) return "aborted";
 
@@ -2415,8 +2419,21 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       setCheckInRateCache(new Map(checkInRateCacheRef.current));
 
       try {
-        const res = await fetchRegistrantsCheckInRatesAction(chunk);
-        if (fetchGenRef.current !== gen) return "aborted";
+        const res = await fetchRegistrantsCheckInRatesAction(
+          chunk,
+          undefined,
+          options?.forceRefresh ? { forceRefresh: true } : undefined,
+        );
+        if (fetchGenRef.current !== gen) {
+          for (const item of chunk) {
+            inFlightEmailsRef.current.delete(item.email);
+            if (checkInRateCacheRef.current.get(item.email)?.status === "loading") {
+              checkInRateCacheRef.current.delete(item.email);
+            }
+          }
+          setCheckInRateCache(new Map(checkInRateCacheRef.current));
+          return "aborted";
+        }
 
         if (!res.success) {
           for (const item of chunk) {
@@ -2444,13 +2461,18 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         }
         return "ok";
       } catch {
-        if (fetchGenRef.current !== gen) return "aborted";
         for (const item of chunk) {
           inFlightEmailsRef.current.delete(item.email);
-          checkInRateCacheRef.current.set(item.email, { status: "error" });
+          if (fetchGenRef.current !== gen) {
+            if (checkInRateCacheRef.current.get(item.email)?.status === "loading") {
+              checkInRateCacheRef.current.delete(item.email);
+            }
+          } else {
+            checkInRateCacheRef.current.set(item.email, { status: "error" });
+          }
         }
         setCheckInRateCache(new Map(checkInRateCacheRef.current));
-        return "ok";
+        return fetchGenRef.current !== gen ? "aborted" : "ok";
       }
     },
     [],
@@ -2510,16 +2532,19 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   useEffect(() => {
     if (!isCurationMode || !hasTeamAccess || isLoading) {
       setHydrationProgress(null);
+      setHydrationCapped(false);
       return;
     }
     if (checkInRateFilter === "all" && checkInRateSort === "default") {
       setHydrationProgress(null);
+      setHydrationCapped(false);
       return;
     }
     if (rateSessionExpired || rateLimitedPaused) return;
 
     const toFetch: Array<{ email: string; memberId?: string; memberName?: string }> = [];
     const seen = new Set<string>();
+    let capped = false;
     for (const reg of statusFiltered) {
       const email = reg.member_email?.trim().toLowerCase();
       if (!email || seen.has(email) || inFlightEmailsRef.current.has(email)) continue;
@@ -2528,9 +2553,13 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         continue;
       }
       seen.add(email);
+      if (toFetch.length >= 500) {
+        capped = true;
+        break;
+      }
       toFetch.push({ email, memberId: reg.member_id, memberName: reg.member_name });
-      if (toFetch.length >= 500) break;
     }
+    setHydrationCapped(capped);
 
     if (toFetch.length === 0) {
       setHydrationProgress(null);
@@ -2582,6 +2611,22 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     setRateSessionExpired(false);
     setRateLimitedPaused(false);
   }, []);
+
+  const handleForceRefreshCheckInRate = useCallback(
+    (reg: FirestoreRegistration) => {
+      const email = reg.member_email?.trim().toLowerCase();
+      if (!email || inFlightEmailsRef.current.has(email)) return;
+      checkInRateCacheRef.current.delete(email);
+      setRateSessionExpired(false);
+      setRateLimitedPaused(false);
+      void fetchCheckInRateChunk(
+        [{ email, memberId: reg.member_id, memberName: reg.member_name }],
+        fetchGenRef.current,
+        { forceRefresh: true },
+      );
+    },
+    [fetchCheckInRateChunk],
+  );
 
   const handleStatusChange = (
     registrationId: string,
@@ -5053,7 +5098,8 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                       { value: "high", label: "High (75%+)" },
                       { value: "medium", label: "Moderate (50–74%)" },
                       { value: "low", label: "Low (<50%)" },
-                      { value: "zero", label: "0% (No Check-ins)" },
+                      { value: "zero", label: "0% (No-shows)" },
+                      { value: "no_history", label: "No History (0/0)" },
                       { value: "unavailable", label: "Unavailable (—)" },
                     ]}
                   />
@@ -5069,7 +5115,15 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                       type="button"
                       onClick={() => {
                         fetchGenRef.current += 1;
+                        inFlightEmailsRef.current.clear();
+                        for (const [email, entry] of checkInRateCacheRef.current.entries()) {
+                          if (entry.status === "loading") {
+                            checkInRateCacheRef.current.delete(email);
+                          }
+                        }
+                        setCheckInRateCache(new Map(checkInRateCacheRef.current));
                         setHydrationProgress(null);
+                        setHydrationCapped(false);
                         setCheckInRateFilter("all");
                         setCheckInRateSort("default");
                       }}
@@ -5079,6 +5133,18 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                     </button>
                   </div>
                 )}
+
+                {isCurationMode &&
+                  hydrationCapped &&
+                  !hydrationProgress &&
+                  (checkInRateFilter !== "all" || checkInRateSort !== "default") && (
+                    <div
+                      className="flex items-center rounded-md border bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
+                      title="Only the first 500 uncached registrants are hydrated when filtering or sorting by check-in rate."
+                    >
+                      Hydrated first 500
+                    </div>
+                  )}
 
                 {isCurationMode && (rateSessionExpired || rateLimitedPaused) && (
                   <div className="flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
@@ -5876,6 +5942,9 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                               }
                               if (entry.status === "ready") {
                                 const isZero = entry.registered === 0;
+                                const clampedRate = Math.min(100, Math.max(0, entry.rate));
+                                const ringCircumference = 2 * Math.PI * 7;
+                                const ringOffset = ringCircumference * (1 - clampedRate / 100);
                                 const toneClass = isZero
                                   ? "text-muted-foreground"
                                   : entry.rate >= 75
@@ -5883,40 +5952,84 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                     : entry.rate >= 50
                                       ? "text-amber-600 dark:text-amber-400"
                                       : "text-rose-600 dark:text-rose-400";
-                                const barClass = isZero
-                                  ? "bg-muted-foreground/30"
+                                const ringClass = isZero
+                                  ? "text-muted-foreground/30"
                                   : entry.rate >= 75
-                                    ? "bg-emerald-500"
+                                    ? "text-emerald-500"
                                     : entry.rate >= 50
-                                      ? "bg-amber-500"
-                                      : "bg-rose-500";
+                                      ? "text-amber-500"
+                                      : "text-rose-500";
                                 return (
-                                  <div
-                                    className="flex w-24 flex-col gap-1"
-                                    title={`Registered: ${entry.registered} · Checked in: ${entry.checkedIn} · Check-in rate: ${entry.rate}%`}
-                                  >
-                                    <div className="flex items-baseline justify-between gap-1.5 tabular-nums">
-                                      <span className={`font-semibold text-xs ${toneClass}`}>{entry.rate}%</span>
-                                      <span className="text-[11px] text-muted-foreground">
-                                        ({entry.checkedIn}/{entry.registered})
-                                      </span>
+                                  <div className="group/rate inline-flex items-center gap-1.5">
+                                    <div
+                                      className="inline-flex items-center gap-2 tabular-nums"
+                                      title={`Registered: ${entry.registered} · Checked in: ${entry.checkedIn} · Check-in rate: ${entry.rate}%`}
+                                    >
+                                      <svg
+                                        className="size-5 shrink-0 -rotate-90"
+                                        viewBox="0 0 20 20"
+                                        aria-hidden="true"
+                                      >
+                                        <circle
+                                          cx="10"
+                                          cy="10"
+                                          r="7"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2.5"
+                                          className="text-muted-foreground/20"
+                                        />
+                                        <circle
+                                          cx="10"
+                                          cy="10"
+                                          r="7"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2.5"
+                                          strokeLinecap="round"
+                                          strokeDasharray={ringCircumference}
+                                          strokeDashoffset={ringOffset}
+                                          className={`transition-all ${ringClass}`}
+                                        />
+                                      </svg>
+                                      <div className="flex items-baseline gap-1">
+                                        <span className={`font-semibold text-xs ${toneClass}`}>{entry.rate}%</span>
+                                        <span className="text-[11px] text-muted-foreground">
+                                          {entry.checkedIn}/{entry.registered}
+                                        </span>
+                                      </div>
                                     </div>
-                                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                                      <div
-                                        className={`h-full rounded-full transition-all ${barClass}`}
-                                        style={{ width: `${Math.min(100, Math.max(0, entry.rate))}%` }}
-                                      />
-                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleForceRefreshCheckInRate(reg);
+                                      }}
+                                      className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/rate:opacity-100 focus-visible:opacity-100"
+                                      title="Force refresh check-in rate from Bevy"
+                                      aria-label="Force refresh check-in rate"
+                                    >
+                                      <RotateCw className="size-3" />
+                                    </button>
                                   </div>
                                 );
                               }
                               if (entry.status === "unavailable") {
                                 return (
-                                  <span
-                                    className="text-muted-foreground tabular-nums"
-                                    title="Member attendance data unavailable on Bevy chapter"
-                                  >
-                                    —
+                                  <span className="group/rate inline-flex items-center gap-1 text-muted-foreground tabular-nums">
+                                    <span title="Member attendance data unavailable on Bevy chapter">—</span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleForceRefreshCheckInRate(reg);
+                                      }}
+                                      className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/rate:opacity-100 focus-visible:opacity-100"
+                                      title="Force refresh check-in rate from Bevy"
+                                      aria-label="Force refresh check-in rate"
+                                    >
+                                      <RotateCw className="size-3" />
+                                    </button>
                                   </span>
                                 );
                               }

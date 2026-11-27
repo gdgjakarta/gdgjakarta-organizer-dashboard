@@ -73,6 +73,70 @@ interface CachedEventsEntry {
 const eventsLkgCache = new Map<string, CachedEventsEntry>();
 const EVENTS_CACHE_TTL_MS = 60_000; // 1 minute fresh TTL
 
+// Bounded in-memory TTL cache for historical Bevy check-in rates (ready/unavailable only)
+interface CachedCheckInRateEntry {
+  data: CheckInRateResult;
+  timestamp: number;
+}
+const checkInRateLkgCache = new Map<string, CachedCheckInRateEntry>();
+const CHECKIN_RATE_CACHE_TTL_MS = 10 * 60_000; // 10 minutes
+const CHECKIN_RATE_CACHE_MAX_ENTRIES = 2_000;
+
+function getCheckInRateCacheKey(email: string, chapterId: string = BEVY_CONFIG.chapterId): string {
+  return `${chapterId}:${email.trim().toLowerCase()}`;
+}
+
+export function getCachedCheckInRate(
+  email: string,
+  chapterId: string = BEVY_CONFIG.chapterId,
+): CheckInRateResult | null {
+  const key = getCheckInRateCacheKey(email, chapterId);
+  const cached = checkInRateLkgCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > CHECKIN_RATE_CACHE_TTL_MS) {
+    checkInRateLkgCache.delete(key);
+    return null;
+  }
+  return cached.data;
+}
+
+export function setCachedCheckInRate(
+  email: string,
+  result: CheckInRateResult,
+  chapterId: string = BEVY_CONFIG.chapterId,
+): void {
+  if (result.status !== "ready" && result.status !== "unavailable") return;
+  const key = getCheckInRateCacheKey(email, chapterId);
+  if (checkInRateLkgCache.has(key)) {
+    checkInRateLkgCache.delete(key);
+  } else if (checkInRateLkgCache.size >= CHECKIN_RATE_CACHE_MAX_ENTRIES) {
+    const oldestKey = checkInRateLkgCache.keys().next().value;
+    if (oldestKey !== undefined) checkInRateLkgCache.delete(oldestKey);
+  }
+  checkInRateLkgCache.set(key, { data: result, timestamp: Date.now() });
+}
+
+export function clearCheckInRateCache(): void {
+  checkInRateLkgCache.clear();
+}
+
+export function computeCheckInRate(checkedIn: number, registered: number): number {
+  if (!Number.isFinite(registered) || registered <= 0) return 0;
+  if (!Number.isFinite(checkedIn) || checkedIn <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round((checkedIn / registered) * 100)));
+}
+
+export function normalizeBevyMemberId(value: unknown): string | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? String(Math.trunc(value)) : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  return null;
+}
+
 /**
  * Server-only fetch wrapper for Bevy API returning status code, ok flag, and parsed data.
  * Dynamically resolves session cookies and CSRF tokens from Firebase Remote Config
@@ -772,16 +836,17 @@ export function isEmailMatch(candidateEmail?: string | null, targetEmail?: strin
   if (c === t) return true;
 
   if (c.includes("*")) {
-    const [cLocal, cDomain] = c.split("@");
-    const [tLocal, tDomain] = t.split("@");
-    if (!cLocal || !cDomain || !tLocal || !tDomain) return false;
-    if (cDomain !== tDomain) return false;
-    const firstStar = cLocal.indexOf("*");
-    const lastStar = cLocal.lastIndexOf("*");
-    const prefix = cLocal.slice(0, firstStar);
-    const suffix = cLocal.slice(lastStar + 1);
-    if (tLocal.length < prefix.length + suffix.length + 1) return false;
-    return tLocal.startsWith(prefix) && (suffix.length === 0 || tLocal.endsWith(suffix));
+    const cParts = c.split("@");
+    const tParts = t.split("@");
+    if (cParts.length !== 2 || tParts.length !== 2) return false;
+    const [cLocal, cDomain] = cParts;
+    const [tLocal, tDomain] = tParts;
+    if (!cLocal || !cDomain || !tLocal || !tDomain || cDomain !== tDomain) return false;
+    if (cLocal.length !== tLocal.length) return false;
+    for (let i = 0; i < cLocal.length; i++) {
+      if (cLocal[i] !== "*" && cLocal[i] !== tLocal[i]) return false;
+    }
+    return true;
   }
 
   return false;
@@ -1573,9 +1638,15 @@ export async function resolveRegistrantCheckInRate(
   input: { email: string; memberId?: string; memberName?: string },
   chapterId: string = BEVY_CONFIG.chapterId,
   knownChapterMemberId?: string | null,
+  forceRefresh = false,
 ): Promise<CheckInRateResult> {
   const normalizedEmail = input.email.trim().toLowerCase();
   if (!normalizedEmail) return { status: "unavailable" };
+
+  if (!forceRefresh) {
+    const cached = getCachedCheckInRate(normalizedEmail, chapterId);
+    if (cached) return cached;
+  }
 
   let chapterMemberId: string | null = knownChapterMemberId ?? null;
 
@@ -1610,28 +1681,35 @@ export async function resolveRegistrantCheckInRate(
     }
 
     if (!chapterMemberId) {
-      return { status: "unavailable" };
+      const unavailable: CheckInRateResult = { status: "unavailable" };
+      setCachedCheckInRate(normalizedEmail, unavailable, chapterId);
+      return unavailable;
     }
   }
 
   // Tier 3: Member Detail fetch
   const detailRes = await getBevyChapterMemberDetailWithStatus(chapterMemberId, chapterId);
   if (detailRes.status !== "ready") {
+    if (detailRes.status === "unavailable") {
+      setCachedCheckInRate(normalizedEmail, { status: "unavailable" }, chapterId);
+    }
     return { status: detailRes.status };
   }
 
   const agg = detailRes.detail.event_attendance_stats?.aggregate;
   const registered = agg?.total_events_registered ?? detailRes.detail.events_registered_count ?? 0;
   const checkedIn = agg?.total_checked_in ?? 0;
-  const rate = registered > 0 ? Math.round((checkedIn / registered) * 100) : 0;
+  const rate = computeCheckInRate(checkedIn, registered);
 
-  return {
+  const ready: CheckInRateResult = {
     status: "ready",
     registered,
     checkedIn,
     rate,
     bevyMemberId: chapterMemberId,
   };
+  setCachedCheckInRate(normalizedEmail, ready, chapterId);
+  return ready;
 }
 
 /**

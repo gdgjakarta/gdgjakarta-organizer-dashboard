@@ -21,9 +21,11 @@ import {
   getBevyChapterTeams,
   getBevyEventAttendees,
   getBevyPerson,
+  getCachedCheckInRate,
   getMemberById,
   importMemberToBevy,
   modifyBevyAiEventContent,
+  normalizeBevyMemberId,
   putBevyAttendeeCheckIn,
   reorderBevyChapterTeam,
   resolveRegistrantCheckInRate,
@@ -820,6 +822,7 @@ export async function getBevyChapterMemberDetailAction(memberId: string | number
 export async function fetchRegistrantsCheckInRatesAction(
   items: Array<{ email: string; memberId?: string; memberName?: string }>,
   chapterId?: string,
+  options?: { forceRefresh?: boolean },
 ): Promise<
   | { success: false; error: string }
   | {
@@ -847,60 +850,108 @@ export async function fetchRegistrantsCheckInRatesAction(
     return { success: true, results: {} };
   }
 
-  // Pre-warm Algolia config once before fanning out concurrent lookups
-  const algoliaWarm = await ensureAlgoliaMemberConfig(chapterId);
-  if (algoliaWarm.status === "auth_error") {
-    const results: Record<string, CheckInRateResult> = {};
-    for (const item of deduped) results[item.email] = { status: "auth_error" };
-    return { success: true, results, sessionExpired: true };
-  }
-  if (algoliaWarm.status === "rate_limited") {
-    const results: Record<string, CheckInRateResult> = {};
-    for (const item of deduped) results[item.email] = { status: "rate_limited" };
-    return { success: true, results, rateLimited: true };
+  const forceRefresh = Boolean(options?.forceRefresh);
+  const results: Record<string, CheckInRateResult> = {};
+  const uncached: Array<{ email: string; memberId?: string; memberName?: string }> = [];
+  for (const item of deduped) {
+    const cached = forceRefresh ? null : getCachedCheckInRate(item.email, chapterId);
+    if (cached) {
+      results[item.email] = cached;
+    } else {
+      uncached.push(item);
+    }
   }
 
-  const results: Record<string, CheckInRateResult> = {};
+  if (uncached.length === 0) {
+    return { success: true, results };
+  }
+
+  // Tier 1: Batched Firestore lookup (1 IN query + fallback getDoc only for misses with a memberId)
+  const memberIdByEmail = new Map<string, string>();
+  try {
+    const { getFirestoreDoc, queryFirestoreDocs } = await import("@/server/firestore-admin");
+    const docs = await queryFirestoreDocs<{ email?: string; bevy_member_id?: unknown }>(
+      "members",
+      [
+        {
+          fieldFilter: {
+            field: { fieldPath: "email" },
+            op: "IN",
+            value: { arrayValue: { values: uncached.map((u) => ({ stringValue: u.email })) } },
+          },
+        },
+      ],
+      30,
+      undefined,
+      { selectFields: ["email", "bevy_member_id"] },
+    );
+    for (const d of docs) {
+      const email = typeof d.email === "string" ? d.email.trim().toLowerCase() : "";
+      const bevyMemberId = normalizeBevyMemberId(d.bevy_member_id);
+      if (email && bevyMemberId && !memberIdByEmail.has(email)) {
+        memberIdByEmail.set(email, bevyMemberId);
+      }
+    }
+
+    const missedWithId = uncached.filter(
+      (item) => !memberIdByEmail.has(item.email) && item.memberId && !item.memberId.startsWith("manual_"),
+    );
+    if (missedWithId.length > 0) {
+      const fallbackDocs = await Promise.all(
+        missedWithId.map(async (item) => ({
+          email: item.email,
+          doc: await getFirestoreDoc("members", item.memberId as string),
+        })),
+      );
+      for (const { email, doc } of fallbackDocs) {
+        const bevyMemberId = normalizeBevyMemberId(doc?.bevy_member_id);
+        if (bevyMemberId) {
+          memberIdByEmail.set(email, bevyMemberId);
+        }
+      }
+    }
+  } catch {
+    // Fall through to Tier 2
+  }
+
+  // Lazy Algolia pre-warm: only needed when at least one uncached item missed Tier 1
   let sessionExpired = false;
   let rateLimited = false;
+  let toResolve = uncached;
+  const needsAlgolia = uncached.some((item) => !memberIdByEmail.has(item.email));
+
+  if (needsAlgolia) {
+    const algoliaWarm = await ensureAlgoliaMemberConfig(chapterId);
+    if (algoliaWarm.status === "auth_error") {
+      for (const item of uncached) results[item.email] = { status: "auth_error" };
+      return { success: true, results, sessionExpired: true };
+    }
+    if (algoliaWarm.status === "rate_limited") {
+      rateLimited = true;
+      toResolve = uncached.filter((item) => {
+        if (memberIdByEmail.has(item.email)) return true;
+        results[item.email] = { status: "rate_limited" };
+        return false;
+      });
+    }
+  }
+
   const WAVE_SIZE = 4;
 
-  for (let i = 0; i < deduped.length; i += WAVE_SIZE) {
-    if (sessionExpired || rateLimited) {
+  for (let i = 0; i < toResolve.length; i += WAVE_SIZE) {
+    if (sessionExpired || (rateLimited && toResolve.slice(i).every((item) => !memberIdByEmail.has(item.email)))) {
       const remainingStatus: CheckInRateResult = sessionExpired ? { status: "auth_error" } : { status: "rate_limited" };
-      for (let j = i; j < deduped.length; j++) {
-        results[deduped[j].email] = remainingStatus;
+      for (let j = i; j < toResolve.length; j++) {
+        results[toResolve[j].email] = remainingStatus;
       }
       break;
     }
 
-    const wave = deduped.slice(i, i + WAVE_SIZE);
+    const wave = toResolve.slice(i, i + WAVE_SIZE);
     const waveResults = await Promise.all(
       wave.map(async (item) => {
-        let chapterMemberId: string | null = null;
-        // Tier 1: Firestore members fast lookup
-        try {
-          const { getFirestoreDoc, queryFirestoreDocs } = await import("@/server/firestore-admin");
-          if (item.memberId && !item.memberId.startsWith("manual_")) {
-            const doc = await getFirestoreDoc("members", item.memberId);
-            if (doc && typeof doc.bevy_member_id === "string" && doc.bevy_member_id.trim()) {
-              chapterMemberId = doc.bevy_member_id.trim();
-            }
-          }
-          if (!chapterMemberId) {
-            const docs = await queryFirestoreDocs("members", [
-              { fieldFilter: { field: { fieldPath: "email" }, op: "EQUAL", value: { stringValue: item.email } } },
-            ]);
-            const match = docs.find((d) => typeof d.bevy_member_id === "string" && d.bevy_member_id.trim());
-            if (match && typeof match.bevy_member_id === "string") {
-              chapterMemberId = match.bevy_member_id.trim();
-            }
-          }
-        } catch {
-          // Fall through to Tier 2
-        }
-
-        const res = await resolveRegistrantCheckInRate(item, chapterId, chapterMemberId);
+        const chapterMemberId = memberIdByEmail.get(item.email) ?? null;
+        const res = await resolveRegistrantCheckInRate(item, chapterId, chapterMemberId, forceRefresh);
         return { email: item.email, res };
       }),
     );
