@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.76] - 2026-11-27
+
+### Added
+- **Open Graph Logo Tag (`layout.tsx`)**: Added `og:logo` metadata pointing to the 512px GDG Jakarta logo for richer link previews.
+
+---
+
 ## [1.0.75] - 2026-11-27
 
 ### Changed

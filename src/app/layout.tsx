@@ -65,6 +65,10 @@ export const metadata: Metadata = {
       },
     ],
   },
+  // Next's openGraph type has no `logo` field, so emit og:logo manually.
+  other: {
+    "og:logo": new URL("/favicon/android-chrome-512x512.png", APP_CONFIG.url).toString(),
+  },
   twitter: {
     card: "summary_large_image",
     site: APP_CONFIG.meta.twitterHandle,
