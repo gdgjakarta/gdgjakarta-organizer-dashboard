@@ -17,6 +17,7 @@ import {
   Link2,
   MapPin,
   Radio,
+  Settings2,
   Share2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,10 +32,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getBevyLiveEventUrl } from "@/config/remote-config-utils";
+import { isCoreTeamOrStaff, isExecutiveOrganizer } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import type { BevyEvent } from "@/lib/bevy/types";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 function isSelfChapter(title?: string): boolean {
   if (!title) return false;
@@ -117,6 +120,8 @@ interface PublicEventHeaderProps {
 }
 
 export function PublicEventHeader({ event, firestoreEvent }: PublicEventHeaderProps) {
+  const user = useAuthStore((s) => s.user);
+  const hasOrganizerAccess = Boolean(user && (isExecutiveOrganizer(user) || isCoreTeamOrStaff(user)));
   const [copiedType, setCopiedType] = useState<"short" | "full" | null>(null);
   const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual_event);
 
@@ -266,6 +271,15 @@ export function PublicEventHeader({ event, firestoreEvent }: PublicEventHeaderPr
                 <ExternalLink className="size-3.5" />
                 Open on Bevy
               </a>
+            </Button>
+          )}
+
+          {hasOrganizerAccess && (
+            <Button variant="default" size="sm" asChild className="gap-1.5 text-xs">
+              <Link href={`/dashboard/events/${event.id}`}>
+                <Settings2 className="size-3.5" />
+                Manage Event
+              </Link>
             </Button>
           )}
         </div>

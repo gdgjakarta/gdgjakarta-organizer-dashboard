@@ -3,13 +3,25 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { LayoutDashboard, LogOut } from "lucide-react";
+
 import { GoogleButton } from "@/app/(main)/auth/_components/social-auth/google-button";
 import { GdgLogo } from "@/components/gdg-logo";
 import { useNavigationProgress } from "@/components/navigation-progress-bar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { APP_CONFIG } from "@/config/app-config";
 import { getDashboardHomeUrl } from "@/lib/auth-roles";
-import { useAuthStore } from "@/stores/auth/auth-provider";
+import { getInitials } from "@/lib/utils";
+import { signOutOrganizer, useAuthStore } from "@/stores/auth/auth-provider";
 
 import { PublicMobileNav } from "./public-mobile-nav";
 import { isPublicNavItemActive, PUBLIC_NAV_ITEMS } from "./public-nav-items";
@@ -31,19 +43,57 @@ export function PublicHeader() {
 
     if (user) {
       return (
-        <Button
-          asChild
-          className="relative overflow-hidden rounded-full px-5 font-medium text-[14px] shadow-xs transition-all hover:scale-[1.02]"
-          style={{
-            backgroundColor: "var(--theme-primary)",
-            color: "var(--theme-primary-foreground)",
-          }}
-        >
-          <Link href={getDashboardHomeUrl(user)}>
-            <span>Dashboard</span>
-            {isNavigating && <div className="shimmer-wave" aria-hidden="true" />}
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            asChild
+            className="relative overflow-hidden rounded-full px-5 font-medium text-[14px] shadow-xs transition-all hover:scale-[1.02]"
+            style={{
+              backgroundColor: "var(--theme-primary)",
+              color: "var(--theme-primary-foreground)",
+            }}
+          >
+            <Link href={getDashboardHomeUrl(user)}>
+              <span>Dashboard</span>
+              {isNavigating && <div className="shimmer-wave" aria-hidden="true" />}
+            </Link>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Account menu"
+                className="flex size-10 shrink-0 items-center justify-center rounded-full outline-none ring-offset-background transition-all hover:scale-[1.04] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <Avatar className="size-10 border">
+                  <AvatarImage src={user.avatar || undefined} alt={user.name} />
+                  <AvatarFallback className="font-medium text-xs">{getInitials(user.name)}</AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-56 rounded-xl">
+              <DropdownMenuLabel className="font-normal">
+                <div className="grid text-left leading-tight">
+                  <span className="truncate font-medium text-sm">{user.name}</span>
+                  <span className="truncate text-muted-foreground text-xs">{user.email}</span>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild className="cursor-pointer">
+                <Link href={getDashboardHomeUrl(user)}>
+                  <LayoutDashboard />
+                  Dashboard
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => void signOutOrganizer()}
+                className="cursor-pointer text-destructive focus:text-destructive"
+              >
+                <LogOut />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       );
     }
 
