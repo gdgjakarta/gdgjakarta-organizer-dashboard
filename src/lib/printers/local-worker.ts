@@ -3,9 +3,9 @@
 
 export const DEFAULT_PRINT_WORKER_URL = "http://127.0.0.1:17777";
 export const FALLBACK_PRINT_WORKER_URL = "http://localhost:17777";
+const R2_PUBLIC_URL = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL || "https://assets.gdgjakarta.org").replace(/\/+$/, "");
 /** Where the packaged Print Station macOS Disk Image (.dmg) lives (Media page, `community-dashboard/app/`). */
-export const PRINT_WORKER_DOWNLOAD_URL =
-  "https://gdgjakarta.com/api/media/community-dashboard/app/GDG-Print-Station-macOS.dmg?v=2.5.0";
+export const PRINT_WORKER_DOWNLOAD_URL = `${R2_PUBLIC_URL}/community-dashboard/app/GDG-Print-Station-macOS.dmg?v=2.5.0`;
 /** Production dashboard address the worker accepts out of the box. */
 export const PRINT_WORKER_DASHBOARD_ORIGIN = "https://gdgjakarta.com";
 export const PRINT_WORKER_BINARY_NAME = "gdg-print-worker";

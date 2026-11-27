@@ -227,11 +227,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
 
     async function setupRegistrations() {
       try {
-        const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
-        const list = await getEventRegistrations(String(event.id));
-        if (isMounted) {
-          setRegistrations(list);
-        }
+        const { subscribeEventRegistrations } = await import("@/lib/firestore/client");
 
         unsubscribe = subscribeEventRegistrations(String(event.id), (updatedList) => {
           if (isMounted) {
@@ -335,7 +331,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     }
 
     return Array.from(byCode.values());
-  }, [vouchers, registrations, event.bundles, event.start_date]);
+  }, [vouchers, registrations, event.bundles]);
 
   // Auto-sync missing bundle vouchers from registrations (and backfill multi-ticket bundle registrations missing bundle_vouchers)
   useEffect(() => {
@@ -463,7 +459,9 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
         }
         for (const v of orphanedVouchers) {
           const docId = `${String(event.id)}_${v.code.trim().toUpperCase()}`;
-          await deleteDoc(doc(db, "event_vouchers", docId)).catch(() => {});
+          await deleteDoc(doc(db, "event_vouchers", docId)).catch(() => {
+            /* ignore missing doc */
+          });
         }
       } catch (err) {
         console.warn("[VouchersTab] Error deleting orphaned bundle vouchers:", err);

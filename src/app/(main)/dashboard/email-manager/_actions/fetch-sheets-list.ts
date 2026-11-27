@@ -1,7 +1,5 @@
 "use server";
 
-import { google } from "googleapis";
-
 import { extractApiMessage } from "@/lib/utils";
 
 export async function fetchSheetsList(spreadsheetUrl: string, accessToken?: string) {
@@ -51,13 +49,21 @@ export async function fetchSheetsList(spreadsheetUrl: string, accessToken?: stri
     // If an API key is provided, try the official Google Sheets API first
     if (apiKey) {
       try {
-        const sheets = google.sheets("v4");
-        const response = await sheets.spreadsheets.get({
-          spreadsheetId,
-          key: apiKey,
-        });
+        const apiRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title&key=${encodeURIComponent(apiKey)}`,
+          {
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          },
+        );
+        if (!apiRes.ok) {
+          throw new Error(`Google Sheets API HTTP ${apiRes.status}`);
+        }
+        const data = (await apiRes.json()) as {
+          sheets?: Array<{ properties?: { title?: string } }>;
+        };
 
-        const sheetNames = (response.data.sheets || [])
+        const sheetNames = (data.sheets || [])
           .map((s) => s.properties?.title)
           .filter((title): title is string => Boolean(title));
 

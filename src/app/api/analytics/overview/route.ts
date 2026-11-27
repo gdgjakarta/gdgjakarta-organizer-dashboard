@@ -241,7 +241,12 @@ export async function GET(req: NextRequest) {
     }
 
     case "tickets": {
-      payload = await fetchTicketAnalytics(window, { token: bearerToken, cached: false });
+      payload = await fetchExternalWithR2Cache(
+        ["analytics", "tickets", "v1", window.sinceDate, window.apiUntilDate],
+        window.isSettled ? 21_600 : 300,
+        bypassCache,
+        (cachedFlag) => fetchTicketAnalytics(window, { token: bearerToken, cached: cachedFlag }),
+      );
       break;
     }
 

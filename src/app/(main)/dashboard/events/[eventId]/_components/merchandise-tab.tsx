@@ -116,22 +116,24 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
 
     async function loadAndSubscribeRegistrations() {
       try {
-        const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
-        const list = await getEventRegistrations(String(event.id));
-        if (isMounted) {
-          setRegistrations(list);
-          setIsLoadingRegistrations(false);
-        }
+        const { subscribeEventRegistrations } = await import("@/lib/firestore/client");
 
-        unsubscribe = subscribeEventRegistrations(String(event.id), (updatedList) => {
-          if (isMounted) {
-            setRegistrations(updatedList);
-            setIsLoadingRegistrations(false);
-          }
-        });
+        unsubscribe = subscribeEventRegistrations(
+          String(event.id),
+          (updatedList) => {
+            if (isMounted) {
+              setRegistrations(updatedList);
+              setIsLoadingRegistrations(false);
+            }
+          },
+          () => {
+            if (isMounted) {
+              setIsLoadingRegistrations(false);
+            }
+          },
+        );
       } catch (err) {
-        console.warn("[MerchandiseTab] Failed to fetch or subscribe to registrations:", err);
-      } finally {
+        console.warn("[MerchandiseTab] Failed to subscribe to registrations:", err);
         if (isMounted) {
           setIsLoadingRegistrations(false);
         }

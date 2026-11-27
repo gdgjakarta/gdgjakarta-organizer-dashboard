@@ -15,13 +15,16 @@ export function initMixpanel(): void {
     return;
   }
 
+  const rawReplayPercent = Number(process.env.NEXT_PUBLIC_MIXPANEL_REPLAY_PERCENT);
+  const replayPercent = Number.isFinite(rawReplayPercent) ? Math.min(100, Math.max(0, rawReplayPercent)) : 0;
+
   mixpanel.init(MIXPANEL_TOKEN, {
-    debug: true,
+    debug: process.env.NODE_ENV !== "production",
     track_pageview: true,
     persistence: "localStorage",
-    record_heatmap_data: true,
-    autocapture: true,
-    record_sessions_percent: 100,
+    record_heatmap_data: false,
+    autocapture: false,
+    record_sessions_percent: replayPercent,
   });
 
   isInitialized = true;

@@ -572,23 +572,14 @@ export function BreakoutSessionsTab({
 
     async function loadLatestConfig() {
       try {
-        const {
-          getFirestoreEventById,
-          getEventSessionRegistrationCounts,
-          getEventRegistrations,
-          subscribeEventRegistrations,
-        } = await import("@/lib/firestore/client");
-        const [docData, liveCounts, liveRegs] = await Promise.all([
+        const { getFirestoreEventById, getEventSessionRegistrationCounts, subscribeEventRegistrations } = await import(
+          "@/lib/firestore/client"
+        );
+        const [docData, liveCounts] = await Promise.all([
           getFirestoreEventById(eventId),
           getEventSessionRegistrationCounts(eventId),
-          getEventRegistrations(eventId),
         ]);
         if (!active) return;
-
-        if (liveRegs.length > 0) {
-          setLocalRegistrations(liveRegs);
-        }
-        setIsLoadingRegistrants(false);
 
         unsubscribeRegs = subscribeEventRegistrations(
           eventId,
@@ -599,7 +590,9 @@ export function BreakoutSessionsTab({
             }
           },
           () => {
-            // Ignore live subscription warning
+            if (active) {
+              setIsLoadingRegistrants(false);
+            }
           },
         );
 

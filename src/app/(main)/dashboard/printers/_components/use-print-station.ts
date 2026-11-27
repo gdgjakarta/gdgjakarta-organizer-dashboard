@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, limit, onSnapshot, query, where } from "firebase/firestore";
 import { toast } from "sonner";
 
 import {
@@ -732,7 +732,7 @@ export function usePrintStation(options: UsePrintStationOptions): PrintStationSt
           where("event_id", "==", String(selectedEventId)),
           where("is_checked_in", "==", true),
         )
-      : query(collection(db, "event_registrations"), where("is_checked_in", "==", true));
+      : query(collection(db, "event_registrations"), where("is_checked_in", "==", true), limit(100));
 
     const unsubscribe = onSnapshot(
       q,

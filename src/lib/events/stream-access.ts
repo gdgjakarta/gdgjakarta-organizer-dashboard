@@ -45,6 +45,7 @@ export interface EventStreamCodeDoc {
   rate_limit_timestamps: number[];
   active_session_id?: string | null;
   redeemed_at?: number | null;
+  ttl_at?: Date | string;
 }
 
 export interface EventStreamSessionDoc {
@@ -55,6 +56,7 @@ export interface EventStreamSessionDoc {
   started_at: number;
   last_heartbeat_at: number;
   ended_at?: number | null;
+  ttl_at?: Date | string;
 }
 
 export const STREAM_OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -245,13 +247,11 @@ export async function deriveStreamCodeDocId(secret: string, eventId: string, ema
   return `stcode_${digest}`;
 }
 
-export async function hashStreamOtpCode(
-  secret: string,
-  eventId: string,
-  email: string,
-  code: string,
-): Promise<string> {
-  const normalizedCode = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+export async function hashStreamOtpCode(secret: string, eventId: string, email: string, code: string): Promise<string> {
+  const normalizedCode = code
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
   return hmacSha256Hex(secret, `otp:${eventId}:${normalizeStreamEmail(email)}:${normalizedCode}`);
 }
 
@@ -269,10 +269,7 @@ export function timingSafeEqualHex(a: string, b: string): boolean {
 
 async function deriveAesKey(secret: string): Promise<CryptoKey> {
   const keyMaterial = await globalThis.crypto.subtle.digest("SHA-256", sharedEncoder.encode(`stream-aes:${secret}`));
-  return globalThis.crypto.subtle.importKey("raw", keyMaterial, { name: "AES-GCM" }, false, [
-    "encrypt",
-    "decrypt",
-  ]);
+  return globalThis.crypto.subtle.importKey("raw", keyMaterial, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
 /**
@@ -293,11 +290,7 @@ export async function sealStreamVideoId(secret: string, videoId: string, eventId
 /**
  * Decrypts a sealed YouTube video ID produced by `sealStreamVideoId` (supports v2 with eventId AAD and legacy v1).
  */
-export async function unsealStreamVideoId(
-  secret: string,
-  sealed: string,
-  eventId?: string,
-): Promise<string | null> {
+export async function unsealStreamVideoId(secret: string, sealed: string, eventId?: string): Promise<string | null> {
   try {
     const parts = sealed.split(".");
     if (parts.length !== 3 || (parts[0] !== "v1" && parts[0] !== "v2")) return null;

@@ -67,7 +67,13 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+let cachedGa4Token: { token: string; expiresAt: number; clientEmail: string } | null = null;
+
 async function getGoogleAccessToken(sa: ServiceAccountJson): Promise<string> {
+  if (cachedGa4Token && cachedGa4Token.clientEmail === sa.client_email && Date.now() < cachedGa4Token.expiresAt) {
+    return cachedGa4Token.token;
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const tokenUri = sa.token_uri || "https://oauth2.googleapis.com/token";
 
@@ -107,6 +113,11 @@ async function getGoogleAccessToken(sa: ServiceAccountJson): Promise<string> {
   if (!res.ok || !data.access_token) {
     throw new Error(data.error_description || data.error || `Google OAuth token exchange failed (${res.status})`);
   }
+  cachedGa4Token = {
+    token: data.access_token,
+    expiresAt: Date.now() + 50 * 60 * 1000,
+    clientEmail: sa.client_email,
+  };
   return data.access_token;
 }
 

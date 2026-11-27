@@ -43,8 +43,9 @@ import type { WebBluetoothPrinterHandle } from "@/lib/printers/web-bluetooth-ct2
 
 const RECHECK_INTERVAL_MS = 3000;
 const PRINTER_DRIVER_URL = "https://ga.ctaiot.com/";
+const R2_PUBLIC_URL = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL || "https://assets.gdgjakarta.org").replace(/\/+$/, "");
 /** Screenshots of the guide, uploaded to the Media page under `community-dashboard/media/`. */
-const GUIDE_IMAGE_BASE_URL = "https://gdgjakarta.com/api/media/community-dashboard/media";
+const GUIDE_IMAGE_BASE_URL = `${R2_PUBLIC_URL}/community-dashboard/media`;
 
 interface InstallPrintWorkerDialogProps {
   health: PrintWorkerHealth | null;
@@ -456,8 +457,7 @@ export function InstallPrintWorkerDialog({
     }
   };
 
-  const oneLineInstallCommand =
-    'curl -fsSL "https://gdgjakarta.com/api/media/community-dashboard/app/install-macos.sh?v=2.5.0" | bash';
+  const oneLineInstallCommand = `curl -fsSL "${R2_PUBLIC_URL}/community-dashboard/app/install-macos.sh?v=2.5.0" | bash`;
 
   return (
     <>

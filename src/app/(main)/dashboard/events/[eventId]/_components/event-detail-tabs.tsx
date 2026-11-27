@@ -40,8 +40,8 @@ import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { AgendaTab } from "./agenda-tab";
 import { BreakoutSessionsTab } from "./breakout-sessions-tab";
-import { CertificatesTab } from "./certificates-tab";
 import { BundlesTab } from "./bundles-tab";
+import { CertificatesTab } from "./certificates-tab";
 import { CustomFormTab } from "./custom-form-tab";
 import { EmailTemplatesTab } from "./email-templates-tab";
 import { EventPrinterTab } from "./event-printer-tab";
@@ -85,11 +85,7 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
     let unsubscribe: (() => void) | undefined;
     async function setupRegs() {
       try {
-        const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
-        const list = await getEventRegistrations(String(eventId));
-        if (list && list.length > 0) {
-          setActiveRegistrations(list);
-        }
+        const { subscribeEventRegistrations } = await import("@/lib/firestore/client");
         unsubscribe = subscribeEventRegistrations(String(eventId), (liveList) => {
           if (liveList && liveList.length > 0) {
             setActiveRegistrations(liveList);

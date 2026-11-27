@@ -1,10 +1,3 @@
-import {
-  DeleteObjectsCommand,
-  GetObjectCommand,
-  ListObjectsV2Command,
-  PutObjectCommand,
-  S3Client,
-} from "@aws-sdk/client-s3";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 import type {
@@ -37,7 +30,7 @@ export async function getMediaBucket(): Promise<R2Bucket> {
   // prioritize direct S3 connection to ensure it points to the exact same remote bucket
   // without depending on Wrangler OAuth tunnel or Miniflare local simulation.
   if (process.env.NODE_ENV === "development" && accountId && accessKeyId && secretAccessKey) {
-    return createS3R2Adapter({
+    return await createS3R2Adapter({
       accountId,
       accessKeyId,
       secretAccessKey,
@@ -56,7 +49,7 @@ export async function getMediaBucket(): Promise<R2Bucket> {
 
   // Fallback if running outside Cloudflare or if context wasn't available
   if (accountId && accessKeyId && secretAccessKey) {
-    return createS3R2Adapter({
+    return await createS3R2Adapter({
       accountId,
       accessKeyId,
       secretAccessKey,
@@ -435,7 +428,7 @@ export async function getMediaObjectStream(key: string, options?: R2GetOptions):
     const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
     const bucketName = process.env.R2_BUCKET_NAME ?? "gdgjakarta-assets";
     if (accountId && accessKeyId && secretAccessKey) {
-      const s3Bucket = createS3R2Adapter({ accountId, accessKeyId, secretAccessKey, bucketName });
+      const s3Bucket = await createS3R2Adapter({ accountId, accessKeyId, secretAccessKey, bucketName });
       return await s3Bucket.get(key, options);
     }
     console.warn(`[R2] Failed to read '${key}' from R2 binding:`, err instanceof Error ? err.message : err);
@@ -446,12 +439,15 @@ export async function getMediaObjectStream(key: string, options?: R2GetOptions):
 /**
  * Optional S3-to-R2 adapter for local development when running outside Cloudflare Worker environment.
  */
-function createS3R2Adapter(config: {
+async function createS3R2Adapter(config: {
   accountId: string;
   accessKeyId: string;
   secretAccessKey: string;
   bucketName: string;
-}): R2Bucket {
+}): Promise<R2Bucket> {
+  const { DeleteObjectsCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } = await import(
+    "@aws-sdk/client-s3"
+  );
   const s3 = new S3Client({
     region: "auto",
     endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,

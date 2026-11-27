@@ -793,23 +793,21 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           return;
         }
 
-        const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
+        const { subscribeEventRegistrations } = await import("@/lib/firestore/client");
 
-        // 1. Initial direct load
-        const directList = await getEventRegistrations(eventId);
-        if (directList && directList.length > 0) {
-          setRegistrationsList(directList);
-          setIsLoading(false);
-          const { recalculateEventCapacityCounters } = await import("@/lib/firestore/client");
-          void recalculateEventCapacityCounters(eventId, directList);
-        }
-
-        // 2. Real-time subscription listener
+        // Real-time subscription listener (also performs one-time capacity recalculation on first snapshot)
+        let didRecalculate = false;
         unsubscribe = subscribeEventRegistrations(
           eventId,
           (liveList) => {
             setRegistrationsList(liveList);
             setIsLoading(false);
+            if (!didRecalculate && liveList.length > 0) {
+              didRecalculate = true;
+              void import("@/lib/firestore/client").then(({ recalculateEventCapacityCounters }) =>
+                recalculateEventCapacityCounters(eventId, liveList),
+              );
+            }
           },
           (err) => {
             const isPermission =

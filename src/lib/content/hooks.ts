@@ -119,7 +119,6 @@ function useContent<T extends object>(config: ContentConfig<T>) {
 
   useEffect(() => {
     let isMounted = true;
-    let unsubscribe: (() => void) | undefined;
 
     try {
       const cached = localStorage.getItem(config.cacheKey);
@@ -154,17 +153,8 @@ function useContent<T extends object>(config: ContentConfig<T>) {
         if (isMounted) setLoading(false);
       });
 
-    config
-      .subscribe(apply)
-      .then((unsub) => {
-        if (isMounted) unsubscribe = unsub;
-        else unsub();
-      })
-      .catch((err: unknown) => console.warn(`[use${config.label}Content] subscribe error:`, err));
-
     return () => {
       isMounted = false;
-      unsubscribe?.();
     };
   }, [config]);
 

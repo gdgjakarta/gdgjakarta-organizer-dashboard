@@ -74,6 +74,9 @@ export interface ResmiEMeteraiInfoResult {
   error?: string;
 }
 
+const INFO_CACHE_TTL_MS = 60 * 60 * 1000;
+const resmiInfoCache = new Map<string, { result: ResmiEMeteraiInfoResult; expiresAt: number }>();
+
 /**
  * Fetches live e-Meterai pricing and availability metadata from Resmi.ID GET /emeterai/info.
  */
@@ -81,6 +84,11 @@ export async function getResmiEMeteraiInfo(): Promise<ResmiEMeteraiInfoResult> {
   const apiKey = getResmiApiKey();
   if (!apiKey) {
     return { ok: false, priceIdr: RESMI_EMETERAI_PRICE_IDR, error: "RESMI_API_KEY is not configured." };
+  }
+
+  const cached = resmiInfoCache.get(apiKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.result;
   }
 
   try {
@@ -108,7 +116,9 @@ export async function getResmiEMeteraiInfo(): Promise<ResmiEMeteraiInfoResult> {
     const priceIdr =
       typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : RESMI_EMETERAI_PRICE_IDR;
 
-    return { ok: true, priceIdr };
+    const result: ResmiEMeteraiInfoResult = { ok: true, priceIdr };
+    resmiInfoCache.set(apiKey, { result, expiresAt: Date.now() + INFO_CACHE_TTL_MS });
+    return result;
   } catch (err) {
     return {
       ok: false,

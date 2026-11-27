@@ -315,27 +315,18 @@ export async function saveEventStreamConfigAction(
     const nowIso = new Date().toISOString();
 
     const targetHashes =
-      input.accessMode === "whitelisted"
-        ? await hashStreamEmailsBatch(secret, input.eventId, combinedEmails)
-        : [];
+      input.accessMode === "whitelisted" ? await hashStreamEmailsBatch(secret, input.eventId, combinedEmails) : [];
     const targetHashSet = new Set(targetHashes);
 
     // Sync O(1) whitelist subcollection diff (PERF-1: keeps main event_streams doc < 2 KB)
-    const existingSubDocs = await queryFirestoreDocs<{ id: string }>(
-      "whitelist",
-      undefined,
-      10000,
-      undefined,
-      {
-        selectFields: ["email_hash"],
-        parentPath: `event_streams/${encodeURIComponent(input.eventId)}`,
-      },
-    );
+    const existingSubDocs = await queryFirestoreDocs<{ id: string }>("whitelist", undefined, 10000, undefined, {
+      selectFields: ["email_hash"],
+      parentPath: `event_streams/${encodeURIComponent(input.eventId)}`,
+    });
     const existingHashSet = new Set(existingSubDocs.map((d) => d.id));
 
     const batchOps: Array<
-      | { type: "set"; docPath: string; data: Record<string, unknown> }
-      | { type: "delete"; docPath: string }
+      { type: "set"; docPath: string; data: Record<string, unknown> } | { type: "delete"; docPath: string }
     > = [];
 
     for (const hash of targetHashSet) {
@@ -364,9 +355,7 @@ export async function saveEventStreamConfigAction(
     }
 
     const sealedVideoId =
-      input.accessMode === "whitelisted" && videoId
-        ? await sealStreamVideoId(secret, videoId, input.eventId)
-        : null;
+      input.accessMode === "whitelisted" && videoId ? await sealStreamVideoId(secret, videoId, input.eventId) : null;
 
     const publicDoc: EventStreamPublicDoc = {
       event_id: input.eventId,
@@ -557,6 +546,7 @@ export async function requestStreamAccessCodeAction(
       rate_limit_timestamps: rateCheck.updatedTimestamps,
       active_session_id: priorSessionId,
       redeemed_at: null,
+      ttl_at: new Date(now + 24 * 60 * 60 * 1000),
     };
 
     // Atomic CAS write prevents concurrent OTP request bursts from bypassing rate limits (SEC-1)
@@ -680,7 +670,10 @@ export async function redeemStreamAccessCodeAction(
       return { success: false, error: "Invalid event ID." };
     }
     const email = normalizeStreamEmail(rawEmail);
-    const cleanedCode = rawCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const cleanedCode = rawCode
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
     if (!isValidStreamEmail(email) || cleanedCode.length !== 6) {
       return { success: false, error: "Please enter your email and the 6-character access code." };
     }
@@ -805,6 +798,7 @@ export async function redeemStreamAccessCodeAction(
       started_at: now,
       last_heartbeat_at: now,
       ended_at: null,
+      ttl_at: new Date(now + 7 * 24 * 60 * 60 * 1000),
     };
 
     const sessionCreateRes = await patchFirestoreDocDetailed(

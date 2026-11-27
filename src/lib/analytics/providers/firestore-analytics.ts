@@ -27,6 +27,12 @@ function getFirestoreRunQueryUrl(): string {
   return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
 }
 
+function getFirestoreRunAggregationQueryUrl(): string {
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "";
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "";
+  return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runAggregationQuery?key=${apiKey}`;
+}
+
 function decodeVal(val: unknown): unknown {
   if (!val || typeof val !== "object") return val;
   const obj = val as Record<string, unknown>;
@@ -157,12 +163,126 @@ function buildRangeMeta(window: ResolvedDateWindow, cached: boolean) {
 // 1. Website Helper: Logged-in Dashboard Users (Firestore members.last_active)
 // ---------------------------------------------------------------------------
 
+async function runFirestoreCountQuery(params: {
+  collectionId: string;
+  filters?: Array<{
+    fieldFilter: {
+      field: { fieldPath: string };
+      op: string;
+      value: Record<string, unknown>;
+    };
+  }>;
+  token?: string;
+}): Promise<number | null> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  const authToken = await resolveBearerToken(params.token);
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  const structuredQuery: Record<string, unknown> = {
+    from: [{ collectionId: params.collectionId }],
+  };
+  if (params.filters && params.filters.length > 0) {
+    structuredQuery.where =
+      params.filters.length === 1 ? params.filters[0] : { compositeFilter: { op: "AND", filters: params.filters } };
+  }
+
+  try {
+    const res = await fetch(getFirestoreRunAggregationQueryUrl(), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        structuredAggregationQuery: {
+          structuredQuery,
+          aggregations: [{ alias: "total", count: {} }],
+        },
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+
+    if (!res.ok) {
+      console.warn(`[Firestore Analytics] Count query on ${params.collectionId} returned HTTP ${res.status}`);
+      return null;
+    }
+
+    const items = (await res.json()) as Array<{
+      result?: { aggregateFields?: { total?: { integerValue?: string | number } } };
+    }>;
+    if (!Array.isArray(items)) return null;
+
+    const rawTotal = items[0]?.result?.aggregateFields?.total?.integerValue;
+    if (rawTotal === undefined || rawTotal === null) return 0;
+    const parsed = Number(rawTotal);
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch (err) {
+    console.warn(`[Firestore Analytics] Count query on ${params.collectionId} failed:`, err);
+    return null;
+  }
+}
+
 export async function countLoggedInDashboardUsers(
   window: ResolvedDateWindow,
   token?: string,
 ): Promise<KpiComparisonMetric> {
-  const prevStart = wibStartIso(window.prevSinceDate);
+  const curStart = wibStartIso(window.sinceDate);
   const curEnd = wibEndIso(window.apiUntilDate);
+  const prevStart = wibStartIso(window.prevSinceDate);
+  const prevEnd = wibEndIso(window.prevUntilDate);
+
+  const [curCount, prevCount] = await Promise.all([
+    runFirestoreCountQuery({
+      collectionId: "members",
+      filters: [
+        {
+          fieldFilter: {
+            field: { fieldPath: "last_active" },
+            op: "GREATER_THAN_OR_EQUAL",
+            value: { stringValue: curStart },
+          },
+        },
+        {
+          fieldFilter: {
+            field: { fieldPath: "last_active" },
+            op: "LESS_THAN_OR_EQUAL",
+            value: { stringValue: curEnd },
+          },
+        },
+      ],
+      token,
+    }),
+    runFirestoreCountQuery({
+      collectionId: "members",
+      filters: [
+        {
+          fieldFilter: {
+            field: { fieldPath: "last_active" },
+            op: "GREATER_THAN_OR_EQUAL",
+            value: { stringValue: prevStart },
+          },
+        },
+        {
+          fieldFilter: {
+            field: { fieldPath: "last_active" },
+            op: "LESS_THAN_OR_EQUAL",
+            value: { stringValue: prevEnd },
+          },
+        },
+      ],
+      token,
+    }),
+  ]);
+
+  if (curCount !== null && prevCount !== null) {
+    return {
+      current: curCount,
+      previous: prevCount,
+      deltaPct: calcDeltaPct(curCount, prevCount),
+    };
+  }
 
   const docs = await runProjectedFirestoreQuery<{ last_active?: string }>({
     collectionId: "members",

@@ -1,7 +1,5 @@
 "use server";
 
-import { google } from "googleapis";
-
 import { extractApiMessage } from "@/lib/utils";
 
 function parseCsvRow(rowStr: string): string[] {
@@ -119,15 +117,18 @@ export async function fetchSheetHeaders(
     // If an API key is provided, try the official Google Sheets API first
     if (apiKey) {
       try {
-        const sheets = google.sheets("v4");
-
-        const response = await sheets.spreadsheets.values.get({
-          spreadsheetId,
-          range: safeSheetRange,
-          key: apiKey,
-        });
-
-        const rows = response.data.values;
+        const apiRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(safeSheetRange)}?key=${encodeURIComponent(apiKey)}`,
+          {
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+          },
+        );
+        if (!apiRes.ok) {
+          throw new Error(`Google Sheets API HTTP ${apiRes.status}`);
+        }
+        const data = (await apiRes.json()) as { values?: string[][] };
+        const rows = data.values;
         if (!rows || rows.length === 0) {
           return {
             success: true,

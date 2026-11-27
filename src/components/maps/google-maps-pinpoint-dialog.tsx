@@ -97,7 +97,7 @@ declare global {
             attrContainer: HTMLDivElement,
           ) => {
             getDetails: (
-              request: { placeId: string; fields: string[] },
+              request: { placeId: string; fields: string[]; sessionToken?: unknown },
               callback: (
                 place: {
                   name?: string;
@@ -193,6 +193,35 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
   return window.__googleMapsLoadingPromise;
 }
 
+function extractAddressDetailsFromPlace(
+  addressComponents?: { longText?: string; shortText?: string; types: string[] }[],
+  formattedAddress?: string,
+) {
+  let city = "";
+  let state = "";
+  let postalCode = "";
+
+  for (const comp of addressComponents || []) {
+    const types = comp.types || [];
+    if (types.includes("administrative_area_level_2") || types.includes("locality")) {
+      city = comp.longText || comp.shortText || "";
+    }
+    if (types.includes("administrative_area_level_1")) {
+      state = comp.longText || comp.shortText || "";
+    }
+    if (types.includes("postal_code")) {
+      postalCode = comp.longText || comp.shortText || "";
+    }
+  }
+
+  return {
+    formatted: formattedAddress,
+    city: city || undefined,
+    state: state || undefined,
+    postalCode: postalCode || undefined,
+  };
+}
+
 export function GoogleMapsPinpointDialog({
   isOpen,
   onOpenChange,
@@ -238,6 +267,11 @@ export function GoogleMapsPinpointDialog({
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const sessionTokenRef = useRef<unknown>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const initialCoordsRef = useRef<{ lat: number; lng: number; hasExplicitInitial: boolean }>({
+    lat: initialLat ?? -6.175392,
+    lng: initialLng ?? 106.827153,
+    hasExplicitInitial: typeof initialLat === "number" && typeof initialLng === "number",
+  });
 
   // Initialize or reset session token for Places Autocomplete billing
   const getOrCreateSessionToken = useCallback(() => {
@@ -250,9 +284,13 @@ export function GoogleMapsPinpointDialog({
   // Sync initial coordinates on open
   useEffect(() => {
     if (isOpen) {
-      if (typeof initialLat === "number" && typeof initialLng === "number") {
-        setCurrentLat(initialLat);
-        setCurrentLng(initialLng);
+      const hasExplicitInitial = typeof initialLat === "number" && typeof initialLng === "number";
+      const lat = hasExplicitInitial ? initialLat : -6.175392;
+      const lng = hasExplicitInitial ? initialLng : 106.827153;
+      initialCoordsRef.current = { lat, lng, hasExplicitInitial };
+      if (hasExplicitInitial) {
+        setCurrentLat(lat);
+        setCurrentLng(lng);
       }
     }
   }, [isOpen, initialLat, initialLng]);
@@ -319,7 +357,8 @@ export function GoogleMapsPinpointDialog({
   const initMap = useCallback(() => {
     if (!mapContainerRef.current || !window.google?.maps) return;
 
-    const center = { lat: currentLat, lng: currentLng };
+    const { lat: initLat, lng: initLng, hasExplicitInitial } = initialCoordsRef.current;
+    const center = { lat: initLat, lng: initLng };
     const mapOptions: Record<string, unknown> = {
       center,
       zoom: 16,
@@ -349,7 +388,9 @@ export function GoogleMapsPinpointDialog({
     }
     markerInstanceRef.current = marker;
 
-    reverseGeocode(currentLat, currentLng);
+    if (hasExplicitInitial) {
+      reverseGeocode(initLat, initLng);
+    }
 
     const updateMarkerPosition = (lat: number, lng: number) => {
       if (marker.setPosition) {
@@ -377,6 +418,10 @@ export function GoogleMapsPinpointDialog({
           const poiName = poiPlace.displayName || "";
           if (poiName) {
             setDetectedVenueName(poiName);
+          }
+          if (poiPlace.formattedAddress) {
+            setAddressDetails(extractAddressDetailsFromPlace(poiPlace.addressComponents, poiPlace.formattedAddress));
+            return;
           }
           reverseGeocode(lat, lng, poiName);
           return;
@@ -410,7 +455,7 @@ export function GoogleMapsPinpointDialog({
         reverseGeocode(lat, lng);
       });
     }
-  }, [currentLat, currentLng, reverseGeocode]);
+  }, [reverseGeocode]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -441,7 +486,7 @@ export function GoogleMapsPinpointDialog({
   }, [isOpen, apiKey, initMap]);
 
   const applyPosition = useCallback(
-    (lat: number, lng: number, venueName?: string) => {
+    (lat: number, lng: number, venueName?: string, skipGeocode = false) => {
       setCurrentLat(lat);
       setCurrentLng(lng);
       if (venueName) {
@@ -458,7 +503,9 @@ export function GoogleMapsPinpointDialog({
           markerInstanceRef.current.position = newPos;
         }
       }
-      reverseGeocode(lat, lng, venueName);
+      if (!skipGeocode) {
+        reverseGeocode(lat, lng, venueName);
+      }
     },
     [reverseGeocode],
   );
@@ -471,7 +518,7 @@ export function GoogleMapsPinpointDialog({
       clearTimeout(searchDebounceRef.current);
     }
 
-    if (!query.trim() || query.length < 2) {
+    if (!query.trim() || query.length < 3) {
       setSuggestions([]);
       setShowDropdown(false);
       setIsSearching(false);
@@ -540,7 +587,7 @@ export function GoogleMapsPinpointDialog({
         console.warn("[GoogleMapsPinpointDialog] Autocomplete error:", err);
         setIsSearching(false);
       }
-    }, 300);
+    }, 450);
   };
 
   const handleSelectSuggestion = async (item: {
@@ -552,8 +599,6 @@ export function GoogleMapsPinpointDialog({
   }) => {
     setSearchQuery(item.fullText);
     setShowDropdown(false);
-    // Reset session token on final selection so next search starts a new session
-    sessionTokenRef.current = null;
 
     try {
       // 1. If prediction from modern AutocompleteSuggestion
@@ -568,39 +613,23 @@ export function GoogleMapsPinpointDialog({
           };
         };
         const place = pred.toPlace();
-        await place.fetchFields({
-          fields: ["displayName", "formattedAddress", "location", "addressComponents"],
-        });
+        try {
+          await place.fetchFields({
+            fields: ["displayName", "formattedAddress", "location", "addressComponents"],
+          });
+        } finally {
+          // Reset session token after final selection request finishes so next search starts a new session
+          sessionTokenRef.current = null;
+        }
 
         if (place.location) {
           const lat = place.location.lat();
           const lng = place.location.lng();
           const venueName = place.displayName || item.mainText;
-          applyPosition(lat, lng, venueName);
-
-          let city = "";
-          let state = "";
-          let postalCode = "";
-
-          for (const comp of place.addressComponents || []) {
-            const types = comp.types || [];
-            if (types.includes("administrative_area_level_2") || types.includes("locality")) {
-              city = comp.longText || comp.shortText || "";
-            }
-            if (types.includes("administrative_area_level_1")) {
-              state = comp.longText || comp.shortText || "";
-            }
-            if (types.includes("postal_code")) {
-              postalCode = comp.longText || comp.shortText || "";
-            }
-          }
-
-          setAddressDetails({
-            formatted: place.formattedAddress || item.fullText,
-            city: city || undefined,
-            state: state || undefined,
-            postalCode: postalCode || undefined,
-          });
+          applyPosition(lat, lng, venueName, true);
+          setAddressDetails(
+            extractAddressDetailsFromPlace(place.addressComponents, place.formattedAddress || item.fullText),
+          );
           return;
         }
       }
@@ -609,43 +638,52 @@ export function GoogleMapsPinpointDialog({
       if (item.id && window.google?.maps?.places?.PlacesService) {
         const dummyDiv = document.createElement("div");
         const service = new window.google.maps.places.PlacesService(dummyDiv);
-        service.getDetails(
-          { placeId: item.id, fields: ["name", "formatted_address", "geometry", "address_components"] },
-          (place, status) => {
-            if (status === "OK" && place?.geometry?.location) {
-              const lat = place.geometry.location.lat();
-              const lng = place.geometry.location.lng();
-              const venueName = place.name || item.mainText;
-              applyPosition(lat, lng, venueName);
+        const detailsReq: { placeId: string; fields: string[]; sessionToken?: unknown } = {
+          placeId: item.id,
+          fields: ["name", "formatted_address", "geometry", "address_components"],
+        };
+        if (sessionTokenRef.current) {
+          detailsReq.sessionToken = sessionTokenRef.current;
+        }
+        service.getDetails(detailsReq, (place, status) => {
+          sessionTokenRef.current = null;
+          if (status === "OK" && place?.geometry?.location) {
+            const lat = place.geometry.location.lat();
+            const lng = place.geometry.location.lng();
+            const venueName = place.name || item.mainText;
+            applyPosition(lat, lng, venueName, true);
 
-              let city = "";
-              let state = "";
-              let postalCode = "";
+            let city = "";
+            let state = "";
+            let postalCode = "";
 
-              for (const comp of place.address_components || []) {
-                const types = comp.types || [];
-                if (types.includes("administrative_area_level_2") || types.includes("locality")) {
-                  city = comp.long_name;
-                }
-                if (types.includes("administrative_area_level_1")) {
-                  state = comp.long_name;
-                }
-                if (types.includes("postal_code")) {
-                  postalCode = comp.long_name;
-                }
+            for (const comp of place.address_components || []) {
+              const types = comp.types || [];
+              if (types.includes("administrative_area_level_2") || types.includes("locality")) {
+                city = comp.long_name;
               }
-
-              setAddressDetails({
-                formatted: place.formatted_address || item.fullText,
-                city: city || undefined,
-                state: state || undefined,
-                postalCode: postalCode || undefined,
-              });
+              if (types.includes("administrative_area_level_1")) {
+                state = comp.long_name;
+              }
+              if (types.includes("postal_code")) {
+                postalCode = comp.long_name;
+              }
             }
-          },
-        );
+
+            setAddressDetails({
+              formatted: place.formatted_address || item.fullText,
+              city: city || undefined,
+              state: state || undefined,
+              postalCode: postalCode || undefined,
+            });
+          }
+        });
+        return;
       }
+
+      sessionTokenRef.current = null;
     } catch (e) {
+      sessionTokenRef.current = null;
       console.warn("[GoogleMapsPinpointDialog] Select suggestion failed:", e);
     }
   };

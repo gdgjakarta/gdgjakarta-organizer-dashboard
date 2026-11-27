@@ -20,8 +20,16 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const cleanedNoresi = noresi.replace(/\s+/g, "");
+  if (cleanedNoresi.length > 64 || !/^[a-zA-Z0-9-]+$/.test(cleanedNoresi)) {
+    return NextResponse.json(
+      { status: 400, error: "Format nomor resi tidak valid (maksimal 64 karakter alfanumerik atau tanda hubung)" },
+      { status: 400 },
+    );
+  }
+
   try {
-    const result = await trackPackageWithCekResi(noresi, courier);
+    const result = await trackPackageWithCekResi(cleanedNoresi, courier);
     if (!result.valid) {
       return NextResponse.json(
         {
@@ -33,11 +41,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
-      status: 200,
-      valid: true,
-      data: result.data,
-    });
+    return NextResponse.json(
+      {
+        status: 200,
+        valid: true,
+        data: result.data,
+      },
+      {
+        headers: { "Cache-Control": "public, s-maxage=900, stale-while-revalidate=3600" },
+      },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal Server Error";
     return NextResponse.json({ status: 500, error: message }, { status: 500 });
