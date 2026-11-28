@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { Link2, Loader2 } from "lucide-react";
+import { Link2, Loader2, Shuffle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,13 @@ interface CreateLinkDialogProps {
   provider: ShortlinkProviderName;
   defaultFolderId?: string;
   onLinkCreated: (link: ShortLinkItem) => void;
+}
+
+function generateRandomSlug(length = 6): string {
+  const charset = "abcdefghjkmnpqrstuvwxyz23456789";
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => charset[b % charset.length]).join("");
 }
 
 export function CreateLinkDialog({
@@ -219,7 +226,7 @@ export function CreateLinkDialog({
           <div className="grid gap-2">
             <Label htmlFor="slug-path">Custom Slug / Path (Optional)</Label>
             <div className="flex items-center rounded-md border bg-muted/40 px-3 py-1 text-sm">
-              <span className="text-muted-foreground">{activeDomain}/</span>
+              <span className="shrink-0 text-muted-foreground">{activeDomain}/</span>
               <Input
                 id="slug-path"
                 placeholder="custom-slug"
@@ -228,6 +235,17 @@ export function CreateLinkDialog({
                 className="h-7 border-0 bg-transparent p-0 focus-visible:ring-0"
                 disabled={isPending}
               />
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                className="ml-2 h-6 shrink-0 gap-1 px-2 text-[11px]"
+                disabled={isPending}
+                onClick={() => setPath(generateRandomSlug())}
+              >
+                <Shuffle className="size-3" />
+                Generate
+              </Button>
             </div>
             <p className="text-muted-foreground text-xs">
               Preview:{" "}

@@ -2,13 +2,34 @@
 
 import * as React from "react";
 
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+const BUNDLE_ICON_PRESETS = [
+  "🔗",
+  "🎟️",
+  "📅",
+  "📍",
+  "🎤",
+  "💻",
+  "📸",
+  "📣",
+  "📄",
+  "🚀",
+  "💬",
+  "🎁",
+  "🏆",
+  "📺",
+  "📝",
+  "✨",
+] as const;
+
 import type { ShortLinkType, ShortlinkProviderName } from "@/lib/shortio/types";
 
 import { type AdvancedState, computeSplitPercentages } from "./link-form-helpers";
@@ -239,17 +260,71 @@ export function ProTargetingFields({ value, onChange, provider, disabled }: ProT
                     <Label htmlFor={`${idPrefix}-bundle-icon-${index}`} className="text-[11px]">
                       Icon
                     </Label>
-                    <Input
-                      id={`${idPrefix}-bundle-icon-${index}`}
-                      placeholder="🔗"
-                      value={item.icon ?? ""}
-                      disabled={disabled}
-                      onChange={(e) => {
-                        const next = [...value.bundleItems];
-                        next[index] = { ...item, icon: e.target.value };
-                        onChange({ ...value, bundleItems: next });
-                      }}
-                    />
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          id={`${idPrefix}-bundle-icon-${index}`}
+                          type="button"
+                          variant="outline"
+                          disabled={disabled}
+                          className="h-8 w-full justify-between px-2 font-normal"
+                          aria-label={`Select icon for bundle item ${index + 1}`}
+                        >
+                          <span className="text-base leading-none">{item.icon || "🔗"}</span>
+                          <ChevronDown className="size-3.5 text-muted-foreground" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-2.5" align="start">
+                        <div className="grid gap-2">
+                          <div className="grid grid-cols-8 gap-1">
+                            {BUNDLE_ICON_PRESETS.map((emoji) => (
+                              <Button
+                                key={emoji}
+                                type="button"
+                                size="icon-xs"
+                                variant={item.icon === emoji ? "secondary" : "ghost"}
+                                className="h-7 w-7 text-base"
+                                onClick={() => {
+                                  const next = [...value.bundleItems];
+                                  next[index] = { ...item, icon: emoji };
+                                  onChange({ ...value, bundleItems: next });
+                                }}
+                              >
+                                {emoji}
+                              </Button>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-1.5 border-t pt-2">
+                            <Input
+                              placeholder="Custom emoji"
+                              value={item.icon ?? ""}
+                              maxLength={8}
+                              onChange={(e) => {
+                                const next = [...value.bundleItems];
+                                next[index] = { ...item, icon: e.target.value };
+                                onChange({ ...value, bundleItems: next });
+                              }}
+                              className="h-7 text-xs"
+                            />
+                            {item.icon && (
+                              <Button
+                                type="button"
+                                size="xs"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => {
+                                  const next = [...value.bundleItems];
+                                  next[index] = { ...item, icon: "" };
+                                  onChange({ ...value, bundleItems: next });
+                                }}
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                   <div className="grid gap-1">
                     <Label htmlFor={`${idPrefix}-bundle-title-${index}`} className="text-[11px]">

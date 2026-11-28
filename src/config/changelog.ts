@@ -16,10 +16,25 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.79",
+    releaseDate: "2026-11-28",
+    title: "Short Links Form & UX Polish",
+    badge: "Latest",
+    items: [
+      {
+        category: "Improved",
+        text: "Added password generation, show/hide, and copy controls for link password protection, and aligned the Link Cloaking toggle cleanly with Redirect Type.",
+      },
+      {
+        category: "Improved",
+        text: "Replaced the native expiry input with the shared Date & Time picker, added a visual emoji icon selector for Link Bundle items, and added a random slug generator with live URL preview.",
+      },
+    ],
+  },
+  {
     version: "1.0.78",
     releaseDate: "2026-11-28",
     title: "In-House Cloudflare Shortlinks & Pro Edge Redirects",
-    badge: "Latest",
     items: [
       {
         category: "Added",

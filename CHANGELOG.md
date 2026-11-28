@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.79] - 2026-11-28
+
+### Improved
+- **Short Links Form & UX Polish (`advanced-options.tsx`, `pro-targeting-fields.tsx`, `create-link-dialog.tsx`)**:
+  - Redesigned the Link Cloaking toggle row to align cleanly with Redirect Type and added dynamic state text.
+  - Added strong password generation, show/hide toggle, and copy button to Password Protection.
+  - Replaced the native `datetime-local` expiry input with the shared `DatePicker` (`withTime`), added a Popover emoji icon selector for Link Bundle items, and added a random slug generator with live URL preview.
+
+---
+
 ## [1.0.78] - 2026-11-28
 
 ### Added
