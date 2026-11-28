@@ -16,10 +16,33 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.78",
+    releaseDate: "2026-11-28",
+    title: "In-House Cloudflare Shortlinks & Pro Edge Redirects",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Replaced Short.io Pro with an in-house Cloudflare Redirect Worker, KV cache, and D1 database for gdgjakarta.org, migrating 83 active links and 163,595 historical clicks.",
+      },
+      {
+        category: "Added",
+        text: "Added password-protected links, iframe cloaking, Android/iOS and country targeting, UTM merging, retargeting pixels, click-limit expiration, A/B split testing, link bundles, and mobile deep linking.",
+      },
+      {
+        category: "Added",
+        text: "Upgraded the Short Links dashboard with Pro targeting controls, real-time clickstream logs, offline SVG QR codes, and a protected /api/links/shorten endpoint.",
+      },
+      {
+        category: "Changed",
+        text: "Switched SHORTLINK_PROVIDER to cloudflare and removed legacy Short.io workspace configuration.",
+      },
+    ],
+  },
+  {
     version: "1.0.77",
     releaseDate: "2026-11-27",
     title: "Open Graph Domain Fix",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",

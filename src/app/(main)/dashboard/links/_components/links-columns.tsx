@@ -5,6 +5,7 @@ import { Subscribe } from "@tanstack/react-table";
 import { format, parseISO } from "date-fns";
 import {
   Archive,
+  ArchiveRestore,
   BarChart3,
   Copy,
   ExternalLink,
@@ -27,23 +28,37 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { DataTableFeatures } from "@/lib/data-table-features";
-import type { ShortFolder, ShortLinkItem } from "@/lib/shortio/types";
+import type { ShortFolder, ShortLinkItem, ShortlinkProviderName } from "@/lib/shortio/types";
 
 import { findFolderById, getFolderColor } from "./data";
+import { extractProBadges, formatClickCount } from "./link-form-helpers";
 
 interface ColumnCallbacks {
   folders: ShortFolder[];
+  provider?: ShortlinkProviderName;
   onEdit: (link: ShortLinkItem) => void;
   onMoveFolder: (link: ShortLinkItem) => void;
   onDelete: (link: ShortLinkItem) => void;
   onQrCode: (link: ShortLinkItem) => void;
   onAnalytics: (link: ShortLinkItem) => void;
   onArchive: (link: ShortLinkItem) => void;
+  onUnarchive?: (link: ShortLinkItem) => void;
 }
 
 export function createLinksColumns(callbacks: ColumnCallbacks): ColumnDef<DataTableFeatures, ShortLinkItem>[] {
-  const { folders, onEdit, onMoveFolder, onDelete, onQrCode, onAnalytics, onArchive } = callbacks;
+  const {
+    folders,
+    provider = "shortio",
+    onEdit,
+    onMoveFolder,
+    onDelete,
+    onQrCode,
+    onAnalytics,
+    onArchive,
+    onUnarchive,
+  } = callbacks;
 
   return [
     {
@@ -97,12 +112,15 @@ export function createLinksColumns(callbacks: ColumnCallbacks): ColumnDef<DataTa
       header: "Short Link",
       cell: ({ row }) => {
         const link = row.original;
+        const proBadges = extractProBadges(link);
+
         return (
           <div className="flex items-center gap-2">
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-1">
               <div className="flex items-center gap-1.5 font-medium text-foreground text-sm">
                 <span className="font-mono">{link.shortURL}</span>
                 <Button
+                  type="button"
                   size="icon-xs"
                   variant="ghost"
                   className="size-6 text-muted-foreground hover:text-foreground"
@@ -125,6 +143,15 @@ export function createLinksColumns(callbacks: ColumnCallbacks): ColumnDef<DataTa
                 </a>
               </div>
               {link.title && <span className="line-clamp-1 text-muted-foreground text-xs">{link.title}</span>}
+              {proBadges.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {proBadges.map((b) => (
+                    <Badge key={b.key} variant="outline" className="px-1.5 py-0 font-normal text-[10px]">
+                      {b.label}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         );
@@ -136,7 +163,7 @@ export function createLinksColumns(callbacks: ColumnCallbacks): ColumnDef<DataTa
       cell: ({ row }) => {
         const original = row.original.originalURL;
         return (
-          <div className="flex max-w-[320px] items-center gap-1.5 lg:max-w-[420px]">
+          <div className="flex max-w-[280px] items-center gap-1.5 lg:max-w-[360px]">
             <Globe className="size-3.5 shrink-0 text-muted-foreground/70" />
             <a
               href={original}
@@ -213,6 +240,37 @@ export function createLinksColumns(callbacks: ColumnCallbacks): ColumnDef<DataTa
       },
     },
     {
+      id: "clicks",
+      accessorFn: (row) => formatClickCount(row).total,
+      header: "Clicks",
+      cell: ({ row }) => {
+        const { totalFormatted, capLabel, legacyNote } = formatClickCount(row.original);
+        const content = (
+          <div className="flex items-baseline gap-1 text-xs tabular-nums">
+            <span className="font-medium text-foreground">{totalFormatted}</span>
+            {capLabel && <span className="text-muted-foreground">{capLabel}</span>}
+          </div>
+        );
+
+        if (!legacyNote) return content;
+
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex cursor-help items-center gap-1 underline decoration-dotted underline-offset-2">
+                  {content}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{legacyNote}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
+    },
+    {
       accessorKey: "createdAt",
       header: "Created",
       cell: ({ row }) => {
@@ -236,6 +294,7 @@ export function createLinksColumns(callbacks: ColumnCallbacks): ColumnDef<DataTa
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
+                  type="button"
                   aria-label={`Open actions for ${link.shortURL}`}
                   className="size-8 rounded-md text-muted-foreground hover:bg-muted/50"
                   size="icon-sm"
@@ -277,10 +336,20 @@ export function createLinksColumns(callbacks: ColumnCallbacks): ColumnDef<DataTa
                   <Pencil className="mr-2 size-3.5" />
                   Edit Link
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onArchive(link)}>
-                  <Archive className="mr-2 size-3.5" />
-                  Archive Link
-                </DropdownMenuItem>
+                {link.archived ? (
+                  provider === "cloudflare" &&
+                  onUnarchive && (
+                    <DropdownMenuItem onClick={() => onUnarchive(link)}>
+                      <ArchiveRestore className="mr-2 size-3.5" />
+                      Restore Link
+                    </DropdownMenuItem>
+                  )
+                ) : (
+                  <DropdownMenuItem onClick={() => onArchive(link)}>
+                    <Archive className="mr-2 size-3.5" />
+                    Archive Link
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onDelete(link)} className="text-destructive focus:text-destructive">
                   <Trash2 className="mr-2 size-3.5" />

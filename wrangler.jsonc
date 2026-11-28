@@ -36,9 +36,7 @@
     "DOKU_PROD_BASE_URL": "https://api.doku.com",
     "DOKU_CLIENT_ID": "BRN-0272-1766492122366",
     "DOKU_BASE_URL": "https://api.doku.com",
-    // SHORTIO_API_KEY must be configured as a secret via `wrangler secret put SHORTIO_API_KEY`
-    "SHORTIO_DOMAIN": "gdgjakarta.org",
-    "SHORTIO_DOMAIN_ID": "1516440",
+    "SHORTLINK_PROVIDER": "cloudflare",
     "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAHrt1-lGCA0x-SgRCUY0nP5-jcjujhlmM",
     "NEXT_PUBLIC_R2_PUBLIC_URL": "https://assets.gdgjakarta.org",
     "OPS_AGENT_URL": "https://ops.gdgjakarta.com"
@@ -50,7 +48,8 @@
     // - DOKU_DEV_SECRET_KEY
     // - DOKU_PROD_SECRET_KEY
     // - DOKU_SECRET_KEY
-    // - SHORTIO_API_KEY
+    // - SHORTLINK_API_KEY
+    // - SHORTLINK_COOKIE_SECRET
     // - R2_ACCOUNT_ID
     // - R2_ACCESS_KEY_ID
     // - R2_SECRET_ACCESS_KEY
@@ -93,6 +92,20 @@
       "remote": true
     }
   ],
+  "kv_namespaces": [
+    {
+      "binding": "SHORTLINKS_KV",
+      "id": "0859791ab6bb4142aa598eebb42ce8b1"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "SHORTLINKS_DB",
+      "database_name": "gdgjakarta-shortlinks",
+      "database_id": "67a43ade-aa40-444c-9f34-9cc2f31d6c87",
+      "migrations_dir": "workers/shortlink/migrations"
+    }
+  ],
   "images": {
     // Enable image optimization
     // see https://opennext.js.org/cloudflare/howtos/image
@@ -118,13 +131,14 @@
       "DOKU_PROD_BASE_URL": "https://api.doku.com",
       "DOKU_CLIENT_ID": "BRN-0272-1766492122366",
       "DOKU_BASE_URL": "https://api.doku.com",
-      // SHORTIO_API_KEY must be configured as a secret via `wrangler secret put SHORTIO_API_KEY`
-      "SHORTIO_DOMAIN": "gdgjakarta.org",
-      "SHORTIO_DOMAIN_ID": "1516440",
+      "SHORTLINK_PROVIDER": "cloudflare",
       "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAHrt1-lGCA0x-SgRCUY0nP5-jcjujhlmM",
       "NEXT_PUBLIC_R2_PUBLIC_URL": "https://assets.gdgjakarta.org",
       "OPS_AGENT_URL": "https://ops.gdgjakarta.com"
-      // OPS_AGENT_SECRET must be configured as a secret via `wrangler secret put OPS_AGENT_SECRET --env preview`
+      // Secrets to configure via `wrangler secret put <KEY> --env preview`:
+      // - OPS_AGENT_SECRET
+      // - SHORTLINK_API_KEY
+      // - SHORTLINK_COOKIE_SECRET
     },
     "r2_buckets": [
       {
@@ -135,6 +149,20 @@
         "binding": "MEDIA_BUCKET",
         "bucket_name": "gdgjakarta-assets",
         "remote": true
+      }
+    ],
+    "kv_namespaces": [
+      {
+        "binding": "SHORTLINKS_KV",
+        "id": "0859791ab6bb4142aa598eebb42ce8b1"
+      }
+    ],
+    "d1_databases": [
+      {
+        "binding": "SHORTLINKS_DB",
+        "database_name": "gdgjakarta-shortlinks",
+        "database_id": "67a43ade-aa40-444c-9f34-9cc2f31d6c87",
+        "migrations_dir": "workers/shortlink/migrations"
       }
     ],
     "images": {

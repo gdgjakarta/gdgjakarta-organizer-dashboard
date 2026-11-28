@@ -17,22 +17,44 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SHORTIO_CONFIG } from "@/config/shortio-config";
-import type { ShortFolder, ShortLinkItem } from "@/lib/shortio/types";
+import type { ShortFolder, ShortLinkItem, ShortlinkProviderName } from "@/lib/shortio/types";
 import { updateShortLinkAction } from "@/server/shortio-actions";
 
-import { AdvancedOptions, advancedFromLink, advancedToInput, applyUtm, EMPTY_ADVANCED } from "./advanced-options";
+import { AdvancedOptions } from "./advanced-options";
 import { getFolderColor } from "./data";
+import {
+  advancedFromLink,
+  advancedToInput,
+  buildPixelsConfig,
+  EMPTY_ADVANCED,
+  resolveEffectiveOriginalUrl,
+  validateBundleItems,
+  validateGeoTargets,
+  validateMaxClicks,
+  validateOptionalAdvancedUrls,
+  validatePixelConfig,
+  validateSplitTargets,
+} from "./link-form-helpers";
 
 interface EditLinkDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   link: ShortLinkItem | null;
   folders: ShortFolder[];
+  primaryDomain: string;
+  provider: ShortlinkProviderName;
   onLinkUpdated: (link: ShortLinkItem) => void;
 }
 
-export function EditLinkDialog({ open, onOpenChange, link, folders, onLinkUpdated }: EditLinkDialogProps) {
+export function EditLinkDialog({
+  open,
+  onOpenChange,
+  link,
+  folders,
+  primaryDomain,
+  provider,
+  onLinkUpdated,
+}: EditLinkDialogProps) {
   const [originalURL, setOriginalURL] = React.useState("");
   const [path, setPath] = React.useState("");
   const [title, setTitle] = React.useState("");
@@ -52,19 +74,49 @@ export function EditLinkDialog({ open, onOpenChange, link, folders, onLinkUpdate
     }
   }, [link]);
 
-  const handleUpdate = () => {
+  const activeDomain = link?.hostname || primaryDomain;
+
+  const handleUpdate = (event: React.FormEvent) => {
+    event.preventDefault();
     if (!link) return;
 
-    const trimmedUrl = originalURL.trim();
-    if (!trimmedUrl) {
-      toast.error("Please provide a destination URL");
+    const optUrlError = validateOptionalAdvancedUrls(advanced);
+    if (optUrlError) {
+      toast.error(optUrlError);
       return;
     }
 
-    try {
-      new URL(trimmedUrl);
-    } catch {
-      toast.error("Invalid destination URL. Make sure it includes http:// or https://");
+    if (provider === "cloudflare") {
+      const maxCheck = validateMaxClicks(advanced.maxClicks);
+      if (!maxCheck.valid) {
+        toast.error(maxCheck.error ?? "Invalid click limit");
+        return;
+      }
+      const geoCheck = validateGeoTargets(advanced.geoTargets);
+      if (!geoCheck.valid) {
+        toast.error(geoCheck.error ?? "Invalid geo-targeting rule");
+        return;
+      }
+      const pixelCheck = validatePixelConfig(buildPixelsConfig(advanced));
+      if (!pixelCheck.valid) {
+        toast.error(pixelCheck.error ?? "Invalid retargeting pixel config");
+        return;
+      }
+      const splitCheck = validateSplitTargets(advanced.splitTargets, advanced.linkType);
+      if (!splitCheck.valid) {
+        toast.error(splitCheck.error ?? "Invalid A/B split targets");
+        return;
+      }
+      const bundleCheck = validateBundleItems(advanced.bundleItems, advanced.linkType);
+      if (!bundleCheck.valid) {
+        toast.error(bundleCheck.error ?? "Invalid link bundle items");
+        return;
+      }
+    }
+
+    const urlResult = resolveEffectiveOriginalUrl(originalURL, advanced, provider);
+    if (urlResult.error) {
+      toast.error(urlResult.error);
       return;
     }
 
@@ -76,8 +128,8 @@ export function EditLinkDialog({ open, onOpenChange, link, folders, onLinkUpdate
     startTransition(async () => {
       try {
         const res = await updateShortLinkAction(link.id, {
-          originalURL: applyUtm(trimmedUrl, advanced),
-          ...advancedToInput(advanced, true),
+          originalURL: urlResult.url,
+          ...advancedToInput(advanced, true, provider),
           path: path.trim() || undefined,
           title: title.trim() || undefined,
           folderId: folderId === "none" ? null : folderId,
@@ -98,10 +150,11 @@ export function EditLinkDialog({ open, onOpenChange, link, folders, onLinkUpdate
   };
 
   const previewSlug = path.trim() || link?.path || "";
+  const isDestinationRequired = advanced.linkType === "redirect";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[600px]">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">
@@ -109,15 +162,21 @@ export function EditLinkDialog({ open, onOpenChange, link, folders, onLinkUpdate
             </div>
             <div>
               <DialogTitle>Edit Short Link</DialogTitle>
-              <DialogDescription>Update destination, category folder, or slug.</DialogDescription>
+              <DialogDescription>Update destination, category folder, slug, or Pro edge rules.</DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="grid gap-4 py-3">
+        <form onSubmit={handleUpdate} className="grid gap-4 py-3">
           <div className="grid gap-2">
             <Label htmlFor="edit-dest-url">
-              Destination URL <span className="text-destructive">*</span>
+              {isDestinationRequired ? (
+                <>
+                  Destination URL <span className="text-destructive">*</span>
+                </>
+              ) : (
+                "Fallback Destination URL (optional — auto-filled from first item)"
+              )}
             </Label>
             <Input
               id="edit-dest-url"
@@ -125,13 +184,14 @@ export function EditLinkDialog({ open, onOpenChange, link, folders, onLinkUpdate
               value={originalURL}
               onChange={(e) => setOriginalURL(e.target.value)}
               disabled={isPending}
+              required={isDestinationRequired}
             />
           </div>
 
           <div className="grid gap-2">
             <Label htmlFor="edit-slug-path">Slug / Path</Label>
             <div className="flex items-center rounded-md border bg-muted/40 px-3 py-1 text-sm">
-              <span className="text-muted-foreground">{SHORTIO_CONFIG.domain}/</span>
+              <span className="text-muted-foreground">{activeDomain}/</span>
               <Input
                 id="edit-slug-path"
                 value={path}
@@ -143,7 +203,7 @@ export function EditLinkDialog({ open, onOpenChange, link, folders, onLinkUpdate
             <p className="text-muted-foreground text-xs">
               Live link:{" "}
               <span className="font-mono text-foreground">
-                https://{SHORTIO_CONFIG.domain}/{previewSlug}
+                https://{activeDomain}/{previewSlug}
               </span>
             </p>
           </div>
@@ -187,23 +247,25 @@ export function EditLinkDialog({ open, onOpenChange, link, folders, onLinkUpdate
               disabled={isPending}
             />
           </div>
+
           <AdvancedOptions
             value={advanced}
             onChange={setAdvanced}
+            provider={provider}
             disabled={isPending}
             hasPassword={link?.hasPassword}
           />
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button onClick={handleUpdate} disabled={isPending}>
-            {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
-            Save Changes
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isPending}>
+              {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

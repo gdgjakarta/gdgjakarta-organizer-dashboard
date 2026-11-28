@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckSquare, Copy, FolderSymlink, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, CheckSquare, Copy, FolderSymlink, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,21 +10,31 @@ interface LinksBulkActionsProps {
   selectedCount: number;
   totalFilteredCount: number;
   selectedLinks: ShortLinkItem[];
+  isArchivedView?: boolean;
+  canUnarchive?: boolean;
+  isArchiving?: boolean;
   onClearSelection: () => void;
   onSelectAll: () => void;
   onMoveFolder: () => void;
   onDelete: () => void;
   onCopyLinks: () => void;
+  onArchive?: () => void;
+  onUnarchive?: () => void;
 }
 
 export function LinksBulkActions({
   selectedCount,
   totalFilteredCount,
+  isArchivedView = false,
+  canUnarchive = false,
+  isArchiving = false,
   onClearSelection,
   onSelectAll,
   onMoveFolder,
   onDelete,
   onCopyLinks,
+  onArchive,
+  onUnarchive,
 }: LinksBulkActionsProps) {
   if (selectedCount === 0) {
     return null;
@@ -39,6 +49,7 @@ export function LinksBulkActions({
         </Badge>
         {selectedCount < totalFilteredCount && (
           <Button
+            type="button"
             variant="ghost"
             size="xs"
             onClick={onSelectAll}
@@ -48,6 +59,7 @@ export function LinksBulkActions({
           </Button>
         )}
         <Button
+          type="button"
           variant="ghost"
           size="xs"
           onClick={onClearSelection}
@@ -59,6 +71,7 @@ export function LinksBulkActions({
 
       <div className="flex flex-wrap items-center gap-1.5">
         <Button
+          type="button"
           size="xs"
           variant="outline"
           onClick={onCopyLinks}
@@ -69,12 +82,52 @@ export function LinksBulkActions({
           Copy {selectedCount > 1 ? "links" : "link"}
         </Button>
 
-        <Button size="xs" variant="outline" onClick={onMoveFolder} className="gap-1.5 font-medium shadow-2xs">
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          onClick={onMoveFolder}
+          className="gap-1.5 font-medium shadow-2xs"
+        >
           <FolderSymlink className="size-3.5 text-primary" />
           Move to folder
         </Button>
 
-        <Button size="xs" variant="destructive" onClick={onDelete} className="gap-1.5 font-medium shadow-2xs">
+        {!isArchivedView && onArchive && (
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={onArchive}
+            disabled={isArchiving}
+            className="gap-1.5 font-medium shadow-2xs"
+          >
+            <Archive className="size-3.5" />
+            Archive {selectedCount > 1 ? `(${selectedCount})` : "link"}
+          </Button>
+        )}
+
+        {isArchivedView && canUnarchive && onUnarchive && (
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={onUnarchive}
+            disabled={isArchiving}
+            className="gap-1.5 font-medium shadow-2xs"
+          >
+            <ArchiveRestore className="size-3.5 text-primary" />
+            Restore {selectedCount > 1 ? `(${selectedCount})` : "link"}
+          </Button>
+        )}
+
+        <Button
+          type="button"
+          size="xs"
+          variant="destructive"
+          onClick={onDelete}
+          className="gap-1.5 font-medium shadow-2xs"
+        >
           <Trash2 className="size-3.5" />
           Delete {selectedCount > 1 ? `(${selectedCount})` : "link"}
         </Button>

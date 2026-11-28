@@ -1,0 +1,29 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "gdgjakarta-shortlink-redirect",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-12-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    {
+      "pattern": "gdgjakarta.org",
+      "custom_domain": true
+    }
+  ],
+  // Secrets to configure via `wrangler secret put <KEY>` (from workers/shortlink/):
+  // - SHORTLINK_COOKIE_SECRET (required HMAC-SHA256 secret for password-unlock & split-test cookies)
+  "kv_namespaces": [
+    {
+      "binding": "SHORTLINKS_KV",
+      "id": "0859791ab6bb4142aa598eebb42ce8b1"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "SHORTLINKS_DB",
+      "database_name": "gdgjakarta-shortlinks",
+      "database_id": "67a43ade-aa40-444c-9f34-9cc2f31d6c87",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

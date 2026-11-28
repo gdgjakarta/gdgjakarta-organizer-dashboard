@@ -2,39 +2,80 @@
 
 import { revalidatePath } from "next/cache";
 
-import {
-  createShortFolder,
-  createShortLink,
-  deleteShortLink,
-  findShortLinkByOriginalUrl,
-  getEventShortLinks,
-  getShortLinkByPath,
-  listAllShortLinks,
-  listShortFolders,
-  updateShortLink,
-} from "@/lib/shortio/client";
 import type {
   CreateShortFolderInput,
   CreateShortLinkInput,
   EventShortLinksStatus,
   ShortFolder,
   ShortLinkItem,
+  ShortlinkProviderName,
   UpdateShortLinkInput,
 } from "@/lib/shortio/types";
+import { getPrimaryDomainConfig, getShortlinkProvider } from "@/lib/shortlinks/env";
+import {
+  bulkDeleteLinksViaProvider,
+  bulkMoveLinksViaProvider,
+  createShortFolderViaProvider,
+  createShortLinkViaProvider,
+  deleteShortFolderViaProvider,
+  deleteShortLinkViaProvider,
+  findShortLinkByOriginalUrlViaProvider,
+  getEventShortLinksViaProvider,
+  getShortLinkByPathViaProvider,
+  listShortFoldersViaProvider,
+  listShortLinksViaProvider,
+  updateShortFolderViaProvider,
+  updateShortLinkViaProvider,
+} from "@/lib/shortlinks/provider";
 
 import { isAuthorizedOrganizerSession } from "./auth-guard";
 
-export async function fetchShortLinksAction(options?: {
-  folderId?: string;
-  limit?: number;
-}): Promise<{ success: boolean; data?: ShortLinkItem[]; count?: number; error?: string }> {
+export async function getShortlinkDashboardConfigAction(): Promise<{
+  success: boolean;
+  data?: { provider: ShortlinkProviderName; domain: string; domainId: number };
+  error?: string;
+}> {
   if (!(await isAuthorizedOrganizerSession())) {
     return { success: false, error: "Unauthorized: Organizer privileges required" };
   }
 
   try {
-    const res = await listAllShortLinks(options);
-    return { success: true, data: res.links, count: res.count };
+    const [provider, primary] = await Promise.all([getShortlinkProvider(), getPrimaryDomainConfig()]);
+    return {
+      success: true,
+      data: {
+        provider,
+        domain: primary.domain,
+        domainId: primary.domainId,
+      },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to load shortlink configuration";
+    return { success: false, error: message };
+  }
+}
+
+export async function fetchShortLinksAction(options?: {
+  folderId?: string;
+  limit?: number;
+  pageToken?: string;
+  archived?: boolean | "all";
+  hostname?: string;
+  search?: string;
+}): Promise<{
+  success: boolean;
+  data?: ShortLinkItem[];
+  count?: number;
+  nextPageToken?: string;
+  error?: string;
+}> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+
+  try {
+    const res = await listShortLinksViaProvider(options);
+    return { success: true, data: res.links, count: res.count, nextPageToken: res.nextPageToken };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to fetch short links";
     return { success: false, error: message };
@@ -51,7 +92,7 @@ export async function fetchShortFoldersAction(): Promise<{
   }
 
   try {
-    const folders = await listShortFolders();
+    const folders = await listShortFoldersViaProvider();
     return { success: true, data: folders };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to fetch folders";
@@ -60,21 +101,57 @@ export async function fetchShortFoldersAction(): Promise<{
 }
 
 export async function createShortFolderAction(
-  input: CreateShortFolderInput,
+  input: CreateShortFolderInput & { icon?: string },
 ): Promise<{ success: boolean; data?: ShortFolder; error?: string }> {
   if (!(await isAuthorizedOrganizerSession())) {
     return { success: false, error: "Unauthorized: Organizer privileges required" };
   }
 
   try {
-    const folder = await createShortFolder(input);
+    const folder = await createShortFolderViaProvider(input);
     if (!folder) {
-      return { success: false, error: "Failed to create folder on Short.io" };
+      return { success: false, error: "Failed to create folder" };
     }
     revalidatePath("/dashboard/links");
     return { success: true, data: folder };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to create folder";
+    return { success: false, error: message };
+  }
+}
+
+export async function updateShortFolderAction(
+  folderId: string,
+  input: { name?: string; color?: string; icon?: string | null },
+): Promise<{ success: boolean; data?: ShortFolder; error?: string }> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+
+  try {
+    const folder = await updateShortFolderViaProvider(folderId, input);
+    revalidatePath("/dashboard/links");
+    return { success: true, data: folder };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update folder";
+    return { success: false, error: message };
+  }
+}
+
+export async function deleteShortFolderAction(folderId: string): Promise<{ success: boolean; error?: string }> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+
+  try {
+    const deleted = await deleteShortFolderViaProvider(folderId);
+    if (!deleted) {
+      return { success: false, error: "Folder not found" };
+    }
+    revalidatePath("/dashboard/links");
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to delete folder";
     return { success: false, error: message };
   }
 }
@@ -87,9 +164,9 @@ export async function createShortLinkAction(
   }
 
   try {
-    const link = await createShortLink(input);
+    const link = await createShortLinkViaProvider(input);
     if (!link) {
-      return { success: false, error: "Failed to create link on Short.io" };
+      return { success: false, error: "Failed to create short link" };
     }
     revalidatePath("/dashboard/links");
     return { success: true, data: link };
@@ -108,9 +185,9 @@ export async function updateShortLinkAction(
   }
 
   try {
-    const link = await updateShortLink(linkId, input);
+    const link = await updateShortLinkViaProvider(linkId, input);
     if (!link) {
-      return { success: false, error: "Failed to update link on Short.io" };
+      return { success: false, error: "Failed to update short link" };
     }
     revalidatePath("/dashboard/links");
     return { success: true, data: link };
@@ -129,7 +206,7 @@ export async function moveLinkToFolderAction(
   }
 
   try {
-    const link = await updateShortLink(linkId, { folderId });
+    const link = await updateShortLinkViaProvider(linkId, { folderId });
     if (!link) {
       return { success: false, error: "Failed to move link to folder" };
     }
@@ -147,9 +224,9 @@ export async function deleteShortLinkAction(linkId: string): Promise<{ success: 
   }
 
   try {
-    const success = await deleteShortLink(linkId);
+    const success = await deleteShortLinkViaProvider(linkId);
     if (!success) {
-      return { success: false, error: "Failed to delete short link on Short.io" };
+      return { success: false, error: "Failed to delete short link" };
     }
     revalidatePath("/dashboard/links");
     return { success: true };
@@ -211,19 +288,23 @@ export async function getPublicEventShortLinksAction(params: {
       return { success: true, data: { liveShortLink, bevyShortLink } };
     }
 
-    // Otherwise, check Short.io directly
+    // Otherwise, check active shortlink provider
     const canonicalLiveUrl = `https://gdgjakarta.com/events/${params.eventId}`;
     const [fetchedLive, fetchedBevy] = await Promise.all([
       !liveShortLink
-        ? (params.liveUrl ? findShortLinkByOriginalUrl(params.liveUrl) : Promise.resolve(null)).then((res) => {
-            if (res) return res;
-            if (params.liveUrl !== canonicalLiveUrl) {
-              return findShortLinkByOriginalUrl(canonicalLiveUrl);
-            }
-            return null;
-          })
+        ? (params.liveUrl ? findShortLinkByOriginalUrlViaProvider(params.liveUrl) : Promise.resolve(null)).then(
+            (res) => {
+              if (res) return res;
+              if (params.liveUrl !== canonicalLiveUrl) {
+                return findShortLinkByOriginalUrlViaProvider(canonicalLiveUrl);
+              }
+              return null;
+            },
+          )
         : Promise.resolve(liveShortLink),
-      !bevyShortLink && params.bevyUrl ? findShortLinkByOriginalUrl(params.bevyUrl) : Promise.resolve(bevyShortLink),
+      !bevyShortLink && params.bevyUrl
+        ? findShortLinkByOriginalUrlViaProvider(params.bevyUrl)
+        : Promise.resolve(bevyShortLink),
     ]);
 
     const finalLive = liveShortLink ?? fetchedLive;
@@ -261,7 +342,7 @@ export async function getEventShortLinksAction(params: {
   }
 
   try {
-    const status = await getEventShortLinks(params);
+    const status = await getEventShortLinksViaProvider(params);
     return { success: true, data: status };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to check event short links";
@@ -312,7 +393,7 @@ export async function generateEventShortLinkAction(params: {
   try {
     let resolvedFolderId = params.folderId;
     if (!resolvedFolderId) {
-      const folders = await listShortFolders();
+      const folders = await listShortFoldersViaProvider();
       resolvedFolderId = resolveFolderForEvent(params.title, params.tags, folders);
     }
 
@@ -326,7 +407,7 @@ export async function generateEventShortLinkAction(params: {
 
     const defaultTags = ["Event", ...(params.tags ?? [])];
 
-    const link = await createShortLink({
+    const link = await createShortLinkViaProvider({
       originalURL: canonicalOriginalURL,
       path: params.customSlug,
       title: linkTitle,
@@ -400,20 +481,20 @@ export async function updateEventShortLinkAction(params: {
     // If linkId is not provided or empty (e.g. cached without ID), resolve via current path or original URL
     if (!linkId) {
       if (params.currentPath) {
-        const found = await getShortLinkByPath(params.currentPath);
+        const found = await getShortLinkByPathViaProvider(params.currentPath);
         if (found?.idString) linkId = found.idString;
       }
       if (!linkId) {
         const destination = params.type === "live" ? `https://gdgjakarta.com/events/${params.eventId}` : undefined;
         if (destination) {
-          const found = await findShortLinkByOriginalUrl(destination);
+          const found = await findShortLinkByOriginalUrlViaProvider(destination);
           if (found?.idString) linkId = found.idString;
         }
       }
     }
 
     if (!linkId) {
-      return { success: false, error: "Could not find existing short link to update on Short.io." };
+      return { success: false, error: "Could not find existing short link to update." };
     }
 
     // Always enforce production canonical URL on update as well
@@ -424,9 +505,9 @@ export async function updateEventShortLinkAction(params: {
       updateInput.originalURL = `https://gdgjakarta.com/events/${params.eventId}`;
     }
 
-    const updated = await updateShortLink(linkId, updateInput);
+    const updated = await updateShortLinkViaProvider(linkId, updateInput);
     if (!updated) {
-      return { success: false, error: "Failed to update short link path on Short.io." };
+      return { success: false, error: "Failed to update short link path." };
     }
 
     // Cache updated path to Firestore
@@ -479,18 +560,7 @@ export async function bulkMoveLinksToFolderAction(
   }
 
   try {
-    const results = await Promise.allSettled(linkIds.map((id) => updateShortLink(id, { folderId })));
-
-    const updatedLinks: ShortLinkItem[] = [];
-    let failures = 0;
-
-    for (const res of results) {
-      if (res.status === "fulfilled" && res.value) {
-        updatedLinks.push(res.value);
-      } else {
-        failures++;
-      }
-    }
+    const { updatedLinks, failures } = await bulkMoveLinksViaProvider(linkIds, folderId);
 
     revalidatePath("/dashboard/links");
 
@@ -522,26 +592,7 @@ export async function bulkDeleteShortLinksAction(
   }
 
   try {
-    const results = await Promise.allSettled(
-      linkIds.map(async (id) => {
-        const ok = await deleteShortLink(id);
-        if (!ok) {
-          throw new Error(`Failed to delete link ${id}`);
-        }
-        return id;
-      }),
-    );
-
-    const deletedIds: string[] = [];
-    let failures = 0;
-
-    for (const res of results) {
-      if (res.status === "fulfilled" && res.value) {
-        deletedIds.push(res.value);
-      } else {
-        failures++;
-      }
-    }
+    const { deletedIds, failures } = await bulkDeleteLinksViaProvider(linkIds);
 
     revalidatePath("/dashboard/links");
 

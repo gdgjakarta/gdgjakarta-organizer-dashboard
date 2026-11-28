@@ -2264,40 +2264,35 @@ export async function getExistingEventSlideTemplateOptionsAction(currentEventId:
     devfest26: { ...SPEAKER_SLIDE_TEMPLATE_PRESETS.devfest26 },
   };
 
-  // 1. Fetch dynamic Short.io link titles
+  // 1. Fetch dynamic shortlink titles via active provider
   try {
-    const domainId = process.env.SHORTIO_DOMAIN_ID;
-    const apiKey = process.env.SHORTIO_API_KEY;
-    if (domainId && apiKey) {
-      const shortRes = await fetch(`https://api.short.io/api/links?domain_id=${domainId}&limit=150`, {
-        headers: {
-          authorization: apiKey,
-          accept: "application/json",
-        },
-        signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(4000) : undefined,
-      });
-      if (shortRes.ok) {
-        const shortData = (await shortRes.json()) as {
-          links?: Array<{ path?: string; title?: string; secureShortURL?: string }>;
-        };
-        const links = shortData.links || [];
-        for (const l of links) {
-          if (!l.path) continue;
-          if (l.path === "gdg-slide-template" && l.title?.trim()) {
-            presets.gdg_default.label = l.title.trim();
-            if (l.secureShortURL) presets.gdg_default.url = l.secureShortURL;
-          } else if (
-            (l.path === "devfest26-slide-template" || l.path === "devfest26-speaker-template") &&
-            l.title?.trim()
-          ) {
-            presets.devfest26.label = l.title.trim();
-            if (l.secureShortURL) presets.devfest26.url = l.secureShortURL;
-          }
+    const { getShortlinkProvider, hasShortioCredentials } = await import("@/lib/shortlinks/env");
+    const { getShortLinkByPathViaProvider } = await import("@/lib/shortlinks/provider");
+    const provider = await getShortlinkProvider();
+    const shouldFetch = provider === "cloudflare" || (await hasShortioCredentials());
+
+    if (shouldFetch) {
+      const [gdgSlide, devfestSpeaker, devfestSlide] = await Promise.all([
+        getShortLinkByPathViaProvider("gdg-slide-template"),
+        getShortLinkByPathViaProvider("devfest26-speaker-template"),
+        getShortLinkByPathViaProvider("devfest26-slide-template"),
+      ]);
+      for (const l of [gdgSlide, devfestSpeaker, devfestSlide]) {
+        if (!l || l.archived || !l.path) continue;
+        if (l.path === "gdg-slide-template" && l.title?.trim()) {
+          presets.gdg_default.label = l.title.trim();
+          if (l.secureShortURL) presets.gdg_default.url = l.secureShortURL;
+        } else if (
+          (l.path === "devfest26-slide-template" || l.path === "devfest26-speaker-template") &&
+          l.title?.trim()
+        ) {
+          presets.devfest26.label = l.title.trim();
+          if (l.secureShortURL) presets.devfest26.url = l.secureShortURL;
         }
       }
     }
   } catch (shortErr) {
-    console.warn("[getExistingEventSlideTemplateOptionsAction] Could not refresh Short.io link titles:", shortErr);
+    console.warn("[getExistingEventSlideTemplateOptionsAction] Could not refresh shortlink titles:", shortErr);
   }
 
   // 2. Fetch past/existing events

@@ -9,18 +9,31 @@ import {
   type SortingState,
   useTable,
 } from "@tanstack/react-table";
-import { ExternalLink, Folder, FolderPlus, Globe, Link2, Plus, Search, Upload } from "lucide-react";
+import {
+  Archive,
+  ExternalLink,
+  Folder,
+  FolderCog,
+  FolderPlus,
+  Globe,
+  Link2,
+  Loader2,
+  Plus,
+  Search,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SHORTIO_CONFIG } from "@/config/shortio-config";
 import { dataTableFeatures } from "@/lib/data-table-features";
-import type { ShortFolder, ShortLinkItem } from "@/lib/shortio/types";
-import { archiveShortLinksAction } from "@/server/shortio-advanced-actions";
+import type { ShortDomain, ShortFolder, ShortLinkItem, ShortlinkProviderName } from "@/lib/shortio/types";
+import { fetchShortLinksAction } from "@/server/shortio-actions";
+import { archiveShortLinksAction, unarchiveShortLinksAction } from "@/server/shortio-advanced-actions";
 
 import { AnalyticsTab } from "./analytics-tab";
 import { BulkDeleteLinksDialog } from "./bulk-delete-links-dialog";
@@ -28,25 +41,49 @@ import { BulkImportDialog } from "./bulk-import-dialog";
 import { BulkMoveFolderDialog } from "./bulk-move-folder-dialog";
 import { CreateFolderDialog } from "./create-folder-dialog";
 import { CreateLinkDialog } from "./create-link-dialog";
-import { getFolderColor, getLinkCountByFolder } from "./data";
+import { findFolderById, getFolderColor, getLinkCountByFolder } from "./data";
 import { DeleteLinkDialog } from "./delete-link-dialog";
 import { DomainsTab } from "./domains-tab";
 import { EditLinkDialog } from "./edit-link-dialog";
 import { LinkAnalyticsSheet } from "./link-analytics-sheet";
+import { formatArchiveToast } from "./link-form-helpers";
 import { LinksBulkActions } from "./links-bulk-actions";
 import { createLinksColumns } from "./links-columns";
 import { LinksTable } from "./links-table";
+import { ManageFolderDialog } from "./manage-folder-dialog";
 import { MoveFolderDialog } from "./move-folder-dialog";
 import { QrCodeDialog } from "./qr-code-dialog";
 
 interface LinksProps {
   initialLinks: ShortLinkItem[];
   initialFolders: ShortFolder[];
+  initialDomains?: ShortDomain[];
+  provider: ShortlinkProviderName;
+  primaryDomain: string;
+  primaryDomainId: number;
+  initialTotalCount?: number;
+  initialNextPageToken?: string;
 }
 
-export function Links({ initialLinks, initialFolders }: LinksProps) {
+export function Links({
+  initialLinks,
+  initialFolders,
+  initialDomains = [],
+  provider,
+  primaryDomain,
+  primaryDomainId,
+  initialTotalCount,
+  initialNextPageToken,
+}: LinksProps) {
   const [links, setLinks] = React.useState<ShortLinkItem[]>(initialLinks);
   const [folders, setFolders] = React.useState<ShortFolder[]>(initialFolders);
+  const [totalCount, setTotalCount] = React.useState<number>(initialTotalCount ?? initialLinks.length);
+  const [nextPageToken, setNextPageToken] = React.useState<string | undefined>(initialNextPageToken);
+  const [showArchived, setShowArchived] = React.useState(false);
+  const [isFetchingList, setIsFetchingList] = React.useState(false);
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false);
+  const [isBulkArchiving, setIsBulkArchiving] = React.useState(false);
+
   const [tab, setTab] = React.useState("links");
   const [isImportOpen, setIsImportOpen] = React.useState(false);
   const [analyticsLink, setAnalyticsLink] = React.useState<ShortLinkItem | null>(null);
@@ -55,6 +92,7 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
   // Modals state
   const [isCreateLinkOpen, setIsCreateLinkOpen] = React.useState(false);
   const [isCreateFolderOpen, setIsCreateFolderOpen] = React.useState(false);
+  const [managingFolder, setManagingFolder] = React.useState<ShortFolder | null>(null);
   const [editingLink, setEditingLink] = React.useState<ShortLinkItem | null>(null);
   const [movingLink, setMovingLink] = React.useState<ShortLinkItem | null>(null);
   const [deletingLink, setDeletingLink] = React.useState<ShortLinkItem | null>(null);
@@ -101,10 +139,59 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
     });
   };
 
+  const reloadLinks = React.useCallback(async (archivedView: boolean) => {
+    setIsFetchingList(true);
+    try {
+      const res = await fetchShortLinksAction({ archived: archivedView, limit: 150 });
+      if (!res.success || !res.data) {
+        toast.error(res.error ?? "Failed to fetch short links");
+        return;
+      }
+      setLinks(res.data);
+      setTotalCount(res.count ?? res.data.length);
+      setNextPageToken(res.nextPageToken);
+      setShowArchived(archivedView);
+      setRowSelection({});
+      setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to fetch short links");
+    } finally {
+      setIsFetchingList(false);
+    }
+  }, []);
+
+  const handleLoadMore = async () => {
+    if (!nextPageToken || isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const res = await fetchShortLinksAction({
+        archived: showArchived,
+        limit: 150,
+        pageToken: nextPageToken,
+      });
+      if (!res.success || !res.data) {
+        toast.error(res.error ?? "Failed to load more links");
+        return;
+      }
+      setLinks((prev) => {
+        const seen = new Set(prev.map((l) => l.id));
+        const appended = res.data?.filter((l) => !seen.has(l.id)) ?? [];
+        return [...prev, ...appended];
+      });
+      if (typeof res.count === "number") setTotalCount(res.count);
+      setNextPageToken(res.nextPageToken);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to load more links");
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   const columns = React.useMemo(
     () =>
       createLinksColumns({
         folders,
+        provider,
         onEdit: (link) => setEditingLink(link),
         onMoveFolder: (link) => setMovingLink(link),
         onDelete: (link) => setDeletingLink(link),
@@ -114,10 +201,18 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
           const res = await archiveShortLinksAction([link.id]);
           if (!res.success) return void toast.error(res.error ?? "Failed to archive link");
           setLinks((prev) => prev.filter((l) => l.id !== link.id));
-          toast.success("Link archived. Restore it from the Short.io dashboard.");
+          setTotalCount((c) => Math.max(0, c - 1));
+          toast.success(formatArchiveToast(provider, 1));
+        },
+        onUnarchive: async (link) => {
+          const res = await unarchiveShortLinksAction([link.id]);
+          if (!res.success) return void toast.error(res.error ?? "Failed to restore link");
+          setLinks((prev) => prev.filter((l) => l.id !== link.id));
+          setTotalCount((c) => Math.max(0, c - 1));
+          toast.success("Link restored to active links.");
         },
       }),
-    [folders],
+    [folders, provider],
   );
 
   const table = useTable({
@@ -167,6 +262,46 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
     toast.success(`Copied ${selectedLinks.length} short link${selectedLinks.length > 1 ? "s" : ""} to clipboard`);
   }, [selectedLinks]);
 
+  const handleBulkArchive = async () => {
+    const ids = selectedLinks.map((l) => l.id);
+    if (ids.length === 0) return;
+    setIsBulkArchiving(true);
+    try {
+      const res = await archiveShortLinksAction(ids);
+      if (!res.success) {
+        toast.error(res.error ?? "Failed to archive selected links");
+        return;
+      }
+      const idSet = new Set(ids);
+      setLinks((prev) => prev.filter((l) => !idSet.has(l.id)));
+      setTotalCount((c) => Math.max(0, c - ids.length));
+      setRowSelection({});
+      toast.success(formatArchiveToast(provider, ids.length));
+    } finally {
+      setIsBulkArchiving(false);
+    }
+  };
+
+  const handleBulkUnarchive = async () => {
+    const ids = selectedLinks.map((l) => l.id);
+    if (ids.length === 0) return;
+    setIsBulkArchiving(true);
+    try {
+      const res = await unarchiveShortLinksAction(ids);
+      if (!res.success) {
+        toast.error(res.error ?? "Failed to restore selected links");
+        return;
+      }
+      const idSet = new Set(ids);
+      setLinks((prev) => prev.filter((l) => !idSet.has(l.id)));
+      setTotalCount((c) => Math.max(0, c - ids.length));
+      setRowSelection({});
+      toast.success(`Restored ${ids.length} link${ids.length > 1 ? "s" : ""} to active links.`);
+    } finally {
+      setIsBulkArchiving(false);
+    }
+  };
+
   const handleBulkLinksMoved = (updatedLinks: ShortLinkItem[]) => {
     const updatedMap = new Map(updatedLinks.map((l) => [l.id, l]));
     setLinks((prev) => prev.map((l) => updatedMap.get(l.id) ?? l));
@@ -176,11 +311,15 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
   const handleBulkLinksDeleted = (deletedIds: string[]) => {
     const idSet = new Set(deletedIds);
     setLinks((prev) => prev.filter((l) => !idSet.has(l.id)));
+    setTotalCount((c) => Math.max(0, c - deletedIds.length));
     setRowSelection({});
   };
 
   const handleLinkCreated = (newLink: ShortLinkItem) => {
-    setLinks((prev) => [newLink, ...prev]);
+    if (!showArchived) {
+      setLinks((prev) => [newLink, ...prev]);
+      setTotalCount((c) => c + 1);
+    }
   };
 
   const handleLinkUpdated = (updatedLink: ShortLinkItem) => {
@@ -189,14 +328,29 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
 
   const handleLinkDeleted = (deletedLinkId: string) => {
     setLinks((prev) => prev.filter((l) => l.id !== deletedLinkId));
+    setTotalCount((c) => Math.max(0, c - 1));
   };
 
   const handleFolderCreated = (newFolder: ShortFolder) => {
     setFolders((prev) => [...prev, newFolder]);
   };
 
+  const handleFolderUpdated = (updatedFolder: ShortFolder) => {
+    setFolders((prev) => prev.map((f) => (f.id === updatedFolder.id ? updatedFolder : f)));
+  };
+
+  const handleFolderDeleted = (deletedFolderId: string) => {
+    setFolders((prev) => prev.filter((f) => f.id !== deletedFolderId));
+    setLinks((prev) => prev.map((l) => (l.FolderId === deletedFolderId ? { ...l, FolderId: undefined } : l)));
+    if (activeFolderFilter === deletedFolderId) {
+      handleSelectFolder("all");
+    }
+  };
+
+  const activeFolder = findFolderById(folders, activeFolderFilter);
+
   // KPI Calculations
-  const totalLinksCount = links.length;
+  const loadedLinksCount = links.length;
   const totalFoldersCount = folders.length;
   const uncategorizedCount = getLinkCountByFolder(links);
 
@@ -205,33 +359,44 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
       {/* Header with Title and Primary Actions */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-bold text-2xl tracking-tight sm:text-3xl">Short Links</h1>
             <span className="rounded-md border bg-muted/60 px-2 py-0.5 font-medium text-muted-foreground text-xs">
               Organizer Only
             </span>
+            <Badge variant="secondary" className="text-xs">
+              {provider === "cloudflare" ? "Cloudflare Edge" : "Short.io"}
+            </Badge>
           </div>
           <p className="text-muted-foreground text-sm">
-            Manage, categorize, generate, edit, and delete branded short links on {SHORTIO_CONFIG.domain}.
+            Manage, categorize, generate, edit, and delete branded short links on {primaryDomain}.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" asChild className="gap-1.5">
-            <a href="https://app.short.io/users/dashboard/" target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="size-4" />
-              Short.io Dashboard
-            </a>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setIsCreateFolderOpen(true)} className="gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {provider === "shortio" && (
+            <Button variant="outline" size="sm" asChild className="gap-1.5">
+              <a href="https://app.short.io/users/dashboard/" target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="size-4" />
+                Short.io Dashboard
+              </a>
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsCreateFolderOpen(true)}
+            className="gap-1.5"
+          >
             <FolderPlus className="size-4" />
             New Folder
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)} className="gap-1.5">
+          <Button type="button" variant="outline" size="sm" onClick={() => setIsImportOpen(true)} className="gap-1.5">
             <Upload className="size-4" />
             Import CSV
           </Button>
-          <Button size="sm" onClick={() => setIsCreateLinkOpen(true)} className="gap-1.5">
+          <Button type="button" size="sm" onClick={() => setIsCreateLinkOpen(true)} className="gap-1.5">
             <Plus className="size-4" />
             Create Short Link
           </Button>
@@ -250,13 +415,13 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
             <Card className="p-4">
               <CardHeader className="p-0 pb-2">
                 <CardDescription className="flex items-center justify-between text-xs">
-                  <span>Total Links</span>
+                  <span>{showArchived ? "Archived Links" : "Total Links"}</span>
                   <Link2 className="size-4 text-muted-foreground" />
                 </CardDescription>
-                <CardTitle className="font-bold text-2xl tracking-tight">{totalLinksCount}</CardTitle>
+                <CardTitle className="font-bold text-2xl tracking-tight">{totalCount.toLocaleString()}</CardTitle>
               </CardHeader>
               <CardContent className="p-0 text-muted-foreground text-xs">
-                Live redirects active on {SHORTIO_CONFIG.domain}
+                {showArchived ? `Archived links on ${primaryDomain}` : `Live redirects active on ${primaryDomain}`}
               </CardContent>
             </Card>
 
@@ -269,7 +434,7 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
                 <CardTitle className="font-bold text-2xl tracking-tight">{totalFoldersCount}</CardTitle>
               </CardHeader>
               <CardContent className="p-0 text-muted-foreground text-xs">
-                {uncategorizedCount} link{uncategorizedCount === 1 ? "" : "s"} uncategorized
+                {uncategorizedCount} loaded link{uncategorizedCount === 1 ? "" : "s"} uncategorized
               </CardContent>
             </Card>
 
@@ -279,12 +444,12 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
                   <span>Primary Domain</span>
                   <Globe className="size-4 text-emerald-500" />
                 </CardDescription>
-                <CardTitle className="font-bold font-mono text-lg tracking-tight sm:text-xl">
-                  {SHORTIO_CONFIG.domain}
-                </CardTitle>
+                <CardTitle className="font-bold font-mono text-lg tracking-tight sm:text-xl">{primaryDomain}</CardTitle>
               </CardHeader>
               <CardContent className="p-0 text-muted-foreground text-xs">
-                Configured in Short.io (ID: {SHORTIO_CONFIG.domainId})
+                {provider === "cloudflare"
+                  ? `Configured on Cloudflare Edge (ID: ${primaryDomainId})`
+                  : `Configured in Short.io (ID: ${primaryDomainId})`}
               </CardContent>
             </Card>
           </div>
@@ -293,27 +458,43 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
           <Card className="flex flex-col gap-4 p-4 sm:p-6">
             {/* Folder Organization Chips / Tabs */}
             <div className="flex flex-col gap-2 border-b pb-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
                   Filter by Category Folder
                 </span>
-                {activeFolderFilter !== "all" && activeFolderFilter !== "uncategorized" && (
-                  // Short.io's public API has no rename/recolor/delete folder endpoint, so deep-link to its settings.
-                  <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" asChild>
-                    <a
-                      href={`https://app.short.io/users/dashboard/${SHORTIO_CONFIG.domainId}/folders/${activeFolderFilter}/settings/general`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <ExternalLink className="size-3" />
-                      Manage folder in Short.io
-                    </a>
-                  </Button>
-                )}
+                {activeFolderFilter !== "all" &&
+                  activeFolderFilter !== "uncategorized" &&
+                  (provider === "cloudflare" ? (
+                    activeFolder && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1.5 text-xs"
+                        onClick={() => setManagingFolder(activeFolder)}
+                      >
+                        <FolderCog className="size-3.5" />
+                        Edit / Delete Folder
+                      </Button>
+                    )
+                  ) : (
+                    // Short.io's public API has no rename/recolor/delete folder endpoint, so deep-link to its settings.
+                    <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" asChild>
+                      <a
+                        href={`https://app.short.io/users/dashboard/${primaryDomainId}/folders/${activeFolderFilter}/settings/general`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="size-3" />
+                        Manage folder in Short.io
+                      </a>
+                    </Button>
+                  ))}
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5 pt-1">
                 <Button
+                  type="button"
                   variant={activeFolderFilter === "all" ? "default" : "outline"}
                   size="sm"
                   onClick={() => handleSelectFolder("all")}
@@ -327,11 +508,12 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
                         : "bg-muted text-muted-foreground"
                     }`}
                   >
-                    {totalLinksCount}
+                    {loadedLinksCount}
                   </span>
                 </Button>
 
                 <Button
+                  type="button"
                   variant={activeFolderFilter === "uncategorized" ? "default" : "outline"}
                   size="sm"
                   onClick={() => handleSelectFolder("uncategorized")}
@@ -356,6 +538,7 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
 
                   return (
                     <Button
+                      type="button"
                       key={folder.id}
                       variant={isActive ? "default" : "outline"}
                       size="sm"
@@ -382,7 +565,7 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
               </div>
             </div>
 
-            {/* Search Bar */}
+            {/* Search Bar & Active/Archived Filter */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <InputGroup className="w-full sm:max-w-md">
                 <InputGroupAddon>
@@ -398,6 +581,34 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
                   <Kbd>⌘K</Kbd>
                 </InputGroupAddon>
               </InputGroup>
+
+              {provider === "cloudflare" && (
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={!showArchived ? "default" : "outline"}
+                    aria-pressed={!showArchived}
+                    disabled={isFetchingList}
+                    onClick={() => void reloadLinks(false)}
+                    className="h-8 text-xs"
+                  >
+                    Active
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={showArchived ? "default" : "outline"}
+                    aria-pressed={showArchived}
+                    disabled={isFetchingList}
+                    onClick={() => void reloadLinks(true)}
+                    className="h-8 gap-1.5 text-xs"
+                  >
+                    <Archive className="size-3.5" />
+                    Archived
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Bulk Actions Bar */}
@@ -405,38 +616,62 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
               selectedCount={selectedCount}
               totalFilteredCount={filteredRows.length}
               selectedLinks={selectedLinks}
+              isArchivedView={showArchived}
+              canUnarchive={provider === "cloudflare"}
+              isArchiving={isBulkArchiving}
               onClearSelection={handleClearSelection}
               onSelectAll={handleSelectAll}
               onMoveFolder={() => setIsBulkMoveOpen(true)}
               onDelete={() => setIsBulkDeleteOpen(true)}
               onCopyLinks={handleCopySelectedLinks}
+              onArchive={() => void handleBulkArchive()}
+              onUnarchive={() => void handleBulkUnarchive()}
             />
 
             {/* Links Data Table */}
-            <LinksTable table={table} />
-          </Card>
+            <div className={isFetchingList ? "opacity-60 transition-opacity" : undefined}>
+              <LinksTable table={table} />
+            </div>
 
-          {/* Modals & Dialogs */}
+            {nextPageToken && (
+              <div className="flex justify-center pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isLoadingMore}
+                  onClick={() => void handleLoadMore()}
+                  className="gap-2"
+                >
+                  {isLoadingMore && <Loader2 className="size-3.5 animate-spin" />}
+                  Load More Links
+                </Button>
+              </div>
+            )}
+          </Card>
         </TabsContent>
         <TabsContent value="analytics">
-          <AnalyticsTab />
+          <AnalyticsTab primaryDomain={primaryDomain} provider={provider} />
         </TabsContent>
         <TabsContent value="domains">
-          <DomainsTab />
+          <DomainsTab primaryDomainId={primaryDomainId} provider={provider} />
         </TabsContent>
       </Tabs>
 
       <BulkImportDialog
         open={isImportOpen}
         onOpenChange={setIsImportOpen}
-        onImported={() => window.location.reload()}
+        onImported={() => void reloadLinks(showArchived)}
       />
-      <LinkAnalyticsSheet link={analyticsLink} onOpenChange={(o) => !o && setAnalyticsLink(null)} />
+      <LinkAnalyticsSheet link={analyticsLink} provider={provider} onOpenChange={(o) => !o && setAnalyticsLink(null)} />
 
       <CreateLinkDialog
         open={isCreateLinkOpen}
         onOpenChange={setIsCreateLinkOpen}
         folders={folders}
+        domains={initialDomains}
+        primaryDomain={primaryDomain}
+        provider={provider}
         defaultFolderId={
           activeFolderFilter !== "all" && activeFolderFilter !== "uncategorized" ? activeFolderFilter : undefined
         }
@@ -449,11 +684,21 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
         onFolderCreated={handleFolderCreated}
       />
 
+      <ManageFolderDialog
+        open={Boolean(managingFolder)}
+        onOpenChange={(open) => !open && setManagingFolder(null)}
+        folder={managingFolder}
+        onFolderUpdated={handleFolderUpdated}
+        onFolderDeleted={handleFolderDeleted}
+      />
+
       <EditLinkDialog
         open={Boolean(editingLink)}
         onOpenChange={(open) => !open && setEditingLink(null)}
         link={editingLink}
         folders={folders}
+        primaryDomain={primaryDomain}
+        provider={provider}
         onLinkUpdated={handleLinkUpdated}
       />
 

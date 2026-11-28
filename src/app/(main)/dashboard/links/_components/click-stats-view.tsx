@@ -3,14 +3,18 @@
 import * as React from "react";
 
 import { Bar, BarChart, CartesianGrid, XAxis } from "recharts";
+import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ClickStats, StatsPeriod } from "@/lib/shortio/types";
+import type { ClickStreamEntry, ShortlinkProviderName, StatsPeriod } from "@/lib/shortio/types";
+import type { ExtendedClickStats } from "@/lib/shortlinks/analytics";
 
 import type { ActionResult } from "./action-result";
+import { ClickstreamTable } from "./clickstream-table";
 
 const PERIOD_LABELS: Record<StatsPeriod, string> = {
   today: "Today",
@@ -48,10 +52,24 @@ function Breakdown({ title, rows }: { title: string; rows: { label: string; scor
   );
 }
 
-/** Period picker + KPI + clicks chart + breakdowns for any Short.io stats source (link or domain). */
-export function ClickStatsView({ load }: { load: (period: StatsPeriod) => Promise<ActionResult<ClickStats>> }) {
+interface ClickStatsViewProps {
+  load: (period: StatsPeriod) => Promise<ActionResult<ExtendedClickStats>>;
+  loadClickstream?: () => Promise<ActionResult<ClickStreamEntry[]>>;
+  provider?: ShortlinkProviderName;
+  showSlugInClickstream?: boolean;
+}
+
+/** Period picker + KPI + clicks chart + breakdowns + split variants + clickstream. */
+export function ClickStatsView({
+  load,
+  loadClickstream,
+  provider = "shortio",
+  showSlugInClickstream = false,
+}: ClickStatsViewProps) {
   const [period, setPeriod] = React.useState<StatsPeriod>("last30");
-  const [stats, setStats] = React.useState<ClickStats | null>(null);
+  const [stats, setStats] = React.useState<ExtendedClickStats | null>(null);
+  const [clickstream, setClickstream] = React.useState<ClickStreamEntry[]>([]);
+  const [isRefreshingStream, setIsRefreshingStream] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
 
@@ -62,8 +80,12 @@ export function ClickStatsView({ load }: { load: (period: StatsPeriod) => Promis
     load(period)
       .then((res) => {
         if (cancelled) return;
-        if (res.success && res.data) setStats(res.data);
-        else setError(res.error ?? "Failed to load analytics");
+        if (res.success && res.data) {
+          setStats(res.data);
+          setClickstream(res.data.clickstream ?? []);
+        } else {
+          setError(res.error ?? "Failed to load analytics");
+        }
       })
       .catch(() => !cancelled && setError("Failed to load analytics"))
       .finally(() => !cancelled && setLoading(false));
@@ -72,11 +94,30 @@ export function ClickStatsView({ load }: { load: (period: StatsPeriod) => Promis
     };
   }, [load, period]);
 
+  const handleRefreshClickstream = React.useCallback(async () => {
+    if (!loadClickstream) return;
+    setIsRefreshingStream(true);
+    try {
+      const res = await loadClickstream();
+      if (res.success && res.data) {
+        setClickstream(res.data);
+      } else {
+        toast.error(res.error ?? "Failed to refresh clickstream");
+      }
+    } catch {
+      toast.error("Failed to refresh clickstream");
+    } finally {
+      setIsRefreshingStream(false);
+    }
+  }, [loadClickstream]);
+
   const series = (stats?.clickStatistics?.datasets?.[0]?.data ?? []).map((p) => ({
     date: new Date(p.x).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }),
     clicks: Number(p.y),
   }));
   const total = stats?.totalClicks ?? stats?.clicks ?? 0;
+  const legacyClicks = stats?.legacyClicks ?? 0;
+  const splitVariants = stats?.splitVariants ?? [];
 
   return (
     <div className="grid gap-4">
@@ -97,10 +138,15 @@ export function ClickStatsView({ load }: { load: (period: StatsPeriod) => Promis
       {loading && !stats && <Skeleton className="h-60 w-full" />}
       {stats && (
         <div className={loading ? "grid gap-4 opacity-60" : "grid gap-4"}>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Card className="p-4">
               <p className="text-muted-foreground text-xs">Total clicks</p>
               <p className="font-bold text-2xl tabular-nums">{total.toLocaleString()}</p>
+              {period === "total" && legacyClicks > 0 && (
+                <p className="mt-1 text-muted-foreground text-xs">
+                  Includes {legacyClicks.toLocaleString()} legacy Short.io clicks
+                </p>
+              )}
             </Card>
             <Card className="p-4">
               <p className="text-muted-foreground text-xs">Human clicks</p>
@@ -124,10 +170,56 @@ export function ClickStatsView({ load }: { load: (period: StatsPeriod) => Promis
             )}
           </Card>
 
+          {splitVariants.length > 0 && (
+            <Card className="p-4">
+              <CardHeader className="p-0 pb-3">
+                <CardTitle className="text-sm">A/B Split Test Variants</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 p-0">
+                {splitVariants.map((variant) => (
+                  <div key={variant.variantLabel} className="grid gap-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                          {variant.variantLabel}
+                        </Badge>
+                        {variant.targetUrl && (
+                          <span
+                            className="truncate font-mono text-[11px] text-muted-foreground"
+                            title={variant.targetUrl}
+                          >
+                            {variant.targetUrl}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-medium tabular-nums">
+                        {variant.clicks.toLocaleString()} clicks ({variant.humanClicks.toLocaleString()} human) ·{" "}
+                        {variant.percentage}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${Math.min(100, Math.max(0, variant.percentage))}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           <div className="grid gap-3 sm:grid-cols-2">
             <Breakdown
               title="Countries"
               rows={(stats.country ?? []).map((r) => ({ label: r.countryName ?? r.country, score: r.score }))}
+            />
+            <Breakdown
+              title="Cities"
+              rows={(stats.cities ?? []).map((c) => ({
+                label: c.country ? `${c.city}, ${c.country}` : c.city,
+                score: c.score,
+              }))}
             />
             <Breakdown title="Devices" rows={(stats.device ?? []).map((r) => ({ label: r.device, score: r.score }))} />
             <Breakdown
@@ -143,6 +235,14 @@ export function ClickStatsView({ load }: { load: (period: StatsPeriod) => Promis
               rows={(stats.referer ?? []).map((r) => ({ label: r.referer, score: r.score }))}
             />
           </div>
+
+          <ClickstreamTable
+            entries={clickstream}
+            provider={provider}
+            showSlug={showSlugInClickstream}
+            onRefresh={loadClickstream ? handleRefreshClickstream : undefined}
+            isRefreshing={isRefreshingStream}
+          />
         </div>
       )}
     </div>

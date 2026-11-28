@@ -43,13 +43,13 @@ export function LinksTable({ table }: { table: ReactTable<DataTableFeatures, Sho
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <div>
+      <section aria-label="Short links table" className="rounded-md">
         <Table className="**:data-[slot='table-cell']:px-4 **:data-[slot='table-head']:px-4">
           <TableHeader className="[&_tr]:border-t">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="py-4 font-normal">
+                  <TableHead key={header.id} scope="col" className="py-4 font-normal">
                     {header.isPlaceholder ? null : <table.FlexRender header={header} />}
                   </TableHead>
                 ))}
@@ -84,11 +84,11 @@ export function LinksTable({ table }: { table: ReactTable<DataTableFeatures, Sho
             )}
           </TableBody>
         </Table>
-      </div>
+      </section>
 
       <Separator />
 
-      <div className="flex items-center justify-between px-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4">
         <div className="flex items-center gap-4 text-muted-foreground text-sm">
           <div className="flex items-center gap-2">
             <span>Rows per page</span>
@@ -96,7 +96,7 @@ export function LinksTable({ table }: { table: ReactTable<DataTableFeatures, Sho
               value={`${table.state.pagination.pageSize}`}
               onValueChange={(value) => table.setPageSize(Number(value))}
             >
-              <SelectTrigger size="sm" className="w-20" id="links-rows-per-page">
+              <SelectTrigger size="sm" className="w-20" id="links-rows-per-page" aria-label="Rows per page">
                 <SelectValue placeholder={rowsPerPage} />
               </SelectTrigger>
               <SelectContent side="top">
@@ -111,8 +111,8 @@ export function LinksTable({ table }: { table: ReactTable<DataTableFeatures, Sho
             </Select>
           </div>
           <span>
-            {table.getFilteredRowModel().rows.length} total link
-            {table.getFilteredRowModel().rows.length === 1 ? "" : "s"}
+            {table.getFilteredRowModel().rows.length} link
+            {table.getFilteredRowModel().rows.length === 1 ? "" : "s"} shown
           </span>
         </div>
 

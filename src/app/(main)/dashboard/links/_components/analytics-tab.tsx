@@ -1,15 +1,32 @@
 "use client";
 
-import { SHORTIO_CONFIG } from "@/config/shortio-config";
-import { getDomainStatsAction } from "@/server/shortio-advanced-actions";
+import * as React from "react";
+
+import type { ShortlinkProviderName } from "@/lib/shortio/types";
+import { getDomainClickstreamAction, getDomainStatsAction } from "@/server/shortio-advanced-actions";
 
 import { ClickStatsView } from "./click-stats-view";
 
-export function AnalyticsTab() {
+interface AnalyticsTabProps {
+  primaryDomain: string;
+  provider: ShortlinkProviderName;
+}
+
+export function AnalyticsTab({ primaryDomain, provider }: AnalyticsTabProps) {
+  const loadClickstream = React.useCallback(
+    () => getDomainClickstreamAction({ hostname: primaryDomain, limit: 50 }),
+    [primaryDomain],
+  );
+
   return (
     <div className="grid gap-3">
-      <p className="text-muted-foreground text-sm">Click analytics across every link on {SHORTIO_CONFIG.domain}.</p>
-      <ClickStatsView load={getDomainStatsAction} />
+      <p className="text-muted-foreground text-sm">Click analytics across every link on {primaryDomain}.</p>
+      <ClickStatsView
+        load={getDomainStatsAction}
+        loadClickstream={loadClickstream}
+        provider={provider}
+        showSlugInClickstream
+      />
     </div>
   );
 }

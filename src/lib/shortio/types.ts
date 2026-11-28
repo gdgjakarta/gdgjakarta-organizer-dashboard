@@ -1,3 +1,29 @@
+import type {
+  CityStat,
+  ClickStreamEntry,
+  GeoTargetRule,
+  LinkBundleItem,
+  LinkPixelConfig,
+  RedirectStatusCode,
+  ShortLinkType,
+  ShortlinkProviderName,
+  SplitTestTarget,
+  UtmParams,
+} from "@/lib/shortlinks/types";
+
+export type {
+  CityStat,
+  ClickStreamEntry,
+  GeoTargetRule,
+  LinkBundleItem,
+  LinkPixelConfig,
+  RedirectStatusCode,
+  ShortLinkType,
+  ShortlinkProviderName,
+  SplitTestTarget,
+  UtmParams,
+} from "@/lib/shortlinks/types";
+
 export interface ShortFolder {
   id: string;
   name: string;
@@ -36,6 +62,16 @@ export interface ShortLinkItem {
     email: string;
     photoURL?: string;
   };
+  hostname?: string;
+  linkType?: ShortLinkType;
+  maxClicks?: number | null;
+  clicksCount?: number;
+  legacyClicks?: number;
+  geoTargets?: GeoTargetRule[];
+  utmParams?: UtmParams | null;
+  pixels?: LinkPixelConfig | null;
+  splitTargets?: SplitTestTarget[];
+  bundleItems?: LinkBundleItem[];
 }
 
 export interface CreateShortLinkInput {
@@ -46,11 +82,19 @@ export interface CreateShortLinkInput {
   tags?: string[];
   password?: string;
   cloaking?: boolean;
-  redirectType?: 301 | 302 | 307 | 308;
+  redirectType?: RedirectStatusCode;
   expiresAt?: string | number | null;
   expiredURL?: string | null;
   androidURL?: string | null;
   iphoneURL?: string | null;
+  hostname?: string;
+  linkType?: ShortLinkType;
+  maxClicks?: number | null;
+  geoTargets?: GeoTargetRule[];
+  utmParams?: UtmParams | null;
+  pixels?: LinkPixelConfig | null;
+  splitTargets?: SplitTestTarget[];
+  bundleItems?: LinkBundleItem[];
 }
 
 export interface UpdateShortLinkInput {
@@ -61,11 +105,20 @@ export interface UpdateShortLinkInput {
   tags?: string[];
   password?: string;
   cloaking?: boolean;
-  redirectType?: 301 | 302 | 307 | 308;
+  redirectType?: RedirectStatusCode;
   expiresAt?: string | number | null;
   expiredURL?: string | null;
   androidURL?: string | null;
   iphoneURL?: string | null;
+  hostname?: string;
+  linkType?: ShortLinkType;
+  maxClicks?: number | null;
+  clearPassword?: boolean;
+  geoTargets?: GeoTargetRule[] | null;
+  utmParams?: UtmParams | null;
+  pixels?: LinkPixelConfig | null;
+  splitTargets?: SplitTestTarget[] | null;
+  bundleItems?: LinkBundleItem[] | null;
 }
 
 export interface CreateShortFolderInput {
@@ -94,6 +147,9 @@ export interface ClickStats {
   os?: { os: string; score: number }[];
   device?: { device: string; score: number }[];
   referer?: { referer: string; score: number }[];
+  cities?: CityStat[];
+  clickstream?: ClickStreamEntry[];
+  legacyClicks?: number;
 }
 
 export type StatsPeriod = "today" | "week" | "month" | "last7" | "last30" | "total";
@@ -104,6 +160,10 @@ export interface ShortDomain {
   state: string;
   linkType?: string;
   createdAt?: string;
+  appleAppSiteAssociation?: string | null;
+  assetLinks?: string | null;
+  updatedAt?: string;
+  provider?: ShortlinkProviderName;
 }
 
 export interface BulkImportRow {

@@ -17,17 +17,31 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SHORTIO_CONFIG } from "@/config/shortio-config";
-import type { ShortFolder, ShortLinkItem } from "@/lib/shortio/types";
+import type { ShortDomain, ShortFolder, ShortLinkItem, ShortlinkProviderName } from "@/lib/shortio/types";
 import { createShortLinkAction } from "@/server/shortio-actions";
 
-import { AdvancedOptions, advancedToInput, applyUtm, EMPTY_ADVANCED } from "./advanced-options";
+import { AdvancedOptions } from "./advanced-options";
 import { getFolderColor } from "./data";
+import {
+  advancedToInput,
+  buildPixelsConfig,
+  EMPTY_ADVANCED,
+  resolveEffectiveOriginalUrl,
+  validateBundleItems,
+  validateGeoTargets,
+  validateMaxClicks,
+  validateOptionalAdvancedUrls,
+  validatePixelConfig,
+  validateSplitTargets,
+} from "./link-form-helpers";
 
 interface CreateLinkDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   folders: ShortFolder[];
+  domains?: ShortDomain[];
+  primaryDomain: string;
+  provider: ShortlinkProviderName;
   defaultFolderId?: string;
   onLinkCreated: (link: ShortLinkItem) => void;
 }
@@ -36,11 +50,15 @@ export function CreateLinkDialog({
   open,
   onOpenChange,
   folders,
+  domains = [],
+  primaryDomain,
+  provider,
   defaultFolderId,
   onLinkCreated,
 }: CreateLinkDialogProps) {
   const [originalURL, setOriginalURL] = React.useState("");
   const [path, setPath] = React.useState("");
+  const [hostname, setHostname] = React.useState(primaryDomain);
   const [title, setTitle] = React.useState("");
   const [folderId, setFolderId] = React.useState<string>(defaultFolderId ?? "none");
   const [tagsInput, setTagsInput] = React.useState("");
@@ -48,22 +66,57 @@ export function CreateLinkDialog({
   const [isPending, startTransition] = React.useTransition();
 
   React.useEffect(() => {
+    setHostname(primaryDomain);
+  }, [primaryDomain]);
+
+  React.useEffect(() => {
     if (defaultFolderId) {
       setFolderId(defaultFolderId);
     }
   }, [defaultFolderId]);
 
-  const handleCreate = () => {
-    const trimmedUrl = originalURL.trim();
-    if (!trimmedUrl) {
-      toast.error("Please provide a destination URL");
+  const activeDomain = hostname || primaryDomain;
+
+  const handleCreate = (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const optUrlError = validateOptionalAdvancedUrls(advanced);
+    if (optUrlError) {
+      toast.error(optUrlError);
       return;
     }
 
-    try {
-      new URL(trimmedUrl);
-    } catch {
-      toast.error("Invalid destination URL. Make sure it includes http:// or https://");
+    if (provider === "cloudflare") {
+      const maxCheck = validateMaxClicks(advanced.maxClicks);
+      if (!maxCheck.valid) {
+        toast.error(maxCheck.error ?? "Invalid click limit");
+        return;
+      }
+      const geoCheck = validateGeoTargets(advanced.geoTargets);
+      if (!geoCheck.valid) {
+        toast.error(geoCheck.error ?? "Invalid geo-targeting rule");
+        return;
+      }
+      const pixelCheck = validatePixelConfig(buildPixelsConfig(advanced));
+      if (!pixelCheck.valid) {
+        toast.error(pixelCheck.error ?? "Invalid retargeting pixel config");
+        return;
+      }
+      const splitCheck = validateSplitTargets(advanced.splitTargets, advanced.linkType);
+      if (!splitCheck.valid) {
+        toast.error(splitCheck.error ?? "Invalid A/B split targets");
+        return;
+      }
+      const bundleCheck = validateBundleItems(advanced.bundleItems, advanced.linkType);
+      if (!bundleCheck.valid) {
+        toast.error(bundleCheck.error ?? "Invalid link bundle items");
+        return;
+      }
+    }
+
+    const urlResult = resolveEffectiveOriginalUrl(originalURL, advanced, provider);
+    if (urlResult.error) {
+      toast.error(urlResult.error);
       return;
     }
 
@@ -75,8 +128,9 @@ export function CreateLinkDialog({
     startTransition(async () => {
       try {
         const res = await createShortLinkAction({
-          originalURL: applyUtm(trimmedUrl, advanced),
-          ...advancedToInput(advanced, false),
+          originalURL: urlResult.url,
+          ...advancedToInput(advanced, false, provider),
+          ...(provider === "cloudflare" && activeDomain !== primaryDomain ? { hostname: activeDomain } : {}),
           path: path.trim() || undefined,
           title: title.trim() || undefined,
           folderId: folderId === "none" ? undefined : folderId,
@@ -104,10 +158,11 @@ export function CreateLinkDialog({
   };
 
   const previewSlug = path.trim() || "your-slug";
+  const isDestinationRequired = advanced.linkType === "redirect";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[600px]">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">
@@ -115,15 +170,39 @@ export function CreateLinkDialog({
             </div>
             <div>
               <DialogTitle>Create Short Link</DialogTitle>
-              <DialogDescription>Generate a branded short link under {SHORTIO_CONFIG.domain}.</DialogDescription>
+              <DialogDescription>Generate a branded short link under {activeDomain}.</DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="grid gap-4 py-3">
+        <form onSubmit={handleCreate} className="grid gap-4 py-3">
+          {provider === "cloudflare" && domains.length > 1 && (
+            <div className="grid gap-2">
+              <Label htmlFor="create-link-domain">Domain</Label>
+              <Select value={activeDomain} onValueChange={setHostname} disabled={isPending}>
+                <SelectTrigger id="create-link-domain">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {domains.map((d) => (
+                    <SelectItem key={d.id} value={d.hostname}>
+                      {d.hostname}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="grid gap-2">
             <Label htmlFor="dest-url">
-              Destination URL <span className="text-destructive">*</span>
+              {isDestinationRequired ? (
+                <>
+                  Destination URL <span className="text-destructive">*</span>
+                </>
+              ) : (
+                "Fallback Destination URL (optional — auto-filled from first item)"
+              )}
             </Label>
             <Input
               id="dest-url"
@@ -132,6 +211,7 @@ export function CreateLinkDialog({
               value={originalURL}
               onChange={(e) => setOriginalURL(e.target.value)}
               disabled={isPending}
+              required={isDestinationRequired}
               autoFocus
             />
           </div>
@@ -139,7 +219,7 @@ export function CreateLinkDialog({
           <div className="grid gap-2">
             <Label htmlFor="slug-path">Custom Slug / Path (Optional)</Label>
             <div className="flex items-center rounded-md border bg-muted/40 px-3 py-1 text-sm">
-              <span className="text-muted-foreground">{SHORTIO_CONFIG.domain}/</span>
+              <span className="text-muted-foreground">{activeDomain}/</span>
               <Input
                 id="slug-path"
                 placeholder="custom-slug"
@@ -152,7 +232,7 @@ export function CreateLinkDialog({
             <p className="text-muted-foreground text-xs">
               Preview:{" "}
               <span className="font-mono text-foreground">
-                https://{SHORTIO_CONFIG.domain}/{previewSlug}
+                https://{activeDomain}/{previewSlug}
               </span>
             </p>
           </div>
@@ -203,18 +283,19 @@ export function CreateLinkDialog({
               disabled={isPending}
             />
           </div>
-          <AdvancedOptions value={advanced} onChange={setAdvanced} disabled={isPending} />
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Cancel
-          </Button>
-          <Button onClick={handleCreate} disabled={isPending}>
-            {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
-            Generate Short Link
-          </Button>
-        </DialogFooter>
+          <AdvancedOptions value={advanced} onChange={setAdvanced} provider={provider} disabled={isPending} />
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isPending}>
+              {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+              Generate Short Link
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

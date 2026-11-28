@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { Globe, Loader2, Plus, Trash2 } from "lucide-react";
+import { Globe, Loader2, Plus, Smartphone, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -20,18 +20,25 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SHORTIO_CONFIG } from "@/config/shortio-config";
-import type { ShortDomain } from "@/lib/shortio/types";
+import type { ShortDomain, ShortlinkProviderName } from "@/lib/shortio/types";
 import {
   createShortDomainAction,
   deleteShortDomainAction,
   listShortDomainsAction,
 } from "@/server/shortio-advanced-actions";
 
-export function DomainsTab() {
+import { DomainDeepLinkDialog } from "./domain-deep-link-dialog";
+
+interface DomainsTabProps {
+  primaryDomainId: number;
+  provider: ShortlinkProviderName;
+}
+
+export function DomainsTab({ primaryDomainId, provider }: DomainsTabProps) {
   const [domains, setDomains] = React.useState<ShortDomain[] | null>(null);
   const [hostname, setHostname] = React.useState("");
   const [deleting, setDeleting] = React.useState<ShortDomain | null>(null);
+  const [editingDeepLink, setEditingDeepLink] = React.useState<ShortDomain | null>(null);
   const [confirmText, setConfirmText] = React.useState("");
   const [isPending, startTransition] = React.useTransition();
 
@@ -52,7 +59,11 @@ export function DomainsTab() {
     startTransition(async () => {
       const res = await createShortDomainAction(hostname);
       if (!res.success) return void toast.error(res.error ?? "Failed to add domain");
-      toast.success("Domain added. Point its DNS to Short.io, then verify it in the Short.io dashboard.");
+      toast.success(
+        provider === "cloudflare"
+          ? "Domain added to Cloudflare Edge D1 & KV. Bind a Workers Custom Domain route to serve traffic."
+          : "Domain added. Point its DNS to Short.io, then verify it in the Short.io dashboard.",
+      );
       setHostname("");
       await refresh();
     });
@@ -70,7 +81,7 @@ export function DomainsTab() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Input
           value={hostname}
           onChange={(e) => setHostname(e.target.value)}
@@ -79,7 +90,7 @@ export function DomainsTab() {
           className="max-w-sm"
           disabled={isPending}
         />
-        <Button onClick={add} disabled={isPending || !hostname.trim()} className="gap-1.5">
+        <Button type="button" onClick={add} disabled={isPending || !hostname.trim()} className="gap-1.5">
           {isPending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
           Add domain
         </Button>
@@ -89,31 +100,73 @@ export function DomainsTab() {
       {domains?.length === 0 && <p className="text-muted-foreground text-sm">No domains found.</p>}
       <div className="grid gap-2">
         {domains?.map((d) => (
-          <Card key={d.id} className="flex-row items-center justify-between gap-3 p-3">
-            <div className="flex items-center gap-2">
+          <Card key={d.id} className="flex-row flex-wrap items-center justify-between gap-3 p-3">
+            <div className="flex flex-wrap items-center gap-2">
               <Globe className="size-4 text-muted-foreground" />
               <span className="font-mono text-sm">{d.hostname}</span>
               <Badge variant={d.state === "configured" ? "secondary" : "outline"} className="text-[10px]">
                 {d.state.replace(/_/g, " ")}
               </Badge>
-              {d.id === SHORTIO_CONFIG.domainId && <Badge className="text-[10px]">Primary</Badge>}
+              {d.id === primaryDomainId && <Badge className="text-[10px]">Primary</Badge>}
+              {Boolean(d.appleAppSiteAssociation) && (
+                <Badge variant="outline" className="text-[10px]">
+                  iOS AASA
+                </Badge>
+              )}
+              {Boolean(d.assetLinks) && (
+                <Badge variant="outline" className="text-[10px]">
+                  Android AssetLinks
+                </Badge>
+              )}
             </div>
-            {d.id !== SHORTIO_CONFIG.domainId && (
+
+            <div className="flex items-center gap-1.5">
               <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={`Remove ${d.hostname}`}
-                onClick={() => setDeleting(d)}
-                className="text-destructive"
+                type="button"
+                size="xs"
+                variant="outline"
+                onClick={() => setEditingDeepLink(d)}
+                className="gap-1.5"
               >
-                <Trash2 className="size-4" />
+                <Smartphone className="size-3.5" />
+                Deep Linking
               </Button>
-            )}
+              {d.id !== primaryDomainId && (
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={`Remove ${d.hostname}`}
+                  onClick={() => setDeleting(d)}
+                  className="text-destructive"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              )}
+            </div>
           </Card>
         ))}
       </div>
 
-      <AlertDialog open={Boolean(deleting)} onOpenChange={(o) => !o && (setDeleting(null), setConfirmText(""))}>
+      <DomainDeepLinkDialog
+        open={Boolean(editingDeepLink)}
+        onOpenChange={(o) => !o && setEditingDeepLink(null)}
+        domain={editingDeepLink}
+        provider={provider}
+        onUpdated={(updated) => {
+          setDomains((prev) => (prev ? prev.map((d) => (d.id === updated.id ? updated : d)) : [updated]));
+        }}
+      />
+
+      <AlertDialog
+        open={Boolean(deleting)}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDeleting(null);
+            setConfirmText("");
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {deleting?.hostname}?</AlertDialogTitle>

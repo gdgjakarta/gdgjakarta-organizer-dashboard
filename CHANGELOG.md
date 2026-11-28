@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.78] - 2026-11-28
+
+### Added
+- **In-House Cloudflare Shortlink Redirect Worker (`workers/shortlink/`, `gdgjakarta.org`)**:
+  - Replaced Short.io Pro with a dedicated Cloudflare Worker backed by `SHORTLINKS_KV` and `SHORTLINKS_DB` (D1) on `gdgjakarta.org`, with `/` redirecting to `https://gdgjakarta.com` and branded 404 responses.
+  - Added full Pro & edge capabilities: custom slugs, `301`/`302`/`307`/`308` redirects, time expiration + `expiredURL`, PBKDF2-SHA256 + HMAC-SHA256 password-protected links, iframe cloaking, OS (Android/iOS) and country geo-targeting, UTM merging, Meta/GTM/GA4 retargeting pixel interstitials, atomic `max_clicks` limits, sticky A/B split testing, Link Bundles, and mobile deep linking (`/.well-known/apple-app-site-association` & `assetlinks.json`).
+- **Shortlink Dashboard Pro UI, Analytics & External API (`/dashboard/links`, `/api/links/shorten`)**:
+  - Updated `/dashboard/links` with Pro targeting fields, clickstream table, legacy + live click analytics, domain deep-link config, and offline SVG QR generation.
+  - Added fail-closed `/api/links/shorten` (`POST`/`GET`) protected by `SHORTLINK_API_KEY` / `N8N_WEBHOOK_API_KEY`.
+- **Migration CLI, Preview Secrets Sync & Ops Skill**:
+  - Added `scripts/migrate-shortio-to-d1.mjs`, `scripts/sync-preview-secrets.mjs`, `.agents/skills/shortlink-ops/SKILL.md`, and `docs/shortlink-cutover-runbook.md`, migrating 83 active links and 163,595 legacy clicks from Short.io.
+
+### Changed
+- **Shortlink Provider Cutover (`wrangler.jsonc`, `.env.example`)**:
+  - Switched `SHORTLINK_PROVIDER` to `"cloudflare"` and removed legacy `SHORTIO_*` config entries.
+
+---
+
 ## [1.0.77] - 2026-11-27
 
 ### Fixed

@@ -2,8 +2,13 @@ import { redirect } from "next/navigation";
 
 import type { Metadata } from "next";
 
-import { listAllShortLinks, listShortFolders } from "@/lib/shortio/client";
-import type { ShortFolder, ShortLinkItem } from "@/lib/shortio/types";
+import type { ShortDomain, ShortFolder, ShortLinkItem } from "@/lib/shortio/types";
+import { getPrimaryDomainConfig, getShortlinkProvider } from "@/lib/shortlinks/env";
+import {
+  listShortDomainsViaProvider,
+  listShortFoldersViaProvider,
+  listShortLinksViaProvider,
+} from "@/lib/shortlinks/provider";
 import { isAuthorizedOrganizerSession } from "@/server/auth-guard";
 
 import { Links } from "./_components/links";
@@ -22,17 +27,40 @@ export default async function LinksPage() {
     redirect("/dashboard/member");
   }
 
+  const [provider, primaryConfig] = await Promise.all([getShortlinkProvider(), getPrimaryDomainConfig()]);
+
   let links: ShortLinkItem[] = [];
   let folders: ShortFolder[] = [];
+  let domains: ShortDomain[] = [];
+  let initialTotalCount = 0;
+  let initialNextPageToken: string | undefined;
 
   try {
-    const [linksRes, foldersRes] = await Promise.all([listAllShortLinks({ limit: 150 }), listShortFolders()]);
+    const [linksRes, foldersRes, domainsRes] = await Promise.all([
+      listShortLinksViaProvider({ limit: 150 }),
+      listShortFoldersViaProvider(),
+      listShortDomainsViaProvider().catch(() => [] as ShortDomain[]),
+    ]);
 
     links = linksRes.links || [];
+    initialTotalCount = linksRes.count ?? links.length;
+    initialNextPageToken = linksRes.nextPageToken;
     folders = foldersRes || [];
+    domains = domainsRes || [];
   } catch (err) {
-    console.error("[Short.io Links Page] Error fetching initial data:", err);
+    console.error("[Short Links Page] Error fetching initial data:", err);
   }
 
-  return <Links initialLinks={links} initialFolders={folders} />;
+  return (
+    <Links
+      initialLinks={links}
+      initialFolders={folders}
+      initialDomains={domains}
+      provider={provider}
+      primaryDomain={primaryConfig.domain}
+      primaryDomainId={primaryConfig.domainId}
+      initialTotalCount={initialTotalCount}
+      initialNextPageToken={initialNextPageToken}
+    />
+  );
 }
